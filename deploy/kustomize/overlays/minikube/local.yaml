@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: review-config
+data:
+  ENVIRONMENT: local
+  COOKIE_SECURE: 'false'
+  ALLOWED_ORIGIN: http://localhost:8080
+  DYNAMODB_ENDPOINT_URL: http://review-dynamodb:8000
+  DYNAMODB_TABLE: llm-review-users
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+  AWS_EC2_METADATA_DISABLED: 'true'
+  AWS_CONFIG_FILE: /dev/null
+  AWS_SHARED_CREDENTIALS_FILE: /dev/null
+  HF_HUB_DISABLE_XET: '1'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-backend
+spec:
+  progressDeadlineSeconds: 3900
+  template:
+    spec:
+      # minikube's hostPath provisioner does not implement fsGroup ownership.
+      # Only the two PVC roots are initialized; existing files are never rewritten.
+      initContainers:
+      - name: volume-permissions
+        image: review-backend:local
+        imagePullPolicy: IfNotPresent
+        command: [python, -c]
+        args:
+        - "import os; [(os.chown(p, 10001, 10001), os.chmod(p, 0o770)) for p in ['/data', '/models/huggingface']]"
+        securityContext:
+          runAsNonRoot: false
+          runAsUser: 0
+          runAsGroup: 0
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, FOWNER]
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+        volumeMounts:
+        - {name: history, mountPath: /data}
+        - {name: model-cache, mountPath: /models/huggingface}
+      containers:
+      - name: review-backend
+        env:
+        - name: OMP_NUM_THREADS
+          value: "2"
+        resources:
+          requests: {cpu: '2', memory: 4Gi}
+          limits: {cpu: '2', memory: 6Gi}
+        startupProbe:
+          failureThreshold: 360
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-frontend
+spec:
+  template:
+    spec:
+      containers:
+      - name: review-frontend
+        volumeMounts:
+        - name: local-nginx
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+      volumes:
+      - name: local-nginx
+        configMap:
+          name: review-local-nginx

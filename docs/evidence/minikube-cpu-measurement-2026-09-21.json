@@ -1,0 +1,1639 @@
+{
+  "schema_version": 1,
+  "status": "measured_with_observation_gaps",
+  "submission_count": 1,
+  "review_completed": false,
+  "quality_check": "not_executed",
+  "browser_acceptance": "not_executed",
+  "target": {
+    "profile": "minikube",
+    "cluster_uid": "87a4de40-9556-4415-bd6c-551ce09b2f92",
+    "node_name": "minikube"
+  },
+  "namespace_uid": "9f452678-fb0f-4088-be6d-6bdb201bcf67",
+  "identity_before": {
+    "pod": "review-backend-844686f484-vf56m",
+    "uid": "cb0c09c9-6884-49da-9754-741b7062fa6a",
+    "containerID": "containerd://86ed001333c4fe938e7d56cdaa08b03fa57ef8555e6d76fbfbbfe98723d11451",
+    "imageID": "sha256:6b1fd1e105e8194dea74b3c82d02c0c1dee8d2d7940e55634b4027542bdd7260",
+    "restartCount": 0,
+    "state": {
+      "running": {
+        "startedAt": "2026-09-21T08:23:11Z"
+      }
+    }
+  },
+  "identity_after": {
+    "pod": "review-backend-844686f484-vf56m",
+    "uid": "cb0c09c9-6884-49da-9754-741b7062fa6a",
+    "containerID": "containerd://86ed001333c4fe938e7d56cdaa08b03fa57ef8555e6d76fbfbbfe98723d11451",
+    "imageID": "sha256:6b1fd1e105e8194dea74b3c82d02c0c1dee8d2d7940e55634b4027542bdd7260",
+    "restartCount": 0,
+    "state": {
+      "running": {
+        "startedAt": "2026-09-21T08:23:11Z"
+      }
+    }
+  },
+  "build": {
+    "attempt_id": "16fcff03766dea053c47d384",
+    "images": {
+      "review-backend": "review-backend:minikube-20260921172120-2a4c027df7",
+      "review-frontend": "review-frontend:minikube-20260921172120-2a4c027df7"
+    },
+    "image_ids": {
+      "review-backend": "sha256:01294f515174a90ce5101abb18e6acadf7bf2eba3be14a372d4dfd7657bb8c0f",
+      "review-frontend": "sha256:cc221197e09fd0d37ec42ef2f65e996609b9e5db00206e954ae883b0fe54e59c"
+    },
+    "runtime_image_ids": {
+      "review-backend": "sha256:6b1fd1e105e8194dea74b3c82d02c0c1dee8d2d7940e55634b4027542bdd7260",
+      "review-frontend": "sha256:9fb92689001ddeecca892523f7f6128a30a6763198bb439ef45bfa19c63e9ac0"
+    },
+    "build_fingerprints": {
+      "review-backend": "58108fc3c776e70d6ae90af65895ec8f664fb517056ef8f1c81863f5c0624424",
+      "review-frontend": "c03548a39a00b7ba9191ad352bca4ff732b65013a498298ef08eda5f0f3c87ab"
+    }
+  },
+  "actual_environment": {
+    "INFERENCE_TIMEOUT_SECONDS": "300",
+    "MODEL_CPU_THREADS": "2",
+    "MODEL_MAX_OUTPUT_TOKENS": "384",
+    "MODEL_DTYPE": "bfloat16",
+    "MODEL_ID": "Qwen/Qwen3-1.7B",
+    "MODEL_REVISION": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+    "INFERENCE_DRAIN_SECONDS": null,
+    "OMP_NUM_THREADS": null,
+    "MKL_NUM_THREADS": null,
+    "OPENBLAS_NUM_THREADS": null
+  },
+  "versions": {
+    "torch": "2.8.0+cpu",
+    "transformers": "4.57.6",
+    "huggingface-hub": "0.36.2",
+    "safetensors": "0.8.0"
+  },
+  "source_sha256": {
+    "model.py": "acc0617efdb0f2f8b220c9998862a89e302e26666be7087db15b0fdb9cde5aa4",
+    "coordinator.py": "d3856f628fa9913065abb4ad02c74bc032e8d243b3782b40ea26bc551b41be46"
+  },
+  "previous_review_events": [
+    {
+      "kubernetes_timestamp": "2026-09-21T08:23:34.235675762Z",
+      "event": "model_ready",
+      "timestamp": "2026-09-21T08:23:34.235Z"
+    },
+    {
+      "kubernetes_timestamp": "2026-09-21T08:24:06.267995722Z",
+      "event": "review_started",
+      "timestamp": "2026-09-21T08:24:06.267Z",
+      "review_id": "e07aa6cc-d4d6-4973-9af3-65497c6c9b36",
+      "error_code": "none",
+      "queue_wait_ms": 45
+    },
+    {
+      "kubernetes_timestamp": "2026-09-21T08:29:06.276625138Z",
+      "event": "review_finished",
+      "timestamp": "2026-09-21T08:29:06.276Z",
+      "review_id": "e07aa6cc-d4d6-4973-9af3-65497c6c9b36",
+      "error_code": "inference_timeout",
+      "duration_ms": 300054
+    },
+    {
+      "kubernetes_timestamp": "2026-09-21T08:29:09.043655459Z",
+      "event": "model_generation_finished",
+      "timestamp": "2026-09-21T08:29:09.041Z",
+      "duration_ms": 302739,
+      "generated_tokens": 135,
+      "output_token_limit": 384,
+      "section_generated_tokens": {
+        "summary": 38,
+        "findings": 97,
+        "suggestions": 0
+      },
+      "section_limits_reached": {
+        "summary": false,
+        "findings": false,
+        "suggestions": false
+      },
+      "section_prepare_ms": {
+        "summary": 5,
+        "findings": 13,
+        "suggestions": null
+      },
+      "section_generation_ms": {
+        "summary": 109045,
+        "findings": 193694,
+        "suggestions": null
+      },
+      "section_first_token_ms": {
+        "summary": 12632,
+        "findings": 12062,
+        "suggestions": null
+      },
+      "section_input_tokens": {
+        "summary": 208,
+        "findings": 217,
+        "suggestions": null
+      },
+      "worker_intraop_threads": 2,
+      "worker_interop_threads": 10
+    }
+  ],
+  "measurement_events": [
+    {
+      "kubernetes_timestamp": "2026-09-21T08:40:06.187503305Z",
+      "event": "review_started",
+      "timestamp": "2026-09-21T08:40:06.187Z",
+      "review_id": "e6d35cc3-eda1-4832-91a3-5ddeb78867b0",
+      "error_code": "none",
+      "queue_wait_ms": 25
+    },
+    {
+      "kubernetes_timestamp": "2026-09-21T08:45:06.197714596Z",
+      "event": "review_finished",
+      "timestamp": "2026-09-21T08:45:06.197Z",
+      "review_id": "e6d35cc3-eda1-4832-91a3-5ddeb78867b0",
+      "error_code": "inference_timeout",
+      "duration_ms": 300035
+    },
+    {
+      "kubernetes_timestamp": "2026-09-21T08:45:06.684736305Z",
+      "event": "model_generation_finished",
+      "timestamp": "2026-09-21T08:45:06.684Z",
+      "duration_ms": 300465,
+      "generated_tokens": 137,
+      "output_token_limit": 384,
+      "section_generated_tokens": {
+        "summary": 38,
+        "findings": 99,
+        "suggestions": 0
+      },
+      "section_limits_reached": {
+        "summary": false,
+        "findings": false,
+        "suggestions": false
+      },
+      "section_prepare_ms": {
+        "summary": 20,
+        "findings": 5,
+        "suggestions": null
+      },
+      "section_generation_ms": {
+        "summary": 74757,
+        "findings": 225708,
+        "suggestions": null
+      },
+      "section_first_token_ms": {
+        "summary": 12107,
+        "findings": 12135,
+        "suggestions": null
+      },
+      "section_input_tokens": {
+        "summary": 208,
+        "findings": 217,
+        "suggestions": null
+      },
+      "worker_intraop_threads": 2,
+      "worker_interop_threads": 10
+    }
+  ],
+  "final_authenticated_check": {
+    "review": {
+      "review_id": "e6d35cc3-eda1-4832-91a3-5ddeb78867b0",
+      "status": "failed",
+      "error_code": "inference_timeout"
+    },
+    "health": {
+      "status": "ready"
+    },
+    "live": {
+      "status": "alive"
+    },
+    "queue": "idle",
+    "logout_http": 204,
+    "model_config": {
+      "model_type": "qwen3",
+      "hidden_size": 2048,
+      "intermediate_size": 6144,
+      "num_hidden_layers": 28,
+      "num_attention_heads": 16,
+      "num_key_value_heads": 8,
+      "torch_dtype": "bfloat16"
+    }
+  },
+  "analysis": {
+    "review_id": "e6d35cc3-eda1-4832-91a3-5ddeb78867b0",
+    "same_instance": true,
+    "cgroup_inode_unchanged": true,
+    "sample_count": 17,
+    "measurement_start_utc": "2026-09-21T08:40:05.492098+00:00",
+    "measurement_end_utc": "2026-09-21T08:45:12.869376+00:00",
+    "elapsed_seconds": 307.37524818199745,
+    "cpu_delta": {
+      "usage_usec": 597589889,
+      "user_usec": 510502284,
+      "system_usec": 87087606,
+      "nice_usec": 0,
+      "nr_periods": 3074,
+      "nr_throttled": 2780,
+      "throttled_usec": 260149785,
+      "nr_bursts": 0,
+      "burst_usec": 0
+    },
+    "average_cpu_cores": 1.9441704969235711,
+    "memory_event_delta": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    },
+    "memory_current_min": 535670784,
+    "memory_current_max": 1165389824,
+    "memory_peak_before_after": [
+      1132695552,
+      1169346560
+    ],
+    "memory_stat_delta": {
+      "anon": -327680,
+      "file": -28672,
+      "workingset_refault_file": 0,
+      "pgfault": 20536176,
+      "pgmajfault": 0
+    },
+    "intervals": [
+      {
+        "start": 0.0,
+        "end": 11.479613838997466,
+        "elapsed": 11.479613838997466,
+        "cores": 1.889855904934747
+      },
+      {
+        "start": 11.479613838997466,
+        "end": 22.067638635999174,
+        "elapsed": 10.588024797001708,
+        "cores": 1.9888611335669697
+      },
+      {
+        "start": 22.067638635999174,
+        "end": 127.26160068299941,
+        "elapsed": 105.19396204700024,
+        "cores": 1.9920369850350705
+      },
+      {
+        "start": 127.26160068299941,
+        "end": 138.78016764700078,
+        "elapsed": 11.518566964001366,
+        "cores": 1.991346065155999
+      },
+      {
+        "start": 138.78016764700078,
+        "end": 150.07296781900004,
+        "elapsed": 11.29280017199926,
+        "cores": 1.9904450320243807
+      },
+      {
+        "start": 150.07296781900004,
+        "end": 161.57364244899873,
+        "elapsed": 11.500674629998684,
+        "cores": 1.9876466151275347
+      },
+      {
+        "start": 161.57364244899873,
+        "end": 172.97731441200085,
+        "elapsed": 11.403671963002125,
+        "cores": 1.9782390332860011
+      },
+      {
+        "start": 172.97731441200085,
+        "end": 184.3644026260008,
+        "elapsed": 11.38708821399996,
+        "cores": 1.9790483375981407
+      },
+      {
+        "start": 184.3644026260008,
+        "end": 195.59605938099776,
+        "elapsed": 11.231656754996948,
+        "cores": 1.9896293563331988
+      },
+      {
+        "start": 195.59605938099776,
+        "end": 250.36421286399855,
+        "elapsed": 54.76815348300079,
+        "cores": 1.9740108826848917
+      },
+      {
+        "start": 250.36421286399855,
+        "end": 261.71350986999823,
+        "elapsed": 11.349297005999688,
+        "cores": 2.0003305039949737
+      },
+      {
+        "start": 261.71350986999823,
+        "end": 273.5986073749991,
+        "elapsed": 11.885097505000886,
+        "cores": 1.986224176121998
+      },
+      {
+        "start": 273.5986073749991,
+        "end": 284.80232579699805,
+        "elapsed": 11.203718421998929,
+        "cores": 1.9876137690389135
+      },
+      {
+        "start": 284.80232579699805,
+        "end": 296.10709159399994,
+        "elapsed": 11.304765797001892,
+        "cores": 1.9850520924503718
+      },
+      {
+        "start": 296.10709159399994,
+        "end": 307.37524818199745,
+        "elapsed": 11.26815658799751,
+        "cores": 0.9264773628651946
+      }
+    ],
+    "ancestors": {
+      "/sys/fs/cgroup/kubepods/burstable/podcb0c09c9-6884-49da-9754-741b7062fa6a/86ed001333c4fe938e7d56cdaa08b03fa57ef8555e6d76fbfbbfe98723d11451": {
+        "cpu.stat_delta": {
+          "usage_usec": 597600672,
+          "user_usec": 510513172,
+          "system_usec": 87087501,
+          "nice_usec": 0,
+          "nr_periods": 3073,
+          "nr_throttled": 2780,
+          "throttled_usec": 260149785,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "memory.events_delta": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        },
+        "memory_current_before_after": [
+          534798336,
+          535007232
+        ],
+        "cpu.pressure_total_delta": {
+          "some": 35881904,
+          "full": 34586571
+        },
+        "memory.pressure_total_delta": {
+          "some": 0,
+          "full": 0
+        }
+      },
+      "/sys/fs/cgroup/kubepods/burstable/podcb0c09c9-6884-49da-9754-741b7062fa6a": {
+        "cpu.stat_delta": {
+          "usage_usec": 597599556,
+          "user_usec": 510512140,
+          "system_usec": 87087416,
+          "nice_usec": 0,
+          "nr_periods": 3074,
+          "nr_throttled": 2715,
+          "throttled_usec": 253973462,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "memory.events_delta": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        },
+        "memory_current_before_after": [
+          535068672,
+          535277568
+        ],
+        "cpu.pressure_total_delta": {
+          "some": 35873492,
+          "full": 34567765
+        },
+        "memory.pressure_total_delta": {
+          "some": 0,
+          "full": 0
+        }
+      },
+      "/sys/fs/cgroup/kubepods/burstable": {
+        "cpu.stat_delta": {
+          "usage_usec": 631463584,
+          "user_usec": 549873590,
+          "system_usec": 81589994,
+          "nice_usec": 0,
+          "nr_periods": 0,
+          "nr_throttled": 0,
+          "throttled_usec": 0,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "memory.events_delta": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        },
+        "memory_current_before_after": [
+          4913414144,
+          4917342208
+        ],
+        "cpu.pressure_total_delta": {
+          "some": 33526641,
+          "full": 31220649
+        },
+        "memory.pressure_total_delta": {
+          "some": 1,
+          "full": 1
+        }
+      },
+      "/sys/fs/cgroup/kubepods": {
+        "cpu.stat_delta": {
+          "usage_usec": 633450879,
+          "user_usec": 551680009,
+          "system_usec": 81770870,
+          "nice_usec": 0,
+          "nr_periods": 0,
+          "nr_throttled": 0,
+          "throttled_usec": 0,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "memory.events_delta": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        },
+        "memory_current_before_after": [
+          5059182592,
+          5062594560
+        ],
+        "cpu.pressure_total_delta": {
+          "some": 33806494,
+          "full": 31422620
+        },
+        "memory.pressure_total_delta": {
+          "some": 0,
+          "full": 0
+        }
+      },
+      "/sys/fs/cgroup": {
+        "cpu.stat_delta": {
+          "usage_usec": 660080993,
+          "user_usec": 571472150,
+          "system_usec": 88608843,
+          "nice_usec": 0,
+          "nr_periods": 3074,
+          "nr_throttled": 2,
+          "throttled_usec": 377412,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "memory.events_delta": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        },
+        "memory_current_before_after": [
+          8367321088,
+          8350101504
+        ],
+        "cpu.pressure_total_delta": {
+          "some": 34245293,
+          "full": 31268793
+        },
+        "memory.pressure_total_delta": {
+          "some": 1,
+          "full": 1
+        }
+      }
+    },
+    "/proc/pressure/cpu_delta": {
+      "some": 34703052,
+      "full": 0
+    },
+    "/proc/pressure/memory_delta": {
+      "some": 87293,
+      "full": 87288
+    },
+    "/proc/pressure/io_delta": {
+      "some": 53671,
+      "full": 42555
+    },
+    "node_tasks_created": 279302,
+    "node_vmstat_delta": {
+      "pswpin": 0,
+      "pswpout": 0,
+      "pgfault": 20761111,
+      "pgmajfault": 63,
+      "pgsteal_kswapd": 18533,
+      "pgsteal_direct": 0,
+      "pgscan_kswapd": 18533,
+      "pgscan_direct": 0
+    },
+    "host_vm_delta": {
+      "Decompressions": 12059635,
+      "Compressions": 12139892,
+      "Pageins": 231727,
+      "Pageouts": 1597,
+      "Swapins": 101092,
+      "Swapouts": 42236
+    },
+    "host_swap_before_after": [
+      "vm.swapusage: total = 13312.00M  used = 11893.38M  free = 1418.62M  (encrypted)",
+      "vm.swapusage: total = 12288.00M  used = 10904.38M  free = 1383.62M  (encrypted)"
+    ],
+    "host_cpu_idle_pct_range": [
+      26.3,
+      69.29
+    ],
+    "idle_baseline_cores": 0.03995979473388423,
+    "idle_node_tasks_created": 87,
+    "idle_node_tasks_interval_seconds": 10.722357988357544
+  },
+  "thread_observation_tail_and_drain": {
+    "start_unix": 1789980303.1910348,
+    "end_unix": 1789980308.8357267,
+    "thread_count_min": 18,
+    "thread_count_max": 26,
+    "thread_count_mean": 19.38,
+    "distinct_tids_observed": 241,
+    "new_tids_observed": 223,
+    "sample_count": 250,
+    "queue": {
+      "failed": 3
+    },
+    "pod_uid": "cb0c09c9-6884-49da-9754-741b7062fa6a",
+    "container_id": "containerd://86ed001333c4fe938e7d56cdaa08b03fa57ef8555e6d76fbfbbfe98723d11451"
+  },
+  "thread_observation_idle": {
+    "start_unix": 1789980390.9847622,
+    "end_unix": 1789980396.6153953,
+    "thread_count_min": 18,
+    "thread_count_max": 18,
+    "thread_count_mean": 18.0,
+    "distinct_tids_observed": 18,
+    "new_tids_observed": 0,
+    "sample_count": 250,
+    "queue": {
+      "failed": 3
+    },
+    "pod_uid": "cb0c09c9-6884-49da-9754-741b7062fa6a",
+    "container_id": "containerd://86ed001333c4fe938e7d56cdaa08b03fa57ef8555e6d76fbfbbfe98723d11451"
+  },
+  "limitations": [
+    "Two sampler interruptions; no inference retry. Interval deltas span gaps but cannot locate activity within them.",
+    "Container exec and host/node sampling overhead is included.",
+    "Per-operator BF16 kernel dispatch and allocation/thread-creation call sites were not measured."
+  ],
+  "resource_samples": [
+    {
+      "label": "idle_start",
+      "unix": 1789979994.8479242,
+      "monotonic": 23692.519039583,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 659915423,
+        "user_usec": 556574644,
+        "system_usec": 103340779,
+        "nice_usec": 0,
+        "nr_periods": 10015,
+        "nr_throttled": 2707,
+        "throttled_usec": 250172586,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 261297448
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=0.00 avg60=0.00 avg300=0.69 total=34790947\nfull avg10=0.00 avg60=0.00 avg300=0.66 total=33509266",
+      "memory_current": 536649728,
+      "memory_peak": 1132695552,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96248\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96197",
+      "memory_stat": {
+        "anon": 500404224,
+        "file": 16076800,
+        "workingset_refault_file": 45,
+        "pgfault": 20899941,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954216 kB",
+        "VmSwap": "0 kB",
+        "Threads": "18",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789979994.679772,
+      "host_vm": {
+        "Compressions": 845667670,
+        "Decompressions": 773392534,
+        "Swapins": 7763189,
+        "Swapouts": 10744364,
+        "Pageins": 106225751,
+        "Pageouts": 2133076,
+        "Pages occupied by compressor": 510039
+      },
+      "host_swap": "vm.swapusage: total = 13312.00M  used = 11900.75M  free = 1411.25M  (encrypted)",
+      "host_cpu_idle_pct": 62.77
+    },
+    {
+      "label": "before_submission",
+      "unix": 1789980005.492098,
+      "monotonic": 23703.163213379,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 660340762,
+        "user_usec": 556851216,
+        "system_usec": 103489545,
+        "nice_usec": 0,
+        "nr_periods": 10122,
+        "nr_throttled": 2707,
+        "throttled_usec": 250172586,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 261297448
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=0.00 avg60=0.00 avg300=0.66 total=34793496\nfull avg10=0.00 avg60=0.00 avg300=0.63 total=33511814",
+      "memory_current": 536068096,
+      "memory_peak": 1132695552,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96311\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96260",
+      "memory_stat": {
+        "anon": 500408320,
+        "file": 16076800,
+        "workingset_refault_file": 45,
+        "pgfault": 20903948,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954216 kB",
+        "VmSwap": "0 kB",
+        "Threads": "18",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980005.27931,
+      "host_vm": {
+        "Compressions": 845745107,
+        "Decompressions": 773468019,
+        "Swapins": 7767369,
+        "Swapouts": 10747476,
+        "Pageins": 106232049,
+        "Pageouts": 2133132,
+        "Pages occupied by compressor": 511391
+      },
+      "host_swap": "vm.swapusage: total = 13312.00M  used = 11893.38M  free = 1418.62M  (encrypted)",
+      "host_cpu_idle_pct": 69.29
+    },
+    {
+      "label": "during_review",
+      "unix": 1789980016.9724019,
+      "monotonic": 23714.642827218,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 682035578,
+        "user_usec": 577876760,
+        "system_usec": 104158818,
+        "nice_usec": 0,
+        "nr_periods": 10237,
+        "nr_throttled": 2814,
+        "throttled_usec": 282762674,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 294728118
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=20.50 avg60=4.89 avg300=1.71 total=38441676\nfull avg10=20.50 avg60=4.89 avg300=1.68 total=37122348",
+      "memory_current": 536489984,
+      "memory_peak": 1132695552,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96877\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96825",
+      "memory_stat": {
+        "anon": 500461568,
+        "file": 16076800,
+        "workingset_refault_file": 45,
+        "pgfault": 20913150,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954272 kB",
+        "VmSwap": "0 kB",
+        "Threads": "27",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980016.485009,
+      "host_vm": {
+        "Compressions": 845830076,
+        "Decompressions": 773711345,
+        "Swapins": 7776322,
+        "Swapouts": 10747932,
+        "Pageins": 106240356,
+        "Pageouts": 2133231,
+        "Pages occupied by compressor": 352646
+      },
+      "host_swap": "vm.swapusage: total = 13312.00M  used = 11756.50M  free = 1555.50M  (encrypted)",
+      "host_cpu_idle_pct": 47.2
+    },
+    {
+      "label": "during_review",
+      "unix": 1789980027.5604265,
+      "monotonic": 23725.230852015,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 703093689,
+        "user_usec": 595063149,
+        "system_usec": 108030540,
+        "nice_usec": 0,
+        "nr_periods": 10343,
+        "nr_throttled": 2911,
+        "throttled_usec": 291161979,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 303345899
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=15.21 avg60=6.16 avg300=2.10 total=39632646\nfull avg10=14.95 avg60=6.09 avg300=2.06 total=38265662",
+      "memory_current": 536862720,
+      "memory_peak": 1156108288,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96877\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96825",
+      "memory_stat": {
+        "anon": 500408320,
+        "file": 16076800,
+        "workingset_refault_file": 45,
+        "pgfault": 21772797,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954216 kB",
+        "VmSwap": "0 kB",
+        "Threads": "18",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980027.300861,
+      "host_vm": {
+        "Compressions": 845939065,
+        "Decompressions": 773882860,
+        "Swapins": 7794451,
+        "Swapouts": 10748532,
+        "Pageins": 106246070,
+        "Pageouts": 2133266,
+        "Pages occupied by compressor": 291243
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 11413.06M  free = 874.94M  (encrypted)",
+      "host_cpu_idle_pct": 51.53
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980132.7553153,
+      "monotonic": 23830.424814062,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 912643952,
+        "user_usec": 777837600,
+        "system_usec": 134806351,
+        "nice_usec": 0,
+        "nr_periods": 11395,
+        "nr_throttled": 3919,
+        "throttled_usec": 400899491,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 417547409
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=10.03 avg60=11.99 avg300=5.50 total=54001657\nfull avg10=9.89 avg60=11.72 avg300=5.37 total=52210031",
+      "memory_current": 537350144,
+      "memory_peak": 1157513216,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96941",
+      "memory_stat": {
+        "anon": 500498432,
+        "file": 16302080,
+        "workingset_refault_file": 45,
+        "pgfault": 29830482,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954304 kB",
+        "VmSwap": "0 kB",
+        "Threads": "19",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980132.350719,
+      "host_vm": {
+        "Compressions": 847745970,
+        "Decompressions": 775619372,
+        "Swapins": 7821580,
+        "Swapouts": 10748532,
+        "Pageins": 106310884,
+        "Pageouts": 2133605,
+        "Pages occupied by compressor": 335474
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 11005.00M  free = 1283.00M  (encrypted)",
+      "host_cpu_idle_pct": 26.3
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980144.2738824,
+      "monotonic": 23841.943381026,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 935581405,
+        "user_usec": 796645927,
+        "system_usec": 138935478,
+        "nice_usec": 0,
+        "nr_periods": 11510,
+        "nr_throttled": 4019,
+        "throttled_usec": 405089062,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 421914629
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=6.41 avg60=10.79 avg300=5.49 total=54708717\nfull avg10=6.30 avg60=10.54 avg300=5.37 total=52876255",
+      "memory_current": 537104384,
+      "memory_peak": 1157513216,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96941",
+      "memory_stat": {
+        "anon": 500498432,
+        "file": 16302080,
+        "workingset_refault_file": 45,
+        "pgfault": 30275828,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954304 kB",
+        "VmSwap": "0 kB",
+        "Threads": "19",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980143.838633,
+      "host_vm": {
+        "Compressions": 849150044,
+        "Decompressions": 776958657,
+        "Swapins": 7828847,
+        "Swapouts": 10768460,
+        "Pageins": 106334861,
+        "Pageouts": 2134042,
+        "Pages occupied by compressor": 383494
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 11204.31M  free = 1083.69M  (encrypted)",
+      "host_cpu_idle_pct": 37.32
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980155.5666828,
+      "monotonic": 23853.236181198,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 958059103,
+        "user_usec": 815939868,
+        "system_usec": 142119234,
+        "nice_usec": 0,
+        "nr_periods": 11623,
+        "nr_throttled": 4121,
+        "throttled_usec": 412229520,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 429256268
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=7.94 avg60=10.56 avg300=5.63 total=55845054\nfull avg10=7.80 avg60=10.32 avg300=5.50 total=53968255",
+      "memory_current": 595259392,
+      "memory_peak": 1157513216,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96941",
+      "memory_stat": {
+        "anon": 558891008,
+        "file": 16302080,
+        "workingset_refault_file": 45,
+        "pgfault": 30881634,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "4011400 kB",
+        "VmSwap": "0 kB",
+        "Threads": "18",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980155.086734,
+      "host_vm": {
+        "Compressions": 849860664,
+        "Decompressions": 777676116,
+        "Swapins": 7833423,
+        "Swapouts": 10768460,
+        "Pageins": 106345749,
+        "Pageouts": 2134158,
+        "Pages occupied by compressor": 357072
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 11116.31M  free = 1171.69M  (encrypted)",
+      "host_cpu_idle_pct": 35.99
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980167.0654216,
+      "monotonic": 23864.736855828,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 980918380,
+        "user_usec": 834474360,
+        "system_usec": 146444020,
+        "nice_usec": 0,
+        "nr_periods": 11738,
+        "nr_throttled": 4222,
+        "throttled_usec": 420416928,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 438018356
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=9.50 avg60=10.44 avg300=5.80 total=57033615\nfull avg10=9.03 avg60=10.15 avg300=5.65 total=55106740",
+      "memory_current": 1165389824,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96941",
+      "memory_stat": {
+        "anon": 1127854080,
+        "file": 16302080,
+        "workingset_refault_file": 45,
+        "pgfault": 31778690,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "4566956 kB",
+        "VmSwap": "0 kB",
+        "Threads": "27",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980166.7094731,
+      "host_vm": {
+        "Compressions": 850430660,
+        "Decompressions": 778306190,
+        "Swapins": 7840176,
+        "Swapouts": 10768460,
+        "Pageins": 106353258,
+        "Pageouts": 2134217,
+        "Pages occupied by compressor": 308710
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 11020.31M  free = 1267.69M  (encrypted)",
+      "host_cpu_idle_pct": 40.37
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980178.4690948,
+      "monotonic": 23876.140527791,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1003477569,
+        "user_usec": 853558486,
+        "system_usec": 149919082,
+        "nice_usec": 0,
+        "nr_periods": 11852,
+        "nr_throttled": 4326,
+        "throttled_usec": 427149537,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 445018698
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=8.67 avg60=10.13 avg300=5.92 total=58095231\nfull avg10=8.21 avg60=9.80 avg300=5.76 total=56097572",
+      "memory_current": 537079808,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96941",
+      "memory_stat": {
+        "anon": 500477952,
+        "file": 16302080,
+        "workingset_refault_file": 45,
+        "pgfault": 32559317,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954284 kB",
+        "VmSwap": "0 kB",
+        "Threads": "18",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980177.922061,
+      "host_vm": {
+        "Compressions": 850872532,
+        "Decompressions": 778696584,
+        "Swapins": 7841954,
+        "Swapouts": 10768460,
+        "Pageins": 106361027,
+        "Pageouts": 2134252,
+        "Pages occupied by compressor": 346397
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10996.31M  free = 1291.69M  (encrypted)",
+      "host_cpu_idle_pct": 35.22
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980189.8586495,
+      "monotonic": 23887.527616005,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1026013167,
+        "user_usec": 872410281,
+        "system_usec": 153602885,
+        "nice_usec": 0,
+        "nr_periods": 11966,
+        "nr_throttled": 4426,
+        "throttled_usec": 434692063,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 452719110
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=9.31 avg60=10.08 avg300=6.05 total=59211210\nfull avg10=8.70 avg60=9.68 avg300=5.87 total=57167670",
+      "memory_current": 537141248,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96941",
+      "memory_stat": {
+        "anon": 500498432,
+        "file": 16302080,
+        "workingset_refault_file": 45,
+        "pgfault": 33484656,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954308 kB",
+        "VmSwap": "0 kB",
+        "Threads": "19",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980189.424854,
+      "host_vm": {
+        "Compressions": 851312983,
+        "Decompressions": 779160975,
+        "Swapins": 7842419,
+        "Swapouts": 10768460,
+        "Pageins": 106368039,
+        "Pageouts": 2134326,
+        "Pages occupied by compressor": 327828
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10988.31M  free = 1299.69M  (encrypted)",
+      "host_cpu_idle_pct": 44.56
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980201.0903034,
+      "monotonic": 23898.75927276,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1048360001,
+        "user_usec": 891143406,
+        "system_usec": 157216594,
+        "nice_usec": 0,
+        "nr_periods": 12078,
+        "nr_throttled": 4526,
+        "throttled_usec": 440728084,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 458992334
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=7.89 avg60=9.63 avg300=6.12 total=60186700\nfull avg10=7.60 avg60=9.27 avg300=5.94 total=58093030",
+      "memory_current": 840888320,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=96993\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96941",
+      "memory_stat": {
+        "anon": 796221440,
+        "file": 16302080,
+        "workingset_refault_file": 45,
+        "pgfault": 34109187,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "4241060 kB",
+        "VmSwap": "0 kB",
+        "Threads": "27",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980200.704236,
+      "host_vm": {
+        "Compressions": 852286674,
+        "Decompressions": 780121651,
+        "Swapins": 7843211,
+        "Swapouts": 10768460,
+        "Pageins": 106377192,
+        "Pageouts": 2134340,
+        "Pages occupied by compressor": 325081
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10972.31M  free = 1315.69M  (encrypted)",
+      "host_cpu_idle_pct": 33.15
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980255.8579748,
+      "monotonic": 23953.527426243,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1156472932,
+        "user_usec": 982382146,
+        "system_usec": 174090786,
+        "nice_usec": 0,
+        "nr_periods": 12626,
+        "nr_throttled": 5017,
+        "throttled_usec": 476257413,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 495842084
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=8.26 avg60=9.33 avg300=6.67 total=65532878\nfull avg10=7.93 avg60=8.97 avg300=6.46 total=63204435",
+      "memory_current": 536764416,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=97025\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96973",
+      "memory_stat": {
+        "anon": 500064256,
+        "file": 16048128,
+        "workingset_refault_file": 45,
+        "pgfault": 37826788,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954288 kB",
+        "VmSwap": "0 kB",
+        "Threads": "18",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980255.4531221,
+      "host_vm": {
+        "Compressions": 855062637,
+        "Decompressions": 782807448,
+        "Swapins": 7865632,
+        "Swapouts": 10774872,
+        "Pageins": 106422620,
+        "Pageouts": 2134536,
+        "Pages occupied by compressor": 415976
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10720.50M  free = 1567.50M  (encrypted)",
+      "host_cpu_idle_pct": 39.61
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980267.207272,
+      "monotonic": 23964.876723249,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1179175277,
+        "user_usec": 1001460506,
+        "system_usec": 177714770,
+        "nice_usec": 0,
+        "nr_periods": 12739,
+        "nr_throttled": 5122,
+        "throttled_usec": 483680074,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 503490644
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=8.70 avg60=9.21 avg300=6.75 total=66584236\nfull avg10=8.23 avg60=8.83 avg300=6.53 total=64206906",
+      "memory_current": 536752128,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=97025\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96973",
+      "memory_stat": {
+        "anon": 500097024,
+        "file": 16048128,
+        "workingset_refault_file": 45,
+        "pgfault": 38606680,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954320 kB",
+        "VmSwap": "0 kB",
+        "Threads": "26",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980266.801599,
+      "host_vm": {
+        "Compressions": 855645354,
+        "Decompressions": 783469032,
+        "Swapins": 7866628,
+        "Swapouts": 10774872,
+        "Pageins": 106428608,
+        "Pageouts": 2134556,
+        "Pages occupied by compressor": 341647
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10704.50M  free = 1583.50M  (encrypted)",
+      "host_cpu_idle_pct": 44.0
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980279.0927086,
+      "monotonic": 23976.761820754,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1202781745,
+        "user_usec": 1021349203,
+        "system_usec": 181432542,
+        "nice_usec": 0,
+        "nr_periods": 12858,
+        "nr_throttled": 5231,
+        "throttled_usec": 491619966,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 511682232
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=9.34 avg60=9.29 avg300=6.87 total=67819518\nfull avg10=8.58 avg60=8.83 avg300=6.62 total=65377304",
+      "memory_current": 536858624,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=97025\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96973",
+      "memory_stat": {
+        "anon": 500097024,
+        "file": 16048128,
+        "workingset_refault_file": 45,
+        "pgfault": 39392218,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954312 kB",
+        "VmSwap": "0 kB",
+        "Threads": "22",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980278.641558,
+      "host_vm": {
+        "Compressions": 856210909,
+        "Decompressions": 784037647,
+        "Swapins": 7867200,
+        "Swapouts": 10781808,
+        "Pageins": 106434998,
+        "Pageouts": 2134624,
+        "Pages occupied by compressor": 335097
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10804.88M  free = 1483.12M  (encrypted)",
+      "host_cpu_idle_pct": 36.95
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980290.2964263,
+      "monotonic": 23987.965539176,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1225050410,
+        "user_usec": 1040224256,
+        "system_usec": 184826153,
+        "nice_usec": 0,
+        "nr_periods": 12970,
+        "nr_throttled": 5339,
+        "throttled_usec": 499669210,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 519979942
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=10.04 avg60=9.50 avg300=7.02 total=69008202\nfull avg10=9.19 avg60=8.97 avg300=6.75 total=66518911",
+      "memory_current": 536616960,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=97025\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96973",
+      "memory_stat": {
+        "anon": 500084736,
+        "file": 16048128,
+        "workingset_refault_file": 45,
+        "pgfault": 40333230,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954312 kB",
+        "VmSwap": "0 kB",
+        "Threads": "26",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980289.8458,
+      "host_vm": {
+        "Compressions": 856507727,
+        "Decompressions": 784325499,
+        "Swapins": 7867508,
+        "Swapouts": 10781808,
+        "Pageins": 106441323,
+        "Pageouts": 2134653,
+        "Pages occupied by compressor": 344596
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10804.88M  free = 1483.12M  (encrypted)",
+      "host_cpu_idle_pct": 43.82
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980301.6011927,
+      "monotonic": 23999.270304973,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1247490959,
+        "user_usec": 1059076611,
+        "system_usec": 188414347,
+        "nice_usec": 0,
+        "nr_periods": 13083,
+        "nr_throttled": 5441,
+        "throttled_usec": 506365554,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 526850490
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=9.21 avg60=9.44 avg300=7.09 total=70080372\nfull avg10=8.57 avg60=8.90 avg300=6.81 total=67531135",
+      "memory_current": 537165824,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=97025\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=96973",
+      "memory_stat": {
+        "anon": 500449280,
+        "file": 16048128,
+        "workingset_refault_file": 45,
+        "pgfault": 41118237,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954320 kB",
+        "VmSwap": "0 kB",
+        "Threads": "20",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980301.1166139,
+      "host_vm": {
+        "Compressions": 857183082,
+        "Decompressions": 784968871,
+        "Swapins": 7868090,
+        "Swapouts": 10781808,
+        "Pageins": 106447978,
+        "Pageouts": 2134676,
+        "Pages occupied by compressor": 371637
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10788.88M  free = 1499.12M  (encrypted)",
+      "host_cpu_idle_pct": 33.43
+    },
+    {
+      "label": "resumed_observation",
+      "unix": 1789980312.869376,
+      "monotonic": 24010.538461561,
+      "cgroup_inode": 12230,
+      "cpu_stat": {
+        "usage_usec": 1257930651,
+        "user_usec": 1067353500,
+        "system_usec": 190577151,
+        "nice_usec": 0,
+        "nr_periods": 13196,
+        "nr_throttled": 5487,
+        "throttled_usec": 510322371,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "cpu_stat_local": {
+        "throttled_usec": 531135759
+      },
+      "cpu_max": "200000 100000",
+      "cpu_pressure": "some avg10=6.12 avg60=8.78 avg300=7.04 total=70675400\nfull avg10=5.65 avg60=8.25 avg300=6.75 total=68098385",
+      "memory_current": 535670784,
+      "memory_peak": 1169346560,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "io_pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=97057\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=97005",
+      "memory_stat": {
+        "anon": 500080640,
+        "file": 16048128,
+        "workingset_refault_file": 45,
+        "pgfault": 41440124,
+        "pgmajfault": 57
+      },
+      "process": {
+        "VmRSS": "3954304 kB",
+        "VmSwap": "0 kB",
+        "Threads": "18",
+        "Cpus_allowed_list": "0-9"
+      },
+      "host_unix": 1789980312.607234,
+      "host_vm": {
+        "Compressions": 857884999,
+        "Decompressions": 785527654,
+        "Swapins": 7868461,
+        "Swapouts": 10789712,
+        "Pageins": 106463776,
+        "Pageouts": 2134729,
+        "Pages occupied by compressor": 511670
+      },
+      "host_swap": "vm.swapusage: total = 12288.00M  used = 10904.38M  free = 1383.62M  (encrypted)",
+      "host_cpu_idle_pct": 56.52
+    }
+  ],
+  "runtime_build": {
+    "oneDNN": "3.7.1",
+    "OpenMP": "4.5",
+    "BLAS": "OpenBLAS",
+    "USE_MKLDNN": true,
+    "USE_CUDA": false,
+    "cpu_capability_usage": "DEFAULT",
+    "actual_kernel_dispatch": "not_measured"
+  }
+}

@@ -1,0 +1,16 @@
+- op: replace
+  path: /spec/ingress
+  value:
+  - from:
+    - podSelector:
+        matchLabels: {app: review-frontend}
+    ports:
+    - {protocol: TCP, port: 8000}
+- op: replace
+  path: /spec/egress/2
+  value:
+    to:
+    - podSelector:
+        matchLabels: {app: review-dynamodb}
+    ports:
+    - {protocol: TCP, port: 8000}

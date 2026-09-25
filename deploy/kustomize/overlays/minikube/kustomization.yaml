@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: local-review-demo
+resources:
+- ../../base
+- dynamodb.yaml
+labels:
+- pairs:
+    app.kubernetes.io/part-of: local-review-demo
+  includeSelectors: false
+  includeTemplates: true
+configMapGenerator:
+- name: review-local-nginx
+  files:
+  - nginx.conf
+patches:
+- path: local.yaml
+- target:
+    kind: PersistentVolumeClaim
+  patch: |-
+    - op: replace
+      path: /spec/storageClassName
+      value: standard
+- target:
+    kind: NetworkPolicy
+    name: review-backend
+  path: backend-network.yaml
+- target:
+    kind: NetworkPolicy
+    name: review-frontend
+  path: frontend-network.yaml

@@ -1,0 +1,21 @@
+- op: replace
+  path: /spec/ingress
+  # Access is via API-server loopback port-forward, not a LAN-facing Service.
+  value: []
+- op: replace
+  path: /spec/egress
+  value:
+  - to:
+    - podSelector:
+        matchLabels: {app: review-backend}
+    ports:
+    - {protocol: TCP, port: 8000}
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels: {k8s-app: kube-dns}
+    ports:
+    - {protocol: UDP, port: 53}
+    - {protocol: TCP, port: 53}

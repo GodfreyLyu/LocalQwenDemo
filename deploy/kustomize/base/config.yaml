@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: review-config
+data:
+  ENVIRONMENT: local
+  ALLOWED_ORIGIN: http://localhost:8080
+  COOKIE_SECURE: 'false'
+  DATA_DIR: /data
+  HF_HOME: /models/huggingface
+  MODEL_ID: Qwen/Qwen3-1.7B
+  MODEL_REVISION: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+  MODEL_DTYPE: bfloat16
+  MODEL_MAX_INPUT_TOKENS: '2048'
+  MODEL_MAX_OUTPUT_TOKENS: '384'
+  MODEL_INFERENCE_CONCURRENCY: '1'
+  MODEL_CPU_THREADS: '2'
+  INFERENCE_TIMEOUT_SECONDS: '300'
+  QUEUE_CAPACITY: '8'
+  MAX_RETRIES: '1'
+  SOURCE_MAX_CHARS: '12000'
+  SESSION_TTL_SECONDS: '1800'
+  AWS_REGION: ap-northeast-1
+  DYNAMODB_TABLE: llm-review-users
+  DYNAMODB_ENDPOINT_URL: http://review-dynamodb:8000
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+  AWS_EC2_METADATA_DISABLED: 'true'
+  AWS_CONFIG_FILE: /dev/null
+  AWS_SHARED_CREDENTIALS_FILE: /dev/null
+  HF_HUB_DISABLE_TELEMETRY: '1'
+  HOME: /tmp

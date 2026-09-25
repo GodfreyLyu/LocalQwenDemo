@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: review-history
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: review-model-cache
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 12Gi

@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: review-dynamodb
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-dynamodb
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: review-dynamodb}
+  template:
+    metadata:
+      labels: {app: review-dynamodb}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The pinned image's 0700 home directory belongs to dynamodblocal (UID 1000).
+        # Keep the existing data group/fsGroup; changing it could affect existing files.
+        runAsUser: 1000
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+      - name: volume-permissions
+        image: review-backend:local
+        imagePullPolicy: IfNotPresent
+        command: [python, -c]
+        args:
+        - "import os; os.chown('/data', 1000, 10001); os.chmod('/data', 0o770)"
+        securityContext:
+          runAsNonRoot: false
+          runAsUser: 0
+          runAsGroup: 0
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+            add: [CHOWN, FOWNER]
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+        volumeMounts:
+        - {name: data, mountPath: /data}
+      containers:
+      - name: review-dynamodb
+        image: amazon/dynamodb-local:3.1.0
+        imagePullPolicy: IfNotPresent
+        args: [-jar, DynamoDBLocal.jar, -sharedDb, -dbPath, /data, -disableTelemetry]
+        env:
+        - {name: JAVA_TOOL_OPTIONS, value: '-Xms64m -Xmx256m -Djava.io.tmpdir=/tmp -Duser.home=/tmp'}
+        ports:
+        - {name: http, containerPort: 8000}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: [ALL]}
+        resources:
+          requests: {cpu: 100m, memory: 256Mi, ephemeral-storage: 32Mi}
+          limits: {cpu: 500m, memory: 512Mi, ephemeral-storage: 256Mi}
+        startupProbe:
+          tcpSocket: {port: http}
+          periodSeconds: 3
+          failureThreshold: 40
+        readinessProbe:
+          tcpSocket: {port: http}
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket: {port: http}
+          periodSeconds: 10
+        volumeMounts:
+        - {name: data, mountPath: /data}
+        - {name: tmp, mountPath: /tmp}
+      volumes:
+      - name: data
+        persistentVolumeClaim: {claimName: review-dynamodb}
+      - name: tmp
+        emptyDir: {sizeLimit: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-dynamodb
+spec:
+  selector: {app: review-dynamodb}
+  ports:
+  - {name: http, port: 8000, targetPort: http}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: review-dynamodb
+spec:
+  podSelector:
+    matchLabels: {app: review-dynamodb}
+  policyTypes: [Ingress, Egress]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels: {app: review-backend}
+    ports:
+    - {protocol: TCP, port: 8000}
+  egress: []

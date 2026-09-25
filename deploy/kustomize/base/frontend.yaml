@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-frontend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  progressDeadlineSeconds: 2100
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: review-frontend
+  template:
+    metadata:
+      labels:
+        app: review-frontend
+    spec:
+      serviceAccountName: review-frontend
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: review-frontend
+        image: review-frontend:local
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+            ephemeral-storage: 32Mi
+          limits:
+            cpu: 200m
+            memory: 96Mi
+            ephemeral-storage: 128Mi
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 12
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-frontend
+spec:
+  selector:
+    app: review-frontend
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
