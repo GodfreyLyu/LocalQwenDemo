@@ -1,7 +1,5 @@
 # Architecture
 
-Audience: maintainers. Purpose: understand component and persistence boundaries. Prerequisites: basic familiarity with the root README; no running environment required.
-
 [Documentation index](../README.md)
 
 ## Request flow
@@ -9,7 +7,7 @@ Audience: maintainers. Purpose: understand component and persistence boundaries.
 The [homepage diagrams](../../README.md#architecture) show the application inside minikube
 and its host-side management tools. React executes in the browser; Nginx serves its static
 bundle and provides the same-origin API proxy. The background coordinator and one-thread
-inference executor are parts of the FastAPI process, not separate deployed services.
+inference executor run within the FastAPI process.
 
 ## Boundaries
 
@@ -20,7 +18,11 @@ atomically persisting a queued review. The HTTP request ends before inference; t
 browser polls the persisted status and renders only sanitized completed Markdown.
 The cluster is accessed through an explicitly owned loopback forward, not a public ingress.
 
-One Uvicorn process and one background coordinator own a dedicated one-thread inference executor. One review invokes that executor once and performs its Summary, Findings, and Suggestions generations sequentially inside the same call. The sections share one 384-token deployment budget split 72/176/136, one deadline, and one stop event; no section output becomes a later model instruction. If an individual section reaches its fixed limit, the backend may delete only its incomplete trailing fragment after the last complete terminator. It never adds a continuation call or alters an earlier complete sentence or list item. Qwen3's tokenizer chat template is always invoked with the hard `enable_thinking=False` switch, so the application neither requests nor parses chain-of-thought. Each section uses the pinned model's explicit non-thinking sampling parameters and a stable SHA-256-derived seed inside an isolated CPU RNG context. Exiting the context restores the process RNG state, and neither seed nor source-derived hash is logged or persisted. Repeatability is scoped to the same dependency, CPU, and runtime stack. DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_thread`; model execution never runs on the main event loop. One backend replica and the `Recreate` rollout strategy preserve this ownership. There is no HPA, distributed queue, conversational store, external LLM, or code execution path.
+One Uvicorn process and one background coordinator own a dedicated one-thread inference executor. Each review invokes the executor once to generate Summary, Findings, and Suggestions sequentially. The sections share one 384-token deployment budget split 72/176/136, one deadline, and one stop event; no section output becomes a later model instruction. If an individual section reaches its fixed limit, the backend may delete only its incomplete trailing fragment after the last complete terminator. It never adds a continuation call or alters an earlier complete sentence or list item.
+
+Qwen3's tokenizer chat template is always invoked with the hard `enable_thinking=False` switch, so the application neither requests nor parses chain-of-thought. Each section uses the pinned model's explicit non-thinking sampling parameters and a stable SHA-256-derived seed inside an isolated CPU RNG context. Exiting the context restores the process RNG state, and neither seed nor source-derived hash is logged or persisted. Repeatability is scoped to the same dependency, CPU, and runtime stack.
+
+DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_thread`; model execution never runs on the main event loop. One backend replica and the `Recreate` rollout strategy preserve this ownership. There is no HPA, distributed queue, conversational store, external LLM, or code execution path.
 
 ## Storage
 
@@ -35,9 +37,9 @@ state is also separate: it records target/build/acceptance evidence and private 
 not application history. Default undeploy retains all three PVCs and signing material.
 Hostpath capacity declarations are not disk reservations or backups.
 
-`backend/app/storage.py` is a small maintainable SQLite abstraction with parameterized queries, explicit transactions, and schema versioning through `PRAGMA user_version`. Version 1 is created atomically; unknown versions fail startup. Future schema changes must introduce explicit ordered migrations before increasing the supported version. SQLite uses WAL, `synchronous=FULL`, and a five-second busy timeout. Each operation creates and closes its own connection.
+`backend/app/storage.py` provides parameterized SQLite queries, explicit transactions, and schema versioning through `PRAGMA user_version`. Version 1 is created atomically; unknown versions fail startup. Future schema changes must introduce explicit ordered migrations before increasing the supported version. SQLite uses WAL, `synchronous=FULL`, and a five-second busy timeout. Each operation creates and closes its own connection.
 
-Reviews contain all required fields: review/user/client IDs, language, source, result, state, error code/message, model ID/revision, retry count, and creation/update timestamps. Indexes cover user/reverse time ordering, status/creation ordering, and a unique `(user_id, client_request_id)` key. Transactions serialize duplicate submissions and capacity checks. A duplicate key with identical input returns the existing job, even after completion; a changed payload returns 409.
+Reviews store review/user/client IDs, language, source, result, state, error code/message, model ID/revision, retry count, and creation/update timestamps. Indexes cover user/reverse time ordering, status/creation ordering, and a unique `(user_id, client_request_id)` key. Transactions serialize duplicate submissions and capacity checks. A duplicate key with identical input returns the existing job, even after completion; a changed payload returns 409.
 
 History listings are cursor-paginated and omit source/result text. Detail access and pagination cursors always derive user identity from the authenticated session. Another user's ID returns 404. User input never supplies authoritative `user_id` values.
 
@@ -45,11 +47,13 @@ Sessions are signed opaque random tokens; only a SHA-256 token hash, user identi
 
 ## Queue and restart policy
 
-There may be eight queued jobs plus one running job by default, and at most one active job per account. Admission and status transitions are persisted before HTTP acceptance or inference. History writes fail closed: no success is returned when storage fails.
+By default, the queue allows eight queued jobs plus one running job, with at most one active job per account. Admission and status transitions are persisted before HTTP acceptance or inference. History writes fail closed: no success is returned when storage fails.
 
 On process restart, queued jobs are recovered. Stale running jobs are requeued once, incrementing `retry_count`. A second interruption fails them as `interrupted`. A reduced queue capacity preserves the oldest jobs and fails excess recovered work. Ordinary inference failures, empty or invalid output, and timeouts are not automatically retried; the user may make a new submission.
 
-A timed-out inference is marked failed, receives a cooperative stopping signal, and makes readiness false until its thread exits. The three section generations do not receive separate timeout windows: the 300-second minikube inference deadline covers the complete review, and stop or deadline expiry prevents another section from starting. No second inference is started during draining. If the inference thread exits within the existing 30-second draining window, readiness recovers, liveness remains healthy, and the Pod is not restarted. Only draining that exceeds 30 seconds enters `inference_stuck`, makes liveness false, stops the coordinator, and causes Kubernetes to restart the process. Python cannot forcibly kill a native thread. The 60-second pod termination grace period bounds shutdown even if native execution becomes stuck. A killed running job is recovered under the documented retry policy.
+A timed-out inference is marked failed, receives a cooperative stopping signal, and makes readiness false until its thread exits. The three section generations do not receive separate timeout windows: the 300-second minikube inference deadline covers the complete review, and stop or deadline expiry prevents another section from starting. No second inference starts during draining.
+
+If the inference thread exits within the 30-second draining window, readiness recovers, liveness remains healthy, and the Pod is not restarted. Only draining that exceeds 30 seconds enters `inference_stuck`, makes liveness false, stops the coordinator, and causes Kubernetes to restart the process. Python cannot forcibly kill a native thread. The 60-second Pod termination grace period bounds shutdown even if native execution becomes stuck. A killed running job is recovered under the documented retry policy.
 
 ## Deployment and persistence
 

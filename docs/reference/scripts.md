@@ -1,6 +1,6 @@
 # Script catalog and call chains
 
-Audience: developers and automation operators. Purpose: identify public commands, internal modules and side effects before execution. Prerequisites: [local environment](../guides/local-development.md); individual tools below. Run examples from the repository root. Python files are invoked through `backend/.venv/bin/python`; Shell entries are executable. No existing scripts were relocated.
+Use this catalog to check command requirements and side effects. Set up the [local environment](../guides/local-development.md) and the tools listed below. Run examples from the repository root, invoking Python files through `backend/.venv/bin/python`. Shell entries are executable.
 
 ## Local commands and checks
 
@@ -13,19 +13,21 @@ Audience: developers and automation operators. Purpose: identify public commands
 | `backend/.venv/bin/python scripts/init_local_users.py` | No CLI parser/options; required explicit `DYNAMODB_ENDPOINT_URL`; only loopback with an explicit port allowed; fixed dummy credentials | boto3, running DynamoDB Local | Describes and idempotently creates `llm-review-users`; **local database write**. Do not invoke with `--help`: it is not a help-capable script |
 | `backend/.venv/bin/python scripts/validate_manifests.py` | No CLI parser/options; minikube overlay fixed relative to script root | PyYAML, kubectl | Offline `kubectl kustomize`, assert resource/security/model contracts; console only. `--help` would still execute validation |
 
-All Python module paths/root resolution remain in place. Test fixtures are covered in [testing](../testing/README.md#mock-boundaries-and-fixture-maintenance). Scripts return nonzero on failed assertions/subcommands; aggregate gates stop on first failure rather than silently skipping missing tools.
+Test fixtures are covered in [testing](../testing/README.md#mock-boundaries-and-fixture-maintenance). Scripts return nonzero on failed assertions/subcommands; aggregate gates stop on first failure rather than silently skipping missing tools.
 
 ## Current-model evaluation entry
 
 `backend/.venv/bin/python scripts/evaluate_model.py` creates a content-free plan only. Options: `--dry-run`, `--run-real-model` (mutually exclusive), `--case all|hello_world|average|square|first_item|sql_injection|prompt_injection`, `--cache-dir HF_HOME`, and explicit `--review-in-terminal` for a private synthetic-output view and human verdicts. There is no model/parameter/source override.
 
-Dependencies: Python dev environment for plans; existing model packages and a complete pinned offline cache for real execution. Host `.env`/model overrides are ignored. Real-worker HF offline/telemetry/token settings and `OMP_NUM_THREADS=2` are fixed and recorded. Input is only `scripts/evaluation/fixtures-v1.json`; output is a new private `.local/model-evaluations/<time>-run-<random>/report.json`. Default mode creates only reports and reads local Git/dependency metadata. Real mode consumes CPU/RAM, uses one owned supervised worker and never downloads, installs, starts services or touches AWS/cluster resources. No default body logging/export exists.
+Plans require the Python dev environment; real execution also requires model packages and a complete pinned offline cache. Host `.env`/model overrides are ignored. Real-worker HF offline/telemetry/token settings and `OMP_NUM_THREADS=2` are fixed and recorded.
 
-Exit 0 means a valid `not_run` plan or a real `passed` result, distinguished in the report; exit 1 means failure, 2 invalid arguments, 3 pending human review. Complete semantic acceptance requires the explicit terminal judgments. Read the [evaluation guide](../testing/model-evaluation.md) for authoritative rules, commands, resource budgets and privacy; historical reproduction limitations belong to the [material audit](../reports/model-evaluation-materials-2026-09-25.md). The shared gate runs only `test_model_evaluation.py` with doubles, never this real-inference entry.
+The fixed input is `scripts/evaluation/fixtures-v1.json`; output is a new private `.local/model-evaluations/<time>-run-<random>/report.json`. Default mode creates only reports and reads local Git/dependency metadata. Real mode consumes CPU/RAM, uses one owned supervised worker and never downloads, installs, starts services or touches AWS/cluster resources. Model output is neither logged nor exported by default.
+
+Exit 0 means a valid `not_run` plan or a real `passed` result, distinguished in the report; exit 1 means failure, 2 invalid arguments, 3 pending human review. Complete semantic acceptance requires the explicit terminal judgments. Read the [evaluation guide](../testing/model-evaluation.md) for rules, commands, resource budgets and privacy; historical reproduction limitations belong to the [material audit](../reports/model-evaluation-materials-2026-09-25.md). The shared gate runs only `test_model_evaluation.py` with doubles, never this real-inference entry.
 
 ## Minikube public entry
 
-`scripts/minikube_demo.sh COMMAND [OPTIONS]` resolves the checkout from its own path and execs `minikube_demo.py` using `REVIEW_PYTHON` or the backend virtual environment. The Python file may be invoked directly but shares the same CLI implementation. Requires macOS/Linux, Python dev dependencies, local Docker, minikube and kubectl for operational commands. Help parses before discovery; `stop` prints advice and performs no external operations.
+`scripts/minikube_demo.sh COMMAND [OPTIONS]` resolves the checkout from its own path and execs `minikube_demo.py` using `REVIEW_PYTHON` or the backend virtual environment. The Python file may also be invoked directly; both entries use the same CLI. Operational commands require macOS/Linux, Python dev dependencies, local Docker, minikube and kubectl. Help parses before discovery; `stop` prints advice and performs no external operations.
 
 | Command | Preconditions and actual effects |
 | --- | --- |
@@ -41,9 +43,19 @@ Exit 0 means a valid `not_run` plan or a real `passed` result, distinguished in 
 | `recover-cleanup` | Explicit profile and expected cluster/namespace/owner identities; read-only preview by default. Confirmed `--execute --purge-data --confirm-data-loss local-review-demo` uses a complete inventory and queue fence before conditional full cleanup; independent private recovery journal |
 | `stop` | Compatibility advice only, exit zero; does not stop forwarding, workloads or minikube |
 
-Options: `--profile NAME` selects an existing running profile (required when multiple run); `--minikube-home PATH` overrides `MINIKUBE_HOME` / `~/.minikube`; `--storage-class NAME` selects an existing minikube-hostpath class for `up` (default `standard`); `--port N` selects localhost HTTP port for `up` (default 8080; 1024–65535); `--cold-timeout N` defaults to 3600 seconds, `--warm-timeout N` to 600 (minimum 60); `--skip-restart` makes `verify` partial and nonzero. `-h/--help` prints help. No force/skip-ownership option exists. Runtime errors exit 1; argparse errors exit 2; interruption exits 130.
+Options:
 
-Generated target data: `${XDG_STATE_HOME:-$HOME/.local/state}/local-qwen-demo/targets/<profile>-<home-hash>/<cluster-uid>/` contains `owner.json`, `plan.json`, `startup.json`, `deployment.json`, `verification.json`, `undeployment.json`, independent `recovery-cleanup.json`, `kubeconfig`, private `acceptance-account.json` and archived `attempts/`. Shared locks live in `<state-root>/locks/`. `LOCAL_QWEN_STATE_HOME` or `--state-root` overrides the root. `--from-state` supplies an explicit legacy checkout/state source. `undeploy --purge-data --confirm-data-loss local-review-demo` explicitly deletes owned data; `--delete-timeout` bounds waits (1–600 seconds, default 120). Reports distinguish diagnostic findings, readiness, review completion, persistence and UI acceptance. Never share credential files or manufacture missing image proof. [Recovery and acceptance](../guides/minikube-demo.md) owns the detailed procedure.
+- `--profile NAME` selects an existing running profile; required when multiple profiles are running.
+- `--minikube-home PATH` overrides `MINIKUBE_HOME` / `~/.minikube`.
+- `--storage-class NAME` selects an existing minikube-hostpath class for `up` (default `standard`).
+- `--port N` selects the localhost HTTP port for `up` (default 8080; 1024–65535).
+- `--cold-timeout N` defaults to 3600 seconds, `--warm-timeout N` to 600 (minimum 60).
+- `--skip-restart` makes `verify` partial and nonzero.
+- `-h/--help` prints help.
+
+No force/skip-ownership option exists. Runtime errors exit 1; argparse errors exit 2; interruption exits 130.
+
+Generated target data: `${XDG_STATE_HOME:-$HOME/.local/state}/local-qwen-demo/targets/<profile>-<home-hash>/<cluster-uid>/` contains `owner.json`, `plan.json`, `startup.json`, `deployment.json`, `verification.json`, `undeployment.json`, independent `recovery-cleanup.json`, `kubeconfig`, private `acceptance-account.json` and archived `attempts/`. Shared locks live in `<state-root>/locks/`. `LOCAL_QWEN_STATE_HOME` or `--state-root` overrides the root. `--from-state` supplies an explicit legacy checkout/state source. `undeploy --purge-data --confirm-data-loss local-review-demo` explicitly deletes owned data; `--delete-timeout` bounds waits (1–600 seconds, default 120). Reports distinguish diagnostic findings, readiness, review completion, persistence and UI acceptance. Never share credential files or manufacture missing image proof. See [recovery and acceptance](../guides/minikube-demo.md) for the detailed procedure.
 
 Lost-state recovery additionally requires `--expect-cluster-uid`, `--expect-namespace-uid` and `--expect-owner`; `--restore-frontend` is a separate identity-protected restoration action. Recovery never imports state automatically. Read the [lost-state recovery procedure](../operations/minikube-lost-state-recovery.md) before using these options.
 

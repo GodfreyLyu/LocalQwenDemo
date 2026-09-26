@@ -4,15 +4,15 @@ Use this destructive recovery path only when the old deployment state is unavail
 **all application data may be discarded**. If a trusted state copy exists, prefer
 [import-state and normal undeploy](../guides/minikube-demo.md#undeploy-and-recovery).
 Normal `undeploy` requires trusted ownership records, preserves data by default, and
-retains the namespace even with its confirmed purge option. Recovery never adopts
-resources or manufactures an `owner.json`: it independently validates the actual target
-and can delete the namespace only when every listed resource is explainable.
+retains the namespace even with its confirmed purge option. Recovery independently
+validates the target and can delete the namespace only when every listed resource can
+be verified. It never adopts resources or fabricates an `owner.json`.
 
 The cluster must already be running. You manage its lifecycle. This command never starts,
 stops, recreates or deletes minikube, modifies Docker/CNI/StorageClass, accesses AWS, runs
 inference or operates on another project's resources. Existing forwarding processes are
-not killed or reused. No operational command below was run as part of the offline
-implementation tests.
+not killed or reused. The offline implementation tests did not run the commands below
+against a live cluster.
 
 ## 1. Read and independently confirm identities
 
@@ -33,8 +33,7 @@ proof that all namespace contents belong to this application.
 
 Compare the identities with the deployment you intend to discard. An absent marker or
 namespace cannot be repaired by guessing a value, adding labels, or deleting state.
-Substitute the observed and independently confirmed values; no real target IDs are
-embedded here:
+Replace the placeholders with the observed and independently confirmed values:
 
 ```bash
 CLUSTER_UID='<confirmed-cluster-uid>'
@@ -155,8 +154,8 @@ A crash after backend shutdown but before the completed queue-fence checkpoint i
 ambiguous. With retained history and no confirmed idle proof, retry stops. Do not edit
 `quiesced`, fabricate ownership, force deletion, or assume missing Pods imply an empty
 queue. A separately reviewed, identity-protected backend restoration and fresh ready/
-queue check is needed before cleanup can proceed. This conservative case is intentionally
-not repaired by automatically launching a model or discarding potentially queued work.
+queue check is needed before cleanup can proceed. Recovery does not automatically
+launch a model or discard potentially queued work to resolve this uncertainty.
 
 ## 4. Start a new deployment only after confirmed cleanup
 

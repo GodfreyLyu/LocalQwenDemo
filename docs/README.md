@@ -1,8 +1,8 @@
 # Documentation
 
 LocalQwenDemo runs real CPU code review on an existing local minikube cluster. The
-[project homepage](../README.md) introduces the capabilities, diagrams and shortest
-start path. The operator manages cluster lifecycle; automation manages only verified,
+[project homepage](../README.md) provides an overview, diagrams and a quick start.
+The operator manages cluster lifecycle; automation manages only verified,
 owned application resources.
 
 ## Choose a reading path
@@ -33,25 +33,25 @@ owned application resources.
 
 ## How these documents fit together
 
-- **README:** orientation, diagrams and a short first run. Detailed procedures live below.
-- **`guides/`:** end-to-end setup and deployment workflows. The minikube guide owns profile
-  selection, shared-state/import, deployment, acceptance and normal cleanup procedures.
+- **README:** overview, diagrams and quick start.
+- **`guides/`:** setup and deployment workflows. The minikube guide covers profile
+  selection, shared state, import, deployment, acceptance and normal cleanup.
 - **`operations/`:** symptom-driven investigation and exceptional recovery. Lost-state
   cleanup has its own guide because its evidence and data-loss requirements differ from
   normal undeploy. The observability runbook applies the logging reference to investigations.
-- **`reference/`:** implementation contracts, defaults and design explanations. Update the
+- **`reference/`:** behavior, defaults and design explanations. Update the
   relevant reference when an API, configuration or behavior changes.
 - **`testing/`:** check entry points, test-double boundaries, opt-in evaluation and the
   evidence required for each acceptance claim.
-- **`reports/` and `evidence/`:** dated observations and original sanitized measurement
-  artifacts. Preserve their outcomes and limitations; do not turn old results into current
-  operating instructions or successful acceptance for new code.
+- **`reports/` and `evidence/`:** dated observations and original sanitized measurements.
+  Preserve their outcomes and limitations. Old results do not validate new code or
+  replace current operating instructions.
 
 Commands use the checkout root unless stated otherwise. `doctor` reads live diagnostics;
 `up`, `verify`, cleanup and real-model evaluation have operational side effects. Offline
 tests do not establish current cluster readiness, real-model quality or successful cleanup.
 
-Current instructions are checked against repository source, manifests, CLI help and tests.
+Repository source, manifests, CLI help and tests define current behavior.
 Historical cloud sections are archival only. Private state, credentials, user histories,
 weights and runtime logs remain outside Git. DynamoDB Local retains SDK names but requires
 explicit local endpoints and invalid credentials, with metadata/shared-configuration

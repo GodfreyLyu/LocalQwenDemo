@@ -1,6 +1,6 @@
 # Dated reports
 
-Audience: maintainers evaluating prior observations. Purpose: preserve chronology, model/environment identity and limitations. Prerequisite: [current documentation](../README.md). A historic pass is not a current pass; a single completed review is not full environment or browser acceptance.
+These reports preserve prior observations with their dates, models, environments and limitations. Use the [current documentation](../README.md) for operating instructions. Historical passes do not validate the current version; a single completed review does not establish full environment or browser acceptance.
 
 | Date          | Report                                                                           | Scope / limitation                                                                                                                                             |
 | ------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -12,9 +12,9 @@ Audience: maintainers evaluating prior observations. Purpose: preserve chronolog
 | 2026-09-25    | [Historical evaluation material audit](model-evaluation-materials-2026-09-25.md) | Missing historical six-case reproduction materials; new synthetic baseline and deterministic evaluator checks; no new inference                                |
 | 2026-09-25    | [Shared state and undeploy](minikube-shared-state-2026-09-25.md)                 | Offline migration, locking and cleanup tests; no real state import or cleanup. Later lost-state recovery is a separate mechanism                               |
 | 2026-09-25    | [Local-only deployment refactor](local-only-refactor-2026-09-25.md)              | Offline product/deployment regressions and fake-model browser checks; no live deployment or real inference                                                     |
-| 2026-09-25    | [Documentation and check-entry maintenance](maintenance-2026-09-25.md)           | This round's migration map, local validation and unexecuted environment work                                                                                   |
+| 2026-09-25    | [Documentation and check-entry maintenance](maintenance-2026-09-25.md)           | Document migration map, local validation and environment checks not run                                                                                   |
 
-The original [A evidence](../evidence/minikube-cpu-measurement-2026-09-21.json) and [B evidence](../evidence/minikube-cpu-b-measurement-2026-09-21.json) have not moved or changed. Ignored `.local` artifact references in old reports may only resolve on the original machine. New reports follow the [evidence rules](../testing/README.md#evidence-and-manual-acceptance).
+The original [A evidence](../evidence/minikube-cpu-measurement-2026-09-21.json) and [B evidence](../evidence/minikube-cpu-b-measurement-2026-09-21.json) remain unchanged. Ignored `.local` artifact references in old reports may resolve only on the original machine. New reports follow the [evidence rules](../testing/README.md#evidence-and-manual-acceptance).
 
 Cloud portions of mixed historical reports are archival only. Their infrastructure,
 commands and deployment capabilities are retired and are not current operating guidance.

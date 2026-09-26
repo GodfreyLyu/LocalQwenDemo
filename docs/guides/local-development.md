@@ -1,21 +1,21 @@
 # Local development
 
-The maintained deployment path is the [existing-minikube workflow](minikube-demo.md).
-This guide covers supplementary development and isolated test tools.
+Use this guide to develop and test locally. For deployment to an existing cluster,
+follow the [minikube guide](minikube-demo.md).
 
-Audience: developers. Purpose: set up Python/Node and local accounts/inference. Prerequisites: Python 3.12, Node 24; Docker only for persistent DynamoDB Local.
-
-[Documentation index](../README.md) · Commands use the repository root unless a block explicitly changes directory. Review each section’s side effects before running it.
+[Documentation index](../README.md) · Run commands from the repository root unless shown otherwise. Check each section's side effects before running it.
 
 ## When to use and prerequisites
 
 Use this guide for a loopback development environment. Start with the [fake-model quick start](#test-harness) for UI/API work; use the real-model path only when inference is needed.
 
-Use Python 3.12 and Node 24. Install the exact locks as shown in the root README. Optional model dependencies are isolated from routine API tests. The frontend uses a same-origin Vite proxy for `/api` and `/health`; do not call port 8000 directly from browser code. Open `http://localhost:5173` rather than `127.0.0.1:5173`, because origin matching is exact.
+Use Python 3.12 and Node 24; Docker is needed only for persistent DynamoDB Local. Install dependencies from the lockfiles as shown in the root README. Routine API tests do not need the optional model dependencies.
+
+The frontend uses a same-origin Vite proxy for `/api` and `/health`; do not call port 8000 directly from browser code. Open `http://localhost:5173` rather than `127.0.0.1:5173`, because origin matching is exact.
 
 ## Python 3.12 virtual environment
 
-`backend/.venv` is a standard Python virtual environment, not a Conda environment. It therefore does not appear in `conda env list`. A shell can show both `(.venv)` and `(base)` when the virtual environment and Conda base activation are layered; the reliable checks are `which python`, `python --version`, and `python -c 'import sys; print(sys.executable)'`.
+`backend/.venv` is a standard Python virtual environment, so it does not appear in `conda env list`. A shell can show both `(.venv)` and `(base)` when both environments are active. Check the interpreter with `which python`, `python --version`, and `python -c 'import sys; print(sys.executable)'`.
 
 The backend requires Python `>=3.12,<3.13`. On macOS, install a persistent Python 3.12 with Homebrew and create the virtual environment from the repository root:
 
@@ -104,13 +104,13 @@ Open `http://localhost:5173`. This deterministic fixture does not establish real
 quality or minikube acceptance. Use a separate `--data-dir` when existing harness data
 must be preserved.
 
-For real inference with emulated accounts (no Docker), install the optional model dependencies shown above, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository root. The first run may download pinned weights; omit neither the resource budget nor the model prerequisites.
+For real inference with emulated accounts (no Docker), install the optional model dependencies shown above, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository root. The first run may download pinned weights; check the resource budget and model prerequisites first.
 
-`scripts/local_demo.py --fake-model` uses Moto's DynamoDB API emulation and a deterministic model fixture, bound only to loopback. It creates no AWS resources. Accounts reset on harness restart, so old history may no longer be reachable through a newly registered user with the same login. For persistent accounts use DynamoDB Local above. Omit `--fake-model` to test the actual model with emulated accounts.
+`scripts/local_demo.py --fake-model` uses Moto's DynamoDB API emulation and a deterministic model fixture, bound only to loopback. It creates no AWS resources. Accounts reset on harness restart, so a newly registered user with the same login may not be able to access old history. For persistent accounts use DynamoDB Local above. Omit `--fake-model` to test the actual model with emulated accounts.
 
 ## Success criteria and tests
 
-The API must report ready and the browser must register/login and show labeled deterministic output when using the fake harness. For repeatable quick, complete, browser and opt-in real-model checks, use the [testing guide](../testing/README.md).
+With the fake harness, the API must report ready, registration/login must work in the browser, and results must be labeled as deterministic output. Use the [testing guide](../testing/README.md) for quick, complete, browser and opt-in real-model checks.
 
 ## Common failures and handling
 

@@ -8,7 +8,7 @@ and record measured, unavailable and inferred facts separately.
 
 ## Safe application log contract
 
-Every record includes `timestamp` (UTC ISO-8601 with milliseconds), `level`, `service=review-backend`, `environment`, and fixed `event`. `release_sha` is optional and appears only when `RELEASE_SHA` contains 7–64 lowercase hexadecimal characters. When a build SHA is unavailable it must be omitted, never fabricated.
+Every record includes `timestamp` (UTC ISO-8601 with milliseconds), `level`, `service=review-backend`, `environment`, and fixed `event`. `release_sha` is optional and appears only when `RELEASE_SHA` contains 7–64 lowercase hexadecimal characters. Omit unavailable build SHAs; never fabricate them.
 
 The formatter may add only these fields:
 
@@ -26,7 +26,7 @@ The formatter may add only these fields:
 
 HTTP duration and model generation duration use monotonic clocks. Queue wait and review end-to-end duration cross persistence/restart boundaries, so they are computed from the stored UTC epoch and clamped at zero. `X-Request-ID` remains on responses. Lifecycle events are `review_submitted`, `review_started`, `review_finished`, and `queue_rejected`; queue depth uses local read-only SQLite counts and never copies source data.
 
-Never log source, prompt, generated/rejected model text, token IDs, seed, source hash, raw path/URL/query, request or response body, login/user identity, password, cookie, session/CSRF token, secret value, environment dump, or raw exception string. Uvicorn access logging remains disabled. Frontend access logging also remains disabled.
+Never log source, prompt, generated/rejected model text, token IDs, seed, source hash, raw path/URL/query, request or response body, login/user identity, password, cookie, session/CSRF token, secret value, environment dump, or raw exception string. Uvicorn and frontend access logging remain disabled.
 
 ## CPU and startup measurement boundaries
 
@@ -48,8 +48,8 @@ Docker/node contention and memory events over the same interval. Missing metrics
 
 ## Evidence and retention
 
-Ready is not a completed review or browser acceptance. Record failures and partial
-measurements honestly, with target/runtime identities and limitations. Kubernetes/host
+Readiness does not establish review completion or browser acceptance. Record failures
+and partial measurements with target/runtime identities and limitations. Kubernetes/host
 log retention is operator-controlled; the project makes no fixed retention guarantee.
 The historical [A/B measurements](../reports/README.md) are preserved observations,
 not proof of current performance, causal isolation or complete product acceptance.

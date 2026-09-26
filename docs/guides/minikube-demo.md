@@ -1,10 +1,10 @@
 # Deploy the real-model demo to a user-started minikube cluster
 
-Audience: local Kubernetes operators. Purpose: deploy and accept the application on a user-managed cluster. Prerequisites: Python development environment, Docker, kubectl and a running native single-node minikube; explicit authorization for writes.
+For local Kubernetes operators deploying and validating the application. You need the Python development environment, Docker, kubectl and a running native single-node minikube cluster. Writes require explicit authorization.
 
-[Documentation index](../README.md) · Commands use the repository root unless a block explicitly changes directory. Review each section’s side effects before running it.
+[Documentation index](../README.md) · Run commands from the repository root unless shown otherwise. Check each section's side effects before running it.
 
-**You manage the cluster; the script deploys the application.** The script does not create, start, stop, delete, or rebuild minikube clusters, or change cluster CPU/memory quotas, Docker Desktop settings, CNI, or storage components. It preserves the pinned Qwen3 model, existing application constraints, and three separate persistent volumes.
+**You manage the cluster; the script deploys the application.** The script does not create, start, stop, delete, or rebuild minikube clusters, or change cluster CPU/memory quotas, Docker Desktop settings, CNI, or storage components. It preserves the pinned Qwen3 model, application constraints, and three separate persistent volumes.
 
 A successful `up` establishes application readiness only. Run `verify` separately and obtain a real `completed` review to demonstrate successful inference. API acceptance does not establish browser acceptance.
 
@@ -18,13 +18,13 @@ A successful `up` establishes application readiness only. Run `verify` separatel
 
 ## When to use this guide
 
-`doctor` is a read-only diagnostic command. It retains the full resource calculations and returns nonzero for insufficient resources, missing measurements, scheduling risks, or excessive client/server version skew. It prints available figures and specific reasons; unavailable values remain `not_measured`.
+`doctor` is a read-only diagnostic command. It reports resource calculations and returns nonzero for insufficient resources, missing measurements, scheduling risks, or excessive client/server version skew. It prints available figures and specific reasons; unavailable values remain `not_measured`.
 
-`up` collects the same diagnostics but does not call `doctor` or use its exit status as a deployment gate. Running `up` means you want to attempt deployment. Host memory pressure, insufficient Docker/node CPU or memory, host/VM disk budget shortfalls, unavailable metrics, node readiness/taint risks, and client version skew produce English warnings and deployment continues. No confirmation, `--force`, or skip-check option is needed. Unknown inputs invalidate their dependent calculations; they are never treated as zero usage or sufficient capacity. Independent measurements continue even when one read fails.
+`up` collects the same diagnostics but does not call `doctor` or use its exit status as a deployment gate. Host memory pressure, insufficient Docker/node CPU or memory, host/VM disk budget shortfalls, unavailable metrics, node readiness/taint risks, and client version skew produce English warnings and deployment continues. No confirmation, `--force`, or skip-check option is needed. Unknown inputs invalidate their dependent calculations; they are never treated as zero usage or sufficient capacity. Independent measurements continue even when one read fails.
 
 Mandatory checks run separately and still stop deployment: a selected running local Docker-driver single-node minikube with a verified loopback API; consistent target/state/namespace/resource ownership; matching native host/Docker/node architecture; and an existing supported minikube-hostpath StorageClass with compatible existing PVCs. Existing local endpoint/credential restrictions, signing Secret validation, idle-queue protection, and resource ownership checks during apply remain in force.
 
-Actual image build/load, local dependency initialization, Kubernetes apply, scheduling/readiness waits, or state-write failures still return nonzero. The error names the failed deployment stage. Failures are recorded and re-raised, never skipped, and no incomplete deployment is presented as ready. The script does not change quotas or application resources to make a diagnostic pass.
+Failures in image build/load, local dependency initialization, Kubernetes apply, scheduling/readiness waits, or state writes return nonzero. The script records and re-raises the error with the failed deployment stage; an incomplete deployment is never marked ready. The script does not change quotas or application resources to make a diagnostic pass.
 
 ## Prerequisites and operating steps
 
@@ -133,8 +133,8 @@ scripts/minikube_demo.sh up --profile minikube
 ```
 
 `--from-state` accepts an old checkout, its `.local/minikube-demo` root, or an exact
-target directory. The selected cluster must already be running. An import is a state
-copy, **not** a build, deployment or acceptance run. It never rewrites fingerprints,
+target directory. The selected cluster must already be running. Import copies state;
+it does not build, deploy or run acceptance checks. It never rewrites fingerprints,
 image IDs, review results or failure statuses. If the new checkout has different
 build inputs, run `up`: it computes current fingerprints and uses the normal unique-tag,
 local build/load and Docker/CRI image verification path. `verify` still rejects changed
@@ -155,11 +155,11 @@ Commands such as `up` and `verify` use a per-target operation lock. Before recre
 
 ## Resource budget for an existing cluster
 
-Deployment reuses an existing cluster rather than allocating another one. Preflight reports host, Docker, existing-node, and incremental application resources separately. Unavailable measurements use the stable report value `not_measured`.
+Preflight reports host, Docker, existing-node, and incremental application resources separately for the selected cluster. Unavailable measurements use the stable report value `not_measured`.
 
 ### Unchanged application requirements
 
-The backend requests **2 CPU / 4 GiB** and has limits of **2 CPU / 6 GiB**. DynamoDB Local requests 100m / 256 MiB and has limits of 500m / 512 MiB (JVM heap 256 MiB). The frontend and permissions init containers are counted separately. The model still uses BF16; older macOS measurements have not been used to reduce the Linux container limit.
+The backend requests **2 CPU / 4 GiB** and has limits of **2 CPU / 6 GiB**. DynamoDB Local requests 100m / 256 MiB and has limits of 500m / 512 MiB (JVM heap 256 MiB). The frontend and permissions init containers are counted separately. The model uses BF16; older macOS measurements have not been used to reduce the Linux container limit.
 
 Scheduling and memory safety are checked separately. These thresholds determine the diagnostic verdict; they are warnings for `up`, not permission to resize the cluster or change the application:
 
@@ -199,7 +199,7 @@ The minikube overlay retains `OMP_NUM_THREADS=2`; see the [model reference](../r
 
 ### Acceptance procedure
 
-The model remains pinned to `Qwen/Qwen3-1.7B` / `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`, using TransformersModel on CPU, Torch 2.8.0, BF16, 2 threads, `trust_remote_code=False`, safetensors, `enable_thinking=False`, 2048 input / 384 total output tokens, a 300-second timeout, one worker, and concurrency 1. Three-section generation, prompts, quality gates, authentication/CSRF, user history isolation, rate limits, and the durable queue remain unchanged. There is no fake model, external inference, or automatic float32 fallback. Weights go only into the PVC, not images or Git; the host cache is not moved.
+The model is pinned to `Qwen/Qwen3-1.7B` / `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`, using TransformersModel on CPU, Torch 2.8.0, BF16, 2 threads, `trust_remote_code=False`, safetensors, `enable_thinking=False`, 2048 input / 384 total output tokens, a 300-second timeout, one worker, and concurrency 1. Acceptance uses the production three-section generation, prompts, quality gates, authentication/CSRF, user history isolation, rate limits, and durable queue. There is no fake model, external inference, or automatic float32 fallback. Weights go only into the PVC, not images or Git; the host cache is not moved.
 
 `verify` checks the homepage and security headers through the same localhost entry point, live/ready JSON, and 401 responses for unauthenticated API requests. It registers/logs in a dedicated account, checks Cookie/CSRF behavior and rejection of an incorrect Origin, and submits the fixed `average(values)` sample. Acceptance requires a real `completed` result, the correct model/revision, valid Summary/Findings/Suggestions, the existing quality checks, and mention of the sample's empty-input/division-by-zero issue. A failed, timed-out, or invalid_model_response result, HTTP 200 alone, or a Running Pod is not success. The script does not retry blindly.
 
@@ -209,7 +209,9 @@ Network acceptance is recorded separately: allowed paths must succeed; the prohi
 
 `startup.json` / `verification.json` contain only status, target identity, durations, resource figures, and opaque review IDs, with no source, model response body, Cookie, or CSRF value. The dedicated account is saved only in `acceptance-account.json` with mode 0600; open it in a local editor for manual browser acceptance and do not share it. Script reports always specify `ui_verified=false`; actual UI acceptance must be recorded separately. The existing 64-token real-model smoke test, which permits controlled quality rejection, does not replace this acceptance procedure.
 
-Existing measurement keys and numeric units are retained; diagnostic and deployment status fields are added. Unavailable `own_usage_bytes`, `container_memory`, `cold_start`, and individual cgroup measurements use the stable English value `not_measured`. `pod_metrics` is `available` or `not_measured`; the latter means Pod metrics could not be read, while separately reported Docker node measurements are still used. A missing measurement is not zero or a pass. Boolean acceptance flags remain false until the corresponding checks pass; checks not run must be described as not executed. Historical logs and acceptance reports are not rewritten. Each `up` that passes mandatory checks starts a new `startup.json` attempt before deployment, replacing any previous attempt's readiness claim. It records `attempt_id`, `started_at`, target identity, the complete `preflight` report, and `diagnostic_warnings`.
+Unavailable `own_usage_bytes`, `container_memory`, `cold_start`, and individual cgroup measurements use the stable English value `not_measured`. `pod_metrics` is `available` or `not_measured`; the latter means Pod metrics could not be read, while separately reported Docker node measurements are still used. A missing measurement is not zero or a pass. Boolean acceptance flags remain false until the corresponding checks pass; checks not run must be described as not executed. Historical logs and acceptance reports are not rewritten.
+
+Each `up` that passes mandatory checks starts a new `startup.json` attempt before deployment, replacing any previous attempt's readiness claim. It records `attempt_id`, `started_at`, target identity, the complete `preflight` report, and `diagnostic_warnings`.
 
 The nested `preflight.status` is `passed` or `failed`; `preflight.blockers` retains the reasons that make **doctor** fail, not mandatory deployment blockers. Per-read `measurements` use `measured` or `not_measured`, with a safe reason for unavailable data. A successful deployment after warnings still preserves `preflight.status=failed`.
 
@@ -218,7 +220,7 @@ Deployment `status` is `in_progress`, `ready`, `failed`, or `interrupted`. `stag
 ## Common failures and handling
 
 Use the [startup and cleanup runbook](../operations/recovery-and-cleanup.md#health-and-startup)
-for the maintained symptom/action table. Deployment-specific details remain here:
+for the maintained symptom/action table. Use the sections below for deployment details:
 
 - For profile/API/architecture/storage rejection, recheck [prerequisites](#prerequisites-and-operating-steps).
   The scripts do not switch targets or install cluster components to repair a failure.
@@ -227,8 +229,8 @@ for the maintained symptom/action table. Deployment-specific details remain here
 - For ownership or interrupted state, follow [state protection](#state-and-ownership-protection)
   and [deployment records](#deployment-state-and-interrupted-attempt-recovery).
   Do not fabricate records, adopt resources or rotate an existing signing key.
-- For forwarding or cache startup failures, use the focused sections below. They preserve
-  the actual error, target identity and data instead of assuming a cause from a symptom.
+- For forwarding or cache startup failures, use the focused sections below. Preserve
+  the actual error, target identity and data; a symptom alone does not establish its cause.
 
 `logs` applies an additional filter to structured backend safety logs. For kubectl diagnostics, use the kubeconfig in the target directory printed by the script and explicitly specify context and namespace. Do not export plaintext Secrets or share complete application logs. This workflow does not run AWS/Terraform/EKS operations or introduce cloud observability components.
 
@@ -306,7 +308,7 @@ Ownership is established before application deployment finishes. A partial `owne
 ownership evidence, but is **not** a completed deployment or an acceptance result. Do not delete it,
 regenerate ownership annotations, or populate missing expected-image fields from running Pods.
 
-The target-specific state now separates four records:
+Target state uses four records:
 
 - `owner.json` retains source information and home/profile/cluster identity, namespace UID and the ownership marker.
   Compatibility fields for port, architecture, StorageClass and both application builds are updated
@@ -324,8 +326,8 @@ The target-specific state now separates four records:
   fields. Readiness never implies a completed review or browser acceptance.
 
 Previous deployment/acceptance reports are retained under private `attempts/` directories. Account
-credential files and review bodies are not copied into that history. The old backend-readiness
-failure is historical evidence and must not be edited into a successful deployment. Consumers must
+credential files and review bodies are not copied into that history. A recorded backend-readiness
+failure remains historical evidence; do not change it to a success. Consumers must
 check the matching deployment attempt and current statuses, rather than treating an old report's
 success flag as current evidence.
 
@@ -349,7 +351,7 @@ after pausing ingress, and preserves the existing signing Secret and three PVCs.
 update restores the owned application's desired replica counts; restoration does not mark that
 attempt successful. A separate `verify` is required after the deployment actually completes.
 
-Secret ownership checks project metadata only. The pre-existing signing-key validation computes
+Secret ownership checks project metadata only. Signing-key validation computes
 only its decoded length inside kubectl; Secret values are not returned to the deployment process
 or written to logs/state. If an operator's access policy prohibits even this internal validation,
 `up` cannot proceed under that policy; do not remove the check or claim deployment succeeded.

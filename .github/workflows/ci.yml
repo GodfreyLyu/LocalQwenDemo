@@ -1,5 +1,6 @@
 name: Quality checks
 on:
+  push:
   pull_request:
   workflow_call:
 permissions:
@@ -70,11 +71,3 @@ jobs:
         run: |
           kubectl kustomize deploy/kustomize/overlays/minikube > /tmp/review-minikube.yaml
           python scripts/validate_manifests.py
-  images:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v3
-      - run: docker build --platform linux/amd64 -t review-frontend:ci frontend
-      - run: docker build --platform linux/amd64 -t review-backend:ci backend

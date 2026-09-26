@@ -38,19 +38,18 @@ service, not a validated highly available or publicly exposed production platfor
 [Open full-size image](docs/assets/application-architecture.png) ·
 [Edit the diagram in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO/LocalQwenDemo-%E2%80%94-Application-Architecture?node-id=0-1)
 
-The outer boundary is the existing minikube namespace `local-review-demo`; the inner
-boundary is one FastAPI backend process. This image is a snapshot of the FigJam source;
-export it again after editing the board to update this page.
+The outer boundary is the minikube namespace `local-review-demo`; the inner boundary
+is one FastAPI backend process. Re-export the FigJam board after editing it to update
+this image.
 
 The browser reaches Nginx through a host loopback port-forward. Nginx serves the React
 bundle and proxies `/api/` and `/health/` to FastAPI on the same origin.
 
 Inside the **single backend process**, the API writes jobs to the SQLite queue. A background
 coordinator claims one job, runs it in the single inference executor, and writes the outcome
-back to SQLite. The browser polls stored status; it does not wait for inference in the
-submission request. The coordinator and executor are not separate services. The SQLite access layer is the
-backend's existing storage code, not another database service; both API and coordinator
-use it to access the same history PVC.
+back to SQLite. The submission request returns before inference; the browser polls
+stored status. The coordinator, executor and SQLite access layer run within the backend.
+The API and coordinator use that layer to access the same history PVC.
 
 The three cylinders are separate PVCs. The backend uses the history and model-cache PVCs;
 DynamoDB Local uses the accounts PVC. Cold startup may download the pinned snapshot from
@@ -63,8 +62,7 @@ Hugging Face; complete cached weights are reused and are not baked into applicat
 [Open full-size image](docs/assets/deployment-management.png) ·
 [Edit the diagrams in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO)
 
-The image is a snapshot of the FigJam source. Export it again after editing the board
-to update this page; the full responsibilities of each component are described below.
+Re-export the FigJam board after editing it to update this image.
 
 - **Deployment script:** checks the selected cluster and resource ownership before changing
   application resources. It connects with a private kubeconfig and explicit context/namespace.
@@ -109,8 +107,8 @@ minikube profile list
 ```
 
 If no suitable cluster is running, start one **yourself**. This example creates a new
-Docker-driver profile; it is not an instruction to resize an existing cluster or a
-promise that the resources will suffice:
+Docker-driver profile. Do not use it to resize an existing cluster; the resources shown
+may be insufficient:
 
 ```bash
 minikube start --profile minikube --driver=docker --cpus=4 --memory=8192
@@ -138,7 +136,7 @@ scripts/minikube_demo.sh up --profile minikube
 scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
-Keep forwarding in its terminal and open **http://localhost:8080**. Use `localhost` exactly
+Keep the forwarding terminal open and visit **http://localhost:8080**. Use `localhost` exactly
 for Origin matching. Register or log in and submit a snippet. First startup downloads the
 pinned model; subsequent deployments reuse complete weights, accounts, signing Secret and
 history. Slow or failed startup should be investigated with the
@@ -176,8 +174,8 @@ adopts unknown resources. Never delete state files to bypass ownership errors.
 | Reference                    | [Documentation index](docs/README.md#reference)                                                                                            | API, model, CLI, logging and resource contracts                                       |
 | Historical validation        | [Dated reports](docs/reports/README.md)                                                                                                    | Original environments, measured results and limitations; no current acceptance claims |
 
-The [documentation index](docs/README.md) explains reading paths and where each subject
-is maintained. Project documentation and fixed output use English; user input and model
+The [documentation index](docs/README.md) maps each task to its main guide or reference.
+Project documentation and fixed output use English; user input and model
 output retain their original language.
 
 ## Development and contributing

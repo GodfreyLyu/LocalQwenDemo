@@ -3,17 +3,17 @@
 [Documentation index](../README.md)
 
 The service uses your host, Docker VM and existing minikube capacity. There is no cloud
-provisioning or remote image publication workflow. Local disk, RAM, CPU, power and first
-download bandwidth are still real costs; no command assumes that shared cluster capacity
-is free merely because the cluster already exists.
+provisioning or remote image publication workflow. The service still consumes local
+disk, RAM, CPU, power and bandwidth for the first download. Resource checks account
+for other workloads sharing the cluster.
 
 ## Resource diagnostics
 
 The backend requests 2 CPUs and 4 GiB memory, with limits of 2 CPUs and 6 GiB. DynamoDB
 Local, frontend, Kubernetes components and other workloads consume additional capacity.
 Three PVCs request 12 GiB for model cache, 10 GiB for history/queue/sessions and 1 GiB
-for accounts. These are allocation requests, not proof of actual host free space or
-securely reserved physical disk. Pinned weights total approximately 4.08 GB.
+for accounts. These requests neither establish available host space nor reserve
+physical disk. Pinned weights total approximately 4.08 GB.
 
 `doctor` separately measures host memory pressure, Docker capacity, node allocatable
 resources, existing requests/limits and available usage metrics, and host/VM disk budgets.

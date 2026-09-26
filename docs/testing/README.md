@@ -2,9 +2,9 @@
 
 [Documentation index](../README.md)
 
-The maintained deployment is a local CPU service on an existing minikube. Offline tests
-exercise product behavior and deployment safety without a cluster, model download or
-real inference. Operational acceptance requires separate authorization and real results.
+The maintained deployment is a local CPU service on an existing minikube cluster.
+Offline tests exercise product behavior and deployment safety without a cluster,
+model download or real inference. Operational acceptance requires separate authorization and real results.
 
 ## Strategy and discovery
 
@@ -28,12 +28,12 @@ a real-model success. No test may weaken ownership or security just to pass.
 
 ## Suite ownership
 
-Tests remain next to their components. Script tests own private temporary state and fake
+Tests stay with their components. Script tests use private temporary state and fake
 API fixtures; the shared minikube lock is tested across processes/checkouts. Real socket
 fixtures test port conflicts, owned-process cleanup and conditional kubectl DELETE
 transport against loopback servers. They must never discover or modify a live cluster.
-Local database tests retain the necessary AWS SDK/Moto names only for protocol emulation
-and explicit prevention of real cloud fallback.
+Local database tests use AWS SDK/Moto interfaces to emulate the protocol and check
+that calls cannot fall back to real cloud services.
 
 ## Quick check
 
@@ -47,10 +47,10 @@ scripts/check_scripts.sh
 
 ## Local complete check
 
-Prerequisites: Python 3.12 virtual environment installed from the dev lock, editable
-backend package, Node 24/npm dependencies, kubectl for offline rendering and permission
-to bind temporary loopback test sockets. No Docker daemon, minikube cluster, cloud account
-or infrastructure providers are needed for this gate. Dependency installation needs
+Install the Python 3.12 virtual environment from the dev lock, the editable backend
+package and Node 24/npm dependencies. The gate also requires kubectl for offline
+rendering and permission to bind temporary loopback test sockets. No Docker daemon,
+minikube cluster, cloud account or infrastructure providers are needed for this gate. Dependency installation needs
 network access; the tests themselves do not download weights or images.
 
 ```bash
@@ -60,17 +60,19 @@ bash scripts/check.sh
 This runs Ruff lint/format, backend pytest, frontend lint/Vitest/build, Shell syntax,
 all maintained script regressions and manifest validation. It fails on the first failed
 stage. It never builds container images, deploys, migrates actual state or invokes real
-inference. Do not export `RUN_REAL_MODEL=1` during routine checks. GitHub CI runs these
-local/static surfaces, a separate fake-model browser suite and local container-build checks
-on pull requests (no push); it has no deployment,
-remote image push, credential federation or cloud provisioning job.
+inference. Do not export `RUN_REAL_MODEL=1` during routine checks.
+
+On every push to any branch and on pull requests, GitHub CI runs these checks and
+the fake-model browser suite. It can also be called by another workflow. Container
+images are built locally for minikube; CI does not build or push images, deploy,
+federate credentials or provision cloud resources.
 
 ## Explicit real-model smoke and quality evaluation
 
 The opt-in [model smoke](../reference/model.md) and [fixed-suite evaluator](model-evaluation.md)
 load real weights and consume CPU/RAM. Keep model, prompts, BF16, threads, generation
 parameters, budgets and quality rules fixed. Evaluation plans are `not_run`; they are
-not successful reviews. No real inference is part of the default gate.
+not successful reviews. The default gate does not run real inference.
 
 ## Authorized environment acceptance
 
@@ -102,7 +104,7 @@ and limitations. Distinguish:
 - `not_run`: no relevant operation was executed.
 - `not_measured`: a measurement is unavailable; never assume sufficient resources.
 - Failed diagnostics, resource insufficiency and actual deployment failure: separate stages.
-- Ready: dependencies and startup validation passed, not a completed user review.
+- Ready: dependencies and startup validation passed; review completion is checked separately.
 - Completed review: real inference and existing quality checks passed for that record.
 - Persistence: retained accounts/history/cache survived the required controlled checks.
 - Full verify: all required API/persistence checks passed; not browser acceptance.

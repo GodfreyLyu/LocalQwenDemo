@@ -15,9 +15,9 @@ scripts/minikube_demo.sh logs --profile minikube
 scripts/minikube_demo.sh doctor --profile minikube
 ```
 
-These commands use the selected target's private kubeconfig, explicit context/namespace
-and ownership checks. Do not print kubeconfig, acceptance accounts, Secret contents,
-complete environment dumps, user history bodies or raw exception strings.
+These commands check ownership and use the selected target's private kubeconfig
+with an explicit context and namespace. Do not print kubeconfig, acceptance accounts,
+Secret contents, complete environment dumps, user history bodies or raw exception strings.
 
 `/health/live` is available during loading. `/health/ready` remains 503 until storage,
 accounts and the startup-validated model are ready. The default cold deployment budget
@@ -75,7 +75,7 @@ scripts/minikube_demo.sh undeploy --profile minikube \
   --purge-data --confirm-data-loss local-review-demo
 ```
 
-Normal purge retains the namespace. With lost state, use the independent
+Normal purge retains the namespace. With lost state, use the separate
 [lost-state recovery procedure](minikube-lost-state-recovery.md): explicit target identities,
 a read-only preview, complete resource enumeration and separate deletion confirmation.
 It never manufactures owner state or adopts unknown resources. Partial failure retains
@@ -91,4 +91,4 @@ yourself, considering other projects. Do not delete state files or data to silen
 Record application Ready, quality-valid completed review, persistence checks, complete
 API verify and browser acceptance separately. `verify --skip-restart` is incomplete and
 nonzero. Follow the [testing evidence rules](../testing/README.md#evidence-and-manual-acceptance);
-existing historical passes are not current validation.
+historical passes do not validate the current deployment.

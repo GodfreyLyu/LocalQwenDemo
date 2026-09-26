@@ -1,7 +1,5 @@
 # API overview
 
-Audience: maintainers. Purpose: look up HTTP contracts. Prerequisites: basic familiarity with the root README; no running environment required.
-
 [Documentation index](../README.md)
 
 Request/response bodies use JSON, except that successful logout returns **204 with no body**. API responses carry `X-Request-ID` and `Cache-Control: no-store`. Source, passwords, cookies, and model responses are never request-log fields. Invalid input errors do not echo Pydantic's input values.
@@ -18,11 +16,13 @@ Request/response bodies use JSON, except that successful logout returns **204 wi
 | `GET /health/live`                         | 200/503 | Process/coordinator liveness                                                                    |
 | `GET /health/ready`                        | 200/503 | Coordinator/model readiness plus a live writable SQLite check; DynamoDB is validated at startup |
 
-Registration/login body: `{"login_id":"reviewer","password":"a-long-example-password"}`. Identifiers are trimmed and lowercased; supported characters are ASCII letters, digits, `.`, `_`, `@`, `+`, `-`. Length: 3–100. Password length: 12–128, with no normalization.
+Registration/login body: `{"login_id":"reviewer","password":"a-long-example-password"}`. Identifiers are trimmed and lowercased, accept ASCII letters, digits, `.`, `_`, `@`, `+`, `-`, and must be 3–100 characters long. Passwords must be 12–128 characters long and are not normalized.
 
 Successful authentication sets the session cookie and returns `login_id`, `csrf_token`, `expires_at` (Unix seconds), and `source_max_chars`. The browser keeps the CSRF token in memory and restores it through `/auth/me`; it never stores the session token in local storage.
 
-Every state-changing request must have an exact matching `Origin` and JSON content type. Authenticated writes additionally require `X-CSRF-Token` matching the session. Authentication writes are protected against login CSRF by exact-origin checking and JSON-only requests; cross-origin CORS is not enabled. Native clients must send the expected origin explicitly. For logout, send an empty JSON object (`{}`) with `Content-Type: application/json`, the normal Cookie, exact Origin and `X-CSRF-Token`; an empty request without the JSON content type returns 415.
+Every state-changing request must have an exact matching `Origin` and JSON content type. Authenticated writes additionally require `X-CSRF-Token` matching the session. Authentication writes are protected against login CSRF by exact-origin checking and JSON-only requests; cross-origin CORS is not enabled. Native clients must send the expected origin explicitly.
+
+For logout, send an empty JSON object (`{}`) with `Content-Type: application/json`, the normal Cookie, exact Origin and `X-CSRF-Token`; an empty request without the JSON content type returns 415.
 
 Submission body:
 
@@ -62,4 +62,4 @@ Errors use:
 | 429     | Login/submission rate limit or full queue; includes Retry-After           |
 | 503     | Model loading/draining, storage failure, unavailable account service      |
 
-Inference errors are persisted on the job as `failed`, with codes such as `inference_timeout`, `empty_model_response`, `invalid_model_response`, `inference_failed`, or `interrupted`. `invalid_model_response` means the local model returned text that did not satisfy the minimum structured, source-linked review contract. A successful GET still returns 200 when describing a failed job.
+Inference errors mark the stored job as `failed`, with codes such as `inference_timeout`, `empty_model_response`, `invalid_model_response`, `inference_failed`, or `interrupted`. `invalid_model_response` means the local model returned text that did not satisfy the minimum structured, source-linked review contract. A successful GET still returns 200 when describing a failed job.

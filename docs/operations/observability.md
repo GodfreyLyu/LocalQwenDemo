@@ -7,9 +7,9 @@ shared state. If identity evidence is missing, use the [recovery inspection path
 without authorizing deletion. Do not use raw logs/environment dumps as a debugging shortcut.
 No external monitoring service or automated repair is installed by this project.
 
-The CLI's `logs` output is a deliberately smaller projection than the backend's structured
-log contract: it omits per-section timing maps and worker thread counts. Investigations
-that need those fields require a separately scoped, allowlisted projection of the backend
+The CLI's `logs` output includes fewer fields than the backend's structured logs:
+it omits per-section timing maps and worker thread counts. Investigations that need
+those fields require a separately scoped, allowlisted projection of the backend
 `model_generation_finished` event; absence from the CLI output is not proof that the
 backend did not measure them. Never export entire raw logs to obtain additional fields.
 
@@ -34,7 +34,8 @@ confirm Ready, an empty queue and no draining inference, and submit once through
 authentication. Collect before/after counters from the same container, including the
 cancellation/drain interval. Calculate average cores from usage delta divided by wall
 time and CPU seconds/token from the measured token count. Do not translate cumulative
-throttled fractions into wall-time loss. Stop at `inference_stuck`; do not overlap models.
+throttled fractions into wall-time loss. Stop at `inference_stuck`; do not run
+overlapping model processes.
 
 Keep parameters, workload identity and environment differences explicit. A completed
 review must still pass quality checks; one sample does not establish repeatability or
@@ -46,4 +47,4 @@ recording source, prompts, output text, passwords, Cookies or tokens.
 Use [startup/recovery troubleshooting](recovery-and-cleanup.md) for failed dependencies,
 cache, storage or readiness. Do not automatically retry inference, raise timeouts, lower
 quality requirements, restart Pods or resize resources in response to a metric alone.
-Publish a separate dated sanitized report with exact checks performed and remaining gaps.
+Record the checks performed and remaining gaps in a separate dated, sanitized report.
