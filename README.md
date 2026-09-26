@@ -33,42 +33,14 @@ service, not a validated highly available or publicly exposed production platfor
 
 ### Application and persistent data
 
-```mermaid
-%%{init: {"flowchart": {"curve": "linear", "nodeSpacing": 70, "rankSpacing": 80, "padding": 20}}}%%
-flowchart TB
-  Browser["Browser: React editor,<br/>review and history"]
-  Forward["Host loopback port-forward<br/>http://localhost:8080"]
-  Browser -->|HTTP and status polling| Forward
+[![Application architecture: browser and same-origin entry, a single FastAPI process with a durable queue and CPU inference, and three persistent volumes.](docs/assets/application-architecture.png)](docs/assets/application-architecture.png)
 
-  subgraph Cluster["Existing local minikube"]
-    subgraph Namespace["Namespace: local-review-demo"]
-      Frontend["Frontend Nginx<br/>Static UI and same-origin proxy"]
+[Open full-size image](docs/assets/application-architecture.png) ·
+[Edit the diagram in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO/LocalQwenDemo-%E2%80%94-Application-Architecture?node-id=0-1)
 
-      subgraph Backend["Backend: one FastAPI process"]
-        API["HTTP API<br/>Authentication and submissions"]
-        Store["SQLite access layer<br/>Queue, history and session operations"]
-        Coordinator["Background coordinator<br/>Claim jobs and persist outcomes"]
-        Inference["One-thread CPU inference executor<br/>Qwen3-1.7B, BF16"]
-
-        API -->|Submit jobs and read data| Store
-        Store <-->|Claim jobs and save outcomes| Coordinator
-        Coordinator -->|One review at a time| Inference
-      end
-
-      History[("review-history PVC<br/>SQLite: queue, reviews and sessions")]
-      Cache[("review-model-cache PVC<br/>Pinned weights and tokenizer")]
-      Dynamo["DynamoDB Local<br/>Account API"]
-      Accounts[("review-dynamodb PVC<br/>Accounts and password hashes")]
-
-      Frontend -->|/api/ and /health/| Backend
-      API -->|Account lookup and writes| Dynamo
-      Store -->|Read and write SQLite file| History
-      Inference -->|Load validated snapshot| Cache
-      Dynamo --> Accounts
-    end
-  end
-  Forward --> Cluster
-```
+The outer boundary is the existing minikube namespace `local-review-demo`; the inner
+boundary is one FastAPI backend process. This image is a snapshot of the FigJam source;
+export it again after editing the board to update this page.
 
 The browser reaches Nginx through a host loopback port-forward. Nginx serves the React
 bundle and proxies `/api/` and `/health/` to FastAPI on the same origin.
@@ -86,17 +58,13 @@ Hugging Face; complete cached weights are reused and are not baked into applicat
 
 ### Deployment management
 
-```mermaid
-flowchart TB
-  CLI["Deployment script on your computer<br/>scripts/minikube_demo.sh"]
-  Images["Local Docker images<br/>Backend and frontend"]
-  State[("Private state directory<br/>Shared across project checkouts")]
-  Target["Your running minikube cluster<br/>local-review-demo namespace"]
+[![Deployment management: the local CLI builds images, maintains private shared state, and deploys to the existing minikube cluster.](docs/assets/deployment-management.png)](docs/assets/deployment-management.png)
 
-  CLI -->|Build or reuse images| Images
-  CLI -->|Read and save records| State
-  CLI -->|Load images and deploy the app| Target
-```
+[Open full-size image](docs/assets/deployment-management.png) ·
+[Edit the diagrams in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO)
+
+The image is a snapshot of the FigJam source. Export it again after editing the board
+to update this page; the full responsibilities of each component are described below.
 
 - **Deployment script:** checks the selected cluster and resource ownership before changing
   application resources. It connects with a private kubeconfig and explicit context/namespace.
