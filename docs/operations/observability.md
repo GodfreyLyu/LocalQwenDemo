@@ -7,6 +7,12 @@ shared state. If identity evidence is missing, use the [recovery inspection path
 without authorizing deletion. Do not use raw logs/environment dumps as a debugging shortcut.
 No external monitoring service or automated repair is installed by this project.
 
+The CLI's `logs` output is a deliberately smaller projection than the backend's structured
+log contract: it omits per-section timing maps and worker thread counts. Investigations
+that need those fields require a separately scoped, allowlisted projection of the backend
+`model_generation_finished` event; absence from the CLI output is not proof that the
+backend did not measure them. Never export entire raw logs to obtain additional fields.
+
 ## Correlate before drawing conclusions
 
 Confirm profile, cluster/namespace UID, Pod UID, container ID/start time, restart count

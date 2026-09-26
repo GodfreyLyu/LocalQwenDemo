@@ -8,6 +8,14 @@ Audience: local Kubernetes operators. Purpose: deploy and accept the application
 
 A successful `up` establishes application readiness only. Run `verify` separately and obtain a real `completed` review to demonstrate successful inference. API acceptance does not establish browser acceptance.
 
+## Navigation
+
+[Prerequisites and commands](#prerequisites-and-operating-steps) ·
+[Shared state and import](#state-and-ownership-protection) ·
+[Resource budget](#resource-budget-for-an-existing-cluster) ·
+[Acceptance](#acceptance-procedure) · [Troubleshooting](#common-failures-and-handling) ·
+[Undeploy](#undeploy-and-recovery)
+
 ## When to use this guide
 
 `doctor` is a read-only diagnostic command. It retains the full resource calculations and returns nonzero for insufficient resources, missing measurements, scheduling risks, or excessive client/server version skew. It prints available figures and specific reasons; unavailable values remain `not_measured`.
@@ -115,19 +123,19 @@ is absent, legacy files are preserved as historical evidence without adoption. E
 imports require a live matching namespace; incomplete or conflicting identity evidence
 must be investigated, not repaired by editing JSON or deleting owner.json.
 
-For the existing deployment originally created from `local-llm-code-review`:
+For a deployment with a trusted state copy in an old checkout, replace both placeholder paths:
 
 ```bash
-cd /Users/godfreylyu/DemoLLMProject/LocalQwenDemo
+cd /path/to/LocalQwenDemo
 scripts/minikube_demo.sh import-state --profile minikube \
-  --from-state /Users/godfreylyu/DemoLLMProject/local-llm-code-review
+  --from-state /path/to/old/checkout
 scripts/minikube_demo.sh up --profile minikube
 ```
 
 `--from-state` accepts an old checkout, its `.local/minikube-demo` root, or an exact
 target directory. The selected cluster must already be running. An import is a state
 copy, **not** a build, deployment or acceptance run. It never rewrites fingerprints,
-image IDs, review results or failure statuses. Since these two checkouts have different
+image IDs, review results or failure statuses. If the new checkout has different
 build inputs, run `up`: it computes current fingerprints and uses the normal unique-tag,
 local build/load and Docker/CRI image verification path. `verify` still rejects changed
 source inputs until that deployment finishes. Unchanged source in a relocated checkout
@@ -147,7 +155,7 @@ Commands such as `up` and `verify` use a per-target operation lock. Before recre
 
 ## Resource budget for an existing cluster
 
-The host no longer needs an additional 9 GiB + 2 GiB to create a new cluster. Preflight reports host, Docker, existing-node, and incremental application resources separately. Unavailable measurements use the stable report value `not_measured`.
+Deployment reuses an existing cluster rather than allocating another one. Preflight reports host, Docker, existing-node, and incremental application resources separately. Unavailable measurements use the stable report value `not_measured`.
 
 ### Unchanged application requirements
 
@@ -181,7 +189,7 @@ The host filesystem and the target Docker node's backing filesystem are checked 
 - Persistent `amazon/dynamodb-local:3.1.0` is deployed first. A temporary loopback forward reuses `init_local_users.py` to create the table idempotently and check ACTIVE status and the `login_id` HASH key before starting the backend. The initializer's loopback-only protection remains intact.
 - The backend uses the explicit endpoint `http://review-dynamodb:8000` and invalid `local` credentials. AWS metadata/shared configuration is disabled; host AWS profiles and HF tokens are not inherited. DynamoDB Local telemetry is disabled.
 - SIGNING_SECRET is randomly generated and passed through stdin to create the Kubernetes Secret. It is not printed, placed on the command line, or saved as a local plaintext file. Repeated deployments reuse the existing value. A missing key or ownership mismatch fails explicitly without automatic rotation.
-- The local Nginx overlay proxies only `/api/` and `/health/` to the backend, preserving paths, Origin, Cookie, CSRF, and security headers. API routes never use the SPA fallback. Only local `ENVIRONMENT=local` / `COOKIE_SECURE=false` allows HTTP; production HTTPS/Secure Cookie validation remains unchanged.
+- The local Nginx overlay proxies only `/api/` and `/health/` to the backend, preserving paths, Origin, Cookie, CSRF, and security headers. API routes never use the SPA fallback. The minikube configuration explicitly uses `ENVIRONMENT=local` and `COOKIE_SECURE=false` for loopback HTTP. The backend accepts only `local`/`test` environments; there is no production-environment HTTPS validation branch. Secure-cookie behavior remains separately covered by API tests.
 - The node's actual `/etc/cni/net.d` configuration is inspected. Calico/Cilium are recorded as `capable_not_verified`; bridge/Kindnet/Flannel as `not_enforced`; unknown plugins as `unknown`. **CNI components are never installed, replaced, or reconfigured.**
 - NetworkPolicy YAML still describes frontend→backend, backend→DynamoDB, necessary DNS, and backend→public HTTPS download access. Standard NetworkPolicy cannot precisely restrict Hugging Face/CDN domain names. Without policy enforcement, these rules do not provide isolation, and the report says so. Such an environment must not be presented as safe for untrusted multitenancy.
 
@@ -209,22 +217,18 @@ Deployment `status` is `in_progress`, `ready`, `failed`, or `interrupted`. `stag
 
 ## Common failures and handling
 
-| Symptom | Action |
-| --- | --- |
-| No running cluster, or profile stopped | Start minikube manually and retry. The script never starts it for you. |
-| Multiple running profiles | Use the same `--profile NAME` for every command; add `--minikube-home` when needed. |
-| API unavailable or certificate error | Check the selected profile's status and certificates. Deployment stops with no fallback to another context. |
-| Excessive client/server version skew | `doctor` fails; `up` warns and attempts deployment. Select a compatible kubectl if actual API operations fail. |
-| Missing metrics or disk/memory measurements | Read `measurements` and `not_measured` values. `doctor` fails; `up` continues with an explicit warning without assuming spare capacity. |
-| Insufficient host/Docker/node resources or disk budget | `doctor` fails; `up` warns and attempts deployment. Inspect the figures and any actual failure stage. Do not delete workloads or lower the backend's 6 GiB limit to make diagnostics pass. |
-| CNI lacks policy support | Record that isolation is not enforced and decide whether the environment is suitable for the demo. The script does not install components. |
-| Unsupported StorageClass, Pending PVC, or permission failure | Check the existing minikube-hostpath class, Bound PVCs, init containers, backend UID 10001, and DynamoDB UID 1000 / data group 10001. Do not recreate PVCs or recursively chown user data. |
-| Architecture/wheel incompatibility | Check native architecture at all three layers, CPU wheels, and locked dependencies. No silent amd64 emulation is allowed. |
-| DynamoDB cannot access `DynamoDBLocal.jar` | Verify the actual image user, working directory, parent traversal permissions, and effective Pod/container identity. For the inspected 3.1.0 arm64 image, use UID 1000; an absolute path does not fix a `0700` parent-directory denial. Do not run the main container as root. |
-| Download/model-loading timeout | Check disk, DNS, outbound HTTPS, and Hugging Face/CDN connectivity. Keep partial caches and adjust cold-timeout if appropriate; do not substitute another model. |
-| BF16/OOM/inference timeout or quality rejection | Preserve the actual error code, resource figures, and evidence. Do not weaken prompts or quality gates, or fall back automatically to float32, which requires a separate budget for increased model and cluster memory. |
-| 403 or port in use | Use the saved `http://localhost:PORT` and log in again to obtain CSRF. Change the port through up to synchronize configuration. Stop your own port forward before acceptance. |
-| Ownership/legacy-state conflict or missing Secret key | Stop deployment and inspect manually. Do not delete state, adopt resources, or regenerate the signing value. |
+Use the [startup and cleanup runbook](../operations/recovery-and-cleanup.md#health-and-startup)
+for the maintained symptom/action table. Deployment-specific details remain here:
+
+- For profile/API/architecture/storage rejection, recheck [prerequisites](#prerequisites-and-operating-steps).
+  The scripts do not switch targets or install cluster components to repair a failure.
+- For diagnostic warnings, read the [incremental resource budget](#resource-budget-for-an-existing-cluster).
+  Missing measurements are not spare capacity; an attempted rollout can still fail.
+- For ownership or interrupted state, follow [state protection](#state-and-ownership-protection)
+  and [deployment records](#deployment-state-and-interrupted-attempt-recovery).
+  Do not fabricate records, adopt resources or rotate an existing signing key.
+- For forwarding or cache startup failures, use the focused sections below. They preserve
+  the actual error, target identity and data instead of assuming a cause from a symptom.
 
 `logs` applies an additional filter to structured backend safety logs. For kubectl diagnostics, use the kubeconfig in the target directory printed by the script and explicitly specify context and namespace. Do not export plaintext Secrets or share complete application logs. This workflow does not run AWS/Terraform/EKS operations or introduce cloud observability components.
 
@@ -349,7 +353,6 @@ Secret ownership checks project metadata only. The pre-existing signing-key vali
 only its decoded length inside kubectl; Secret values are not returned to the deployment process
 or written to logs/state. If an operator's access policy prohibits even this internal validation,
 `up` cannot proceed under that policy; do not remove the check or claim deployment succeeded.
-
 
 ## Undeploy and recovery
 

@@ -6,17 +6,10 @@ Audience: maintainers. Purpose: understand component and persistence boundaries.
 
 ## Request flow
 
-```mermaid
-flowchart LR
-  Browser[React browser] --> Loopback[Owned kubectl loopback forward]
-  Loopback --> Nginx[Frontend Nginx - same origin]
-  Nginx --> API[FastAPI - one process]
-  API --> Users[DynamoDB Local accounts]
-  API --> DB[SQLite history and persistent queue]
-  DB --> Worker[Single coordinator and inference executor]
-  Worker --> Model[Pinned Qwen3 - CPU BF16]
-  Model --> Cache[Persistent model cache]
-```
+The [homepage diagrams](../../README.md#architecture) show the application inside minikube
+and its host-side management tools. React executes in the browser; Nginx serves its static
+bundle and provides the same-origin API proxy. The background coordinator and one-thread
+inference executor are parts of the FastAPI process, not separate deployed services.
 
 ## Boundaries
 
@@ -30,6 +23,17 @@ The cluster is accessed through an explicitly owned loopback forward, not a publ
 One Uvicorn process and one background coordinator own a dedicated one-thread inference executor. One review invokes that executor once and performs its Summary, Findings, and Suggestions generations sequentially inside the same call. The sections share one 384-token deployment budget split 72/176/136, one deadline, and one stop event; no section output becomes a later model instruction. If an individual section reaches its fixed limit, the backend may delete only its incomplete trailing fragment after the last complete terminator. It never adds a continuation call or alters an earlier complete sentence or list item. Qwen3's tokenizer chat template is always invoked with the hard `enable_thinking=False` switch, so the application neither requests nor parses chain-of-thought. Each section uses the pinned model's explicit non-thinking sampling parameters and a stable SHA-256-derived seed inside an isolated CPU RNG context. Exiting the context restores the process RNG state, and neither seed nor source-derived hash is logged or persisted. Repeatability is scoped to the same dependency, CPU, and runtime stack. DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_thread`; model execution never runs on the main event loop. One backend replica and the `Recreate` rollout strategy preserve this ownership. There is no HPA, distributed queue, conversational store, external LLM, or code execution path.
 
 ## Storage
+
+| PVC                  | Mounted by                       | Data / configured size                                                |
+| -------------------- | -------------------------------- | --------------------------------------------------------------------- |
+| `review-history`     | Backend at `/data`               | `reviews.sqlite3`: queue, review bodies, history and sessions; 10 GiB |
+| `review-model-cache` | Backend at `/models/huggingface` | Pinned snapshot, tokenizer and download cache; 12 GiB                 |
+| `review-dynamodb`    | DynamoDB Local at `/data`        | Account records and password hashes; 1 GiB                            |
+
+The signing key is a separate `review-secrets` Kubernetes Secret. Host-side deployment
+state is also separate: it records target/build/acceptance evidence and private credentials,
+not application history. Default undeploy retains all three PVCs and signing material.
+Hostpath capacity declarations are not disk reservations or backups.
 
 `backend/app/storage.py` is a small maintainable SQLite abstraction with parameterized queries, explicit transactions, and schema versioning through `PRAGMA user_version`. Version 1 is created atomically; unknown versions fail startup. Future schema changes must introduce explicit ordered migrations before increasing the supported version. SQLite uses WAL, `synchronous=FULL`, and a five-second busy timeout. Each operation creates and closes its own connection.
 
@@ -71,3 +75,18 @@ define safe correlation, timing boundaries and unknown measurements.
 ## Frontend progress estimate
 
 While a review is submitting, queued or running, the result panel shows a coarse 200–300 second model-time estimate from current source length relative to the session character limit. It is not a countdown or SLA: queueing, cold startup, model loading and host load may extend total wait. The estimate does not change the 300-second minikube inference timeout.
+
+## Implementation map
+
+Use these sources when auditing or changing the design:
+
+| Concern                                              | Source                                                                                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| HTTP contracts and middleware                        | [main.py](../../backend/app/main.py)                                                             |
+| Durable admission, recovery and sessions             | [storage.py](../../backend/app/storage.py)                                                       |
+| Single executor, readiness and cancellation/draining | [coordinator.py](../../backend/app/coordinator.py)                                               |
+| Inference and cache checks                           | [model.py](../../backend/app/model.py), [model_cache.py](../../backend/app/model_cache.py)       |
+| Local accounts transport                             | [users.py](../../backend/app/users.py), [local_dynamodb.py](../../backend/app/local_dynamodb.py) |
+| Deployment composition                               | [Minikube overlay](../../deploy/kustomize/overlays/minikube/kustomization.yaml)                  |
+
+The [script reference](scripts.md) maps shared-state, target, deployment and cleanup modules.

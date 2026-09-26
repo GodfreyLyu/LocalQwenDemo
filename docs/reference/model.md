@@ -6,31 +6,32 @@ Audience: maintainers. Purpose: maintain the pinned inference contract. Prerequi
 
 The sole review model is [`Qwen/Qwen3-1.7B`](https://huggingface.co/Qwen/Qwen3-1.7B), pinned to Hugging Face commit [`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`](https://huggingface.co/Qwen/Qwen3-1.7B/tree/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e). Hugging Face's official metadata resolved that exact revision on 2026-09-12. The model is licensed under Apache-2.0. Its two BF16 safetensors files and locally verified SHA-256 values are:
 
-| File | SHA-256 |
-| --- | --- |
+| File                               | SHA-256                                                            |
+| ---------------------------------- | ------------------------------------------------------------------ |
 | `model-00001-of-00002.safetensors` | `169ad53ec313c3a34b06c0809216e4fc072cce444a5d4ff2b59690d064130ed5` |
 | `model-00002-of-00002.safetensors` | `912becff8d60672aa8628ef08c05898d9adf17c2ad4ae3caf99b065622fdeff9` |
 
-No other model, runtime model selection, or external inference fallback exists. Existing completed SQLite reviews retain their recorded model ID and revision without migration.
+The API exposes no model selector and there is no external inference fallback. The backend rejects other model IDs, but its `MODEL_REVISION` setting currently validates only 40-character lowercase hexadecimal syntax, not equality to the pinned commit. The maintained manifest and acceptance checks enforce the documented revision; a custom environment override is not an approved model configuration. This validation gap is documented, not changed here. Existing completed SQLite reviews retain their recorded model ID and revision without migration.
 
-| Setting | Default / required behavior |
-| --- | --- |
-| MODEL_ID | Qwen/Qwen3-1.7B; other IDs rejected |
-| MODEL_REVISION | Exact pinned 40-character commit |
-| HF_HOME | /models/huggingface, dedicated retained local model-cache PVC |
-| MODEL_DTYPE | bfloat16; float32 available for CPU compatibility testing |
-| MODEL_MAX_INPUT_TOKENS | 2048 including instructions and source |
-| MODEL_MAX_OUTPUT_TOKENS | Backend default 512; minikube override 384 |
-| MODEL_INFERENCE_CONCURRENCY | 1; other values rejected |
-| MODEL_CPU_THREADS | 2 |
-| INFERENCE_TIMEOUT_SECONDS | Backend default 180; minikube override 300 seconds |
-| INFERENCE_DRAIN_SECONDS | 30 |
-| MAX_RETRIES | 1 interruption retry |
-| QUEUE_CAPACITY | 8 queued jobs |
+| Setting                     | Default / required behavior                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------- |
+| MODEL_ID                    | Qwen/Qwen3-1.7B; other IDs rejected                                                   |
+| MODEL_REVISION              | Maintained minikube deployment pins the commit above; backend default is the same     |
+| HF_HOME                     | /models/huggingface, dedicated retained local model-cache PVC                         |
+| MODEL_DTYPE                 | bfloat16; float32 available for CPU compatibility testing                             |
+| MODEL_MAX_INPUT_TOKENS      | 2048 including instructions and source                                                |
+| MODEL_MAX_OUTPUT_TOKENS     | Backend default 512; minikube override 384                                            |
+| MODEL_INFERENCE_CONCURRENCY | 1; other values rejected                                                              |
+| MODEL_CPU_THREADS           | 2 (PyTorch intra-op threads)                                                          |
+| OMP_NUM_THREADS             | Minikube container sets 2; direct-development environments must be checked separately |
+| INFERENCE_TIMEOUT_SECONDS   | Backend default 180; minikube override 300 seconds                                    |
+| INFERENCE_DRAIN_SECONDS     | 30                                                                                    |
+| MAX_RETRIES                 | 1 interruption retry                                                                  |
+| QUEUE_CAPACITY              | 8 queued jobs                                                                         |
 
 The minikube ConfigMap limits one complete review to 384 generated tokens and allows 300 seconds for the complete CPU inference job. The deployment budget is split deterministically into 72 Summary tokens, 176 Findings tokens, and 136 Suggestions tokens. Other valid budgets use the equivalent 9/22/17 weights after reserving at least one token per section; deterministic largest-remainder allocation assigns every token, so the three limits always sum to the supplied total. All three calls share one monotonic deadline and the coordinator's existing whole-job timeout. A stop signal terminates the current cooperative generation and prevents later sections from starting. The backend defaults remain 512 tokens and 180 seconds for direct-development configurations; environment injection is the deployment configuration mechanism.
 
-The model loads exactly once on CPU with `trust_remote_code=False`, `use_safetensors=True`, and `eval()`, then performs a one-token validation inside `torch.inference_mode()`. Cache completeness accepts either one `model.safetensors` file or an index whose referenced safetensors shards are all present. Startup checks the exact pinned local snapshot first and otherwise downloads only safetensors, index/config, and tokenizer assets. Readiness stays false until the model, DynamoDB initialization check, and writable SQLite storage are ready. Liveness remains available during loading.
+The model loads exactly once on CPU with `trust_remote_code=False`, `use_safetensors=True`, and `eval()`, then performs a one-token validation inside `torch.inference_mode()`. Cache validation checks a readable single `model.safetensors` file when no index exists. When an index exists, it must be valid and every referenced shard must be readable with structurally valid safetensors metadata and exactly the indexed tensor names. A broken index or missing shard cannot fall back to accepting another weight file; validation does not load full tensors or perform a complete weight-content SHA-256 audit. Startup checks the exact pinned local snapshot first and otherwise downloads only safetensors, index/config, and tokenizer assets. Readiness stays false until the model, DynamoDB initialization check, and writable SQLite storage are ready. Liveness remains available during loading.
 
 Token counts use the exact tokenizer and the largest of the three complete section prompts. Production uses one fixed system message containing the safety instructions and one user message containing the section request and untrusted source. Source text cannot create additional messages or roles. Qwen3's tokenizer chat template is invoked with `tokenize=False`, `add_generation_prompt=True`, and the hard `enable_thinking=False` switch. The application does not use the `/no_think` text control and does not request, parse, save, or log chain-of-thought. The safe explicit plain-text fallback remains available if a pinned tokenizer lacks a template.
 
@@ -46,7 +47,7 @@ The public and persisted failure remains `invalid_model_response` with one gener
 
 Historical model acceptance, measured latency/RSS, rejected candidates and archived owner-supplied observations are maintained in the [dated verification report](../reports/verification-2026-09-10-to-13.md). Those results do not revalidate the current checkout or establish the current minikube memory fit. Every generated finding requires human verification.
 
-The backend Dockerfile uses Python 3.12 and a pinned PyTorch 2.8.0 CPU wheel; Transformers/Hugging Face dependencies are separately locked. The installed Transformers 4.57.6 supports Qwen3, `enable_thinking`, and `min_p`, so no dependency was changed. Model downloads never occur during ordinary unit tests or Docker builds. Large model weights remain on the 12 GiB runtime cache PVC or ignored local cache. Cached models are not deleted automatically. Check actual PVC usage before rollout and allow space for Hub metadata and temporary download files; the configured capacity alone does not establish sufficient free space.
+The backend Dockerfile uses Python 3.12 and a pinned PyTorch 2.8.0 CPU wheel; Transformers/Hugging Face dependencies are separately locked. The model dependency lock pins Transformers 4.57.6; inspect the actual runtime separately rather than inferring an installed version from the lock. Model downloads never occur during ordinary unit tests or Docker builds. Large model weights remain on the 12 GiB runtime cache PVC or ignored local cache. Cached models are not deleted automatically. Check actual PVC usage before rollout and allow space for Hub metadata and temporary download files; the configured capacity alone does not establish sufficient free space.
 
 Run the opt-in smoke test:
 
