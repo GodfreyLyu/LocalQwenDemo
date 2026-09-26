@@ -10,28 +10,31 @@ export function RuntimePanel({ runtime }: { runtime: RuntimeState }) {
   const [title, detail] = servicePresentation(runtime);
   return (
     <section className="runtime-panel" aria-label="Instance runtime">
-      <div className="runtime-facts">
-        <span>{environmentLabel(runtime.info)}</span>
-        <strong
-          className={
-            runtime.info?.inference_mode === 'simulated'
-              ? 'simulated-label'
-              : ''
-          }
-        >
-          {modeLabel(runtime.info)}
-        </strong>
-      </div>
-      <p className="runtime-model">
-        Model: {runtime.info?.model_id ?? 'Unknown'}
-      </p>
-      <div role="status" aria-label="Service status" className="service-status">
-        <span
-          className={`status-dot ${canSubmit(runtime) ? 'completed' : runtime.connection === 'checking' ? 'queued' : 'failed'}`}
-          aria-hidden="true"
-        />
-        <strong>{title}</strong>
-        <span>{detail}</span>
+      <div role="status" aria-label="Service status">
+        <div className="runtime-line">
+          <span>{environmentLabel(runtime.info)}</span>
+          <span aria-hidden="true">·</span>
+          <strong
+            className={
+              runtime.info?.inference_mode === 'simulated'
+                ? 'simulated-label'
+                : ''
+            }
+          >
+            {modeLabel(runtime.info)}
+          </strong>
+          <span aria-hidden="true">·</span>
+          <strong className="service-status">
+            <span
+              className={`status-dot ${canSubmit(runtime) ? 'completed' : runtime.info?.service_status === 'model_loading' || runtime.connection === 'checking' ? 'queued' : 'failed'}`}
+              aria-hidden="true"
+            />
+            {title}
+          </strong>
+        </div>
+        {!canSubmit(runtime) && runtime.connection !== 'checking' && (
+          <p className="runtime-detail">{detail}</p>
+        )}
       </div>
     </section>
   );
@@ -43,7 +46,10 @@ export function AboutInstance({ runtime }: { runtime: RuntimeState }) {
       <summary>About this instance</summary>
       <div>
         <p>
-          {environmentLabel(info)}. {modeLabel(info)}.
+          {environmentLabel(info)}.{' '}
+          {info?.inference_mode === 'real'
+            ? 'Real model on local CPU.'
+            : modeLabel(info)}
         </p>
         <p>
           Model: {info?.model_id ?? 'Unknown'}. Revision:{' '}
@@ -60,11 +66,7 @@ export function AboutInstance({ runtime }: { runtime: RuntimeState }) {
           stored with their results in your account history. Submission can
           still be rejected if the queue is full or account limits apply.
         </p>
-        <p>
-          Local accounts belong to this instance and isolate review history.
-          They do not provide cloud accounts, cross-device sync, or shared
-          accounts across instances.
-        </p>
+        <p>Accounts do not sync across devices or instances.</p>
         <p>
           Data uses the running instance’s local storage. Retention depends on
           the deployment and storage lifecycle. Development harness accounts

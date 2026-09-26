@@ -195,9 +195,9 @@ again for operator inspection. No cloud collector, metrics exporter or automated
 service is installed. [The log contract](observability.md) and [local runbook](../operations/observability.md)
 define safe correlation, timing boundaries and unknown measurements.
 
-## Frontend progress estimate
+## Frontend task status
 
-While a review is submitting, queued or running, the result panel shows a coarse 200–300 second model-time estimate from current source length relative to the session character limit. It is not a countdown or SLA: queueing, cold startup, model loading and host load may extend total wait. The estimate does not change the 300-second minikube inference timeout.
+The result panel reports submission, queueing, execution and terminal task states separately from service readiness. It does not display a time estimate or progress percentage. Real-model execution includes a brief CPU timing explanation; simulated execution is explicitly labeled. These display choices do not change the 300-second minikube inference timeout or the frozen-request retry used when delivery is uncertain.
 
 ## Implementation map
 

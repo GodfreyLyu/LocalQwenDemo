@@ -183,7 +183,9 @@ when using that startup method. Unconfigured deployments display “Environment 
 This setting changes only display metadata, not model selection or runtime policy.
 
 The fake harness visibly reports simulated inference. Its newly completed records have
-fixture provenance, and no CPU-model time estimate is shown for simulation. “About this
-instance” explains account isolation, processing, model provenance and storage lifecycle.
+fixture provenance. Neither real nor simulated mode displays a time estimate. The centered
+account form and compact workbench status strip share the same light styling. “About this
+instance” holds model provenance, processing and storage details; actionable service
+problems stay visible beside the status strip. Local accounts isolate review histories.
 The runtime endpoint's exact semantics and backward-compatibility limits are documented
 in the [API reference](../reference/api.md#read-only-instance-runtime).

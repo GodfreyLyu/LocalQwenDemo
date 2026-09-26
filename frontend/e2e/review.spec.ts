@@ -5,6 +5,10 @@ test('register, review, refresh persisted history, logout, and login', async ({
 }, testInfo) => {
   const name = `reviewer-${Date.now()}`;
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(
+    page.getByRole('status', { name: 'Service status' }),
+  ).toContainText('Ready');
   await page.screenshot({
     path: testInfo.outputPath('sign-in.png'),
     fullPage: true,
@@ -18,18 +22,44 @@ test('register, review, refresh persisted history, logout, and login', async ({
     .getByRole('button', { name: 'Create account', exact: true })
     .click();
   await expect(
-    page.getByText('Simulated model · no Qwen inference', { exact: true }),
+    page.getByText('Simulated model (no Qwen inference)', { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('status', { name: 'Service status' }),
-  ).toContainText('Accepting submissions');
-  await page.getByRole('button', { name: /Try a small example/ }).click();
-  await page.getByRole('button', { name: 'Run review' }).click();
+  ).toContainText('Ready');
+  await expect(
+    page.getByText('Submit code to see the review here.'),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('workspace-empty-desktop.png'),
+    fullPage: true,
+  });
+  const runBounds = await page
+    .getByRole('button', { name: 'Run review' })
+    .boundingBox();
+  expect(runBounds!.y + runBounds!.height).toBeLessThanOrEqual(
+    page.viewportSize()!.height,
+  );
+  await page.getByLabel('Programming language').focus();
+  await page.keyboard.press('Tab');
+  await expect(
+    page.getByRole('textbox', { name: 'Source code' }),
+  ).toBeFocused();
+  // Preserve CodeMirror's indentation binding; Escape then Tab moves focus out.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab');
+  await expect(
+    page.getByRole('button', { name: 'Load example' }),
+  ).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Run review' }).focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByRole('button', { name: 'New review' })).toBeDisabled();
   await expect(page.getByText('Deterministic test review.')).toBeVisible();
   await expect(
     page.getByText('Simulated result · no Qwen inference'),
   ).toBeVisible();
+  await page.locator('.result-provenance summary').click();
   await expect(
     page.getByText('Revision fixture-v1', { exact: false }),
   ).toBeVisible();
@@ -57,6 +87,14 @@ test('mobile workspace accepts an unsupported language without overflow', async 
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(
+    page.getByRole('status', { name: 'Service status' }),
+  ).toContainText('Ready');
+  await page.screenshot({
+    path: testInfo.outputPath('sign-in-mobile.png'),
+    fullPage: true,
+  });
   await page.getByRole('button', { name: 'Create an account' }).click();
   await page.getByLabel('Username').fill(`mobile-${Date.now()}`);
   await page
@@ -65,6 +103,13 @@ test('mobile workspace accepts an unsupported language without overflow', async 
   await page
     .getByRole('button', { name: 'Create account', exact: true })
     .click();
+  await expect(
+    page.getByText('Submit code to see the review here.'),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('workspace-empty-mobile.png'),
+    fullPage: true,
+  });
   await page.getByLabel('Programming language').selectOption('plain');
   await page
     .getByRole('textbox', { name: 'Source code' })
@@ -120,7 +165,7 @@ for (const viewport of [
     await page.getByRole('button', { name: 'Create an account' }).click();
     await page
       .getByLabel('Username')
-      .fill(`runtime-${viewport.width}-${Date.now()}`);
+      .fill(`runtime-${viewport.width}-${Date.now()}`.padEnd(64, 'x'));
     await page
       .getByLabel('Password', { exact: true })
       .fill('correct-horse-battery');
@@ -160,6 +205,8 @@ for (const viewport of [
     await page.keyboard.press('Enter');
     await expect(page.locator('details')).toHaveAttribute('open', '');
     await expect(page.getByText(/pinned weight revision/)).toBeVisible();
+    await editor.fill('x'.repeat(1000));
+    await expect(editor).toHaveText('x'.repeat(1000));
     await page.screenshot({
       path: testInfo.outputPath('runtime-recovered-about.png'),
       fullPage: true,
@@ -169,5 +216,89 @@ for (const viewport of [
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`compact account forms preserve keyboard flow and errors at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+    const username = page.getByLabel('Username');
+    const password = page.getByLabel('Password', { exact: true });
+    await username.focus();
+    await expect(username).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.type(`missing-${Date.now()}`);
+    await page.keyboard.press('Tab');
+    await expect(password).toBeFocused();
+    await page.keyboard.type('correct-horse-battery');
+    await page.keyboard.press('Tab');
+    await expect(
+      page.getByRole('button', { name: 'Sign in', exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('alert')).toContainText(
+      'Incorrect login identifier or password.',
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`sign-in-error-${width}.png`),
+      fullPage: true,
+    });
+    const typed = await username.inputValue();
+    await page.getByRole('button', { name: 'Create an account' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Create account' }),
+    ).toBeVisible();
+    await expect(password).toHaveAttribute('autocomplete', 'new-password');
+    await expect(username).toHaveValue(typed);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`register-${width}.png`),
+      fullPage: true,
+    });
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(password).toHaveAttribute('autocomplete', 'current-password');
+    const about = page.locator('summary', { hasText: 'About this instance' });
+    await page.keyboard.press('Tab');
+    await expect(about).toBeFocused();
+    await expect(about).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.about-instance')).toHaveAttribute('open', '');
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    // Check the form's actual text colors against its white background without adding a library.
+    const contrasts = await page.evaluate(() => {
+      const luminance = (rgb: string) => {
+        const parts = rgb
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+          .map((x) => {
+            const channel = x / 255;
+            return channel <= 0.04045
+              ? channel / 12.92
+              : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+        return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2];
+      };
+      return [
+        '.auth-description',
+        '.auth-footnote',
+        '.runtime-line',
+        '.simulated-label',
+        'label',
+      ].map((selector) => {
+        const foreground = luminance(
+          getComputedStyle(document.querySelector(selector)!).color,
+        );
+        return 1.05 / (foreground + 0.05);
+      });
+    });
+    expect(contrasts.every((ratio) => ratio >= 4.5)).toBe(true);
   });
 }

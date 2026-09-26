@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ArrowRight,
-  Code2,
-  FileCode2,
-  History,
-  LoaderCircle,
-  LogOut,
-  Plus,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react';
+import { LoaderCircle, LogOut, Plus } from 'lucide-react';
 import { api, ApiError, isActive } from './api';
 import type {
   HistoryPage,
@@ -18,21 +8,11 @@ import type {
   Session,
   Status,
 } from './api';
-import {
-  canSubmit,
-  environmentLabel,
-  instanceDescription,
-  useRuntime,
-} from './runtime';
+import { canSubmit, useRuntime } from './runtime';
 import { AboutInstance, RuntimePanel } from './RuntimePanel';
 import type { RuntimeState } from './runtime';
 import { CodeEditor } from './CodeEditor';
 import { Markdown } from './Markdown';
-import {
-  estimateModelTimeMs,
-  formatEstimatedModelTime,
-} from './modelTimeEstimate';
-
 const example =
   'def average(values):\n    total = sum(values)\n    return total / len(values)\n';
 const labels: Record<Status, string> = {
@@ -86,9 +66,6 @@ export default function App() {
 function Brand() {
   return (
     <div className="brand">
-      <span className="brand-mark">
-        <Code2 size={23} />
-      </span>
       <span>
         Local<span className="brand-light">QwenDemo</span>
       </span>
@@ -131,56 +108,12 @@ function Auth({
   }
   return (
     <main className="auth-layout">
-      <section className="auth-story">
-        <Brand />
-        <div>
-          <span className="eyebrow">LOCAL CODE REVIEW</span>
-          <h1>Local AI code review workbench</h1>
-          <p>{instanceDescription(runtime.info)}</p>
-          <div className="code-card">
-            <div className="code-card-top">
-              <span />
-              <span />
-              <span />
-              <small>example snippet</small>
-            </div>
-            <pre>
-              <span className="code-muted">{'def average(values):'}</span>
-              {'\n'}
-              <span className="code-add">{'    if not values:'}</span>
-              {'\n'}
-              <span className="code-add">{'        return 0'}</span>
-              {'\n'}
-              <span className="code-muted">
-                {'    return sum(values) / len(values)'}
-              </span>
-            </pre>
-            <div className="code-card-note">
-              Example only · choose behavior appropriate to your code.
-            </div>
-          </div>
-        </div>
-        <div className="privacy-note">
-          <ShieldCheck size={18} />
-          <span>
-            Local inference. No external inference API.
-            <br />
-            Your source code is never executed.
-          </span>
-        </div>
-      </section>
       <section className="auth-form-wrap">
-        <form onSubmit={submit} className="auth-form">
-          <span className="eyebrow">THIS INSTANCE’S LOCAL ACCOUNTS</span>
-          <h2>
-            {register ? 'Create a local account' : 'Sign in to this instance'}
-          </h2>
-          <p>
-            {register
-              ? 'Create a local account to keep your review history separate.'
-              : 'Use your local account to access your review history.'}
-          </p>
-          <RuntimePanel runtime={runtime} />
+        <Brand />
+        <p className="auth-description">Local AI code review.</p>
+        <RuntimePanel runtime={runtime} />
+        <form onSubmit={submit} className="auth-form" aria-busy={busy}>
+          <h1>{register ? 'Create account' : 'Sign in'}</h1>
           <label>
             Username
             <input
@@ -214,10 +147,8 @@ function Auth({
             </div>
           )}
           <button className="primary" disabled={busy}>
-            {busy ? (
-              <LoaderCircle className="spin" size={18} />
-            ) : (
-              <ArrowRight size={18} />
+            {busy && (
+              <LoaderCircle className="spin" size={16} aria-hidden="true" />
             )}
             {register ? 'Create account' : 'Sign in'}
           </button>
@@ -235,12 +166,12 @@ function Auth({
               {register ? 'Sign in' : 'Create an account'}
             </button>
           </p>
-          <div className="auth-footnote">
-            Accounts belong to this instance. No cloud sync or sharing across
-            instances.
-            <AboutInstance runtime={runtime} />
-          </div>
         </form>
+        <p className="auth-footnote">
+          Local accounts belong to this instance and keep review histories
+          separate.
+        </p>
+        <AboutInstance runtime={runtime} />
       </section>
     </main>
   );
@@ -273,12 +204,6 @@ function Workspace({
   const mounted = useRef(true);
   const requestKey = useRef<string | null>(null);
   const busy = isActive(status);
-  const estimatedModelTime = formatEstimatedModelTime(
-    estimateModelTimeMs(
-      selected?.source_code.length ?? code.length,
-      session.source_max_chars,
-    ),
-  );
   const blocked = busy || working || historyLoading || expired;
   const failure = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) {
@@ -492,7 +417,7 @@ function Workspace({
           <Plus size={17} /> New review
         </button>
         <div className="sidebar-caption">
-          <History size={14} /> REVIEW HISTORY <span>{history.length}</span>
+          History <span>{history.length}</span>
         </div>
         <div className="history-list">
           {historyLoading && <p className="history-empty">Loading history…</p>}
@@ -509,20 +434,18 @@ function Workspace({
             </div>
           )}
           {!historyLoading && !history.length && !historyError && (
-            <div className="history-empty">
-              <FileCode2 size={24} />
-              <p>A clean slate.</p>
-              <span>Your reviews will appear here.</span>
-            </div>
+            <p className="history-empty">No reviews yet.</p>
           )}
           {history.map((item) => (
             <button
               key={item.review_id}
               disabled={blocked}
+              aria-current={
+                selected?.review_id === item.review_id ? 'true' : undefined
+              }
               className={`history-item ${selected?.review_id === item.review_id ? 'selected' : ''}`}
               onClick={() => void selectReview(item.review_id)}
             >
-              <FileCode2 size={17} />
               <span>
                 <strong>
                   {item.language === 'auto' ? 'Code' : item.language} review
@@ -536,10 +459,7 @@ function Workspace({
                   })}
                 </small>
               </span>
-              <i
-                className={`status-dot ${item.status}`}
-                aria-label={item.status}
-              />
+              <span className="history-state">{item.status}</span>
             </button>
           ))}
           {cursor && (
@@ -555,7 +475,6 @@ function Workspace({
         <div className="sidebar-bottom">
           <p className="local-account-note">Local account · this instance</p>
           <div className="account">
-            <span className="avatar">{session.login_id[0].toUpperCase()}</span>
             <span title={session.login_id}>{session.login_id}</span>
             <button
               className="icon-button"
@@ -570,26 +489,11 @@ function Workspace({
         </div>
       </aside>
       <main className="main-area">
-        <header className="topbar">
-          <div>
-            <span className="breadcrumb">WORKSPACE</span>
-            <span className="breadcrumb-divider">/</span>
-            <span>Code review</span>
-          </div>
-          <span className="demo-pill">{environmentLabel(runtime.info)}</span>
-        </header>
         <div className="work-content">
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">LOCAL CODE REVIEW</span>
-              <h1>Local AI code review workbench</h1>
-              <p>{instanceDescription(runtime.info)}</p>
-            </div>
-            <div className="private-badge">
-              <ShieldCheck size={16} /> No code execution
-            </div>
-          </div>
-          <RuntimePanel runtime={runtime} />
+          <header className="workspace-header">
+            <h1>Code review</h1>
+            <RuntimePanel runtime={runtime} />
+          </header>
           {message && (
             <div role="alert" className="notice error">
               <span>{message}</span>
@@ -611,9 +515,7 @@ function Workspace({
           <div className="review-grid">
             <section className="panel source-panel">
               <div className="panel-title">
-                <span>
-                  <Code2 size={18} /> Source code
-                </span>
+                <h2>Source code</h2>
                 <select
                   aria-label="Programming language"
                   value={language}
@@ -654,27 +556,29 @@ function Workspace({
                   }}
                 />
               </div>
-              {!code && (
-                <button
-                  className="example-button"
-                  disabled={blocked}
-                  onClick={() => {
-                    setCode(example);
-                    setLanguage('python');
-                  }}
-                >
-                  Try a small example <ArrowRight size={13} />
-                </button>
-              )}
               <div className="editor-footer">
-                <span
-                  className={
-                    code.length > session.source_max_chars ? 'over-limit' : ''
-                  }
-                >
-                  {code.length.toLocaleString('en')} /{' '}
-                  {session.source_max_chars.toLocaleString('en')} characters
-                </span>
+                <div className="editor-meta">
+                  <span
+                    className={
+                      code.length > session.source_max_chars ? 'over-limit' : ''
+                    }
+                  >
+                    {code.length.toLocaleString('en')} /{' '}
+                    {session.source_max_chars.toLocaleString('en')} characters
+                  </span>
+                  {!code && (
+                    <button
+                      className="text-button example-button"
+                      disabled={blocked}
+                      onClick={() => {
+                        setCode(example);
+                        setLanguage('python');
+                      }}
+                    >
+                      Load example
+                    </button>
+                  )}
+                </div>
                 <button
                   className="primary run-button"
                   onClick={() => void runReview()}
@@ -685,10 +589,12 @@ function Workspace({
                     code.length > session.source_max_chars
                   }
                 >
-                  {busy ? (
-                    <LoaderCircle size={16} className="spin" />
-                  ) : (
-                    <Sparkles size={16} />
+                  {busy && (
+                    <LoaderCircle
+                      size={16}
+                      className="spin"
+                      aria-hidden="true"
+                    />
                   )}
                   Run review
                 </button>
@@ -696,53 +602,27 @@ function Workspace({
             </section>
             <section className="panel result-panel" aria-label="Review result">
               <div className="panel-title">
-                <span>
-                  <Sparkles size={17} /> Review
-                </span>
-                <span className={`result-status ${status}`}>
-                  {status === 'completed'
-                    ? 'COMPLETED'
-                    : status === 'failed'
-                      ? 'FAILED'
-                      : busy
-                        ? status.toUpperCase()
-                        : 'OUTPUT'}
-                </span>
+                <h2>Review result</h2>
               </div>
               <div className="result-body" aria-live="polite">
                 {selected?.review_result ? (
                   <>
                     <Markdown content={selected.review_result} />
-                    <div className="result-provenance">
-                      <span>
+                    <details className="result-provenance">
+                      <summary>
                         {selected.model_id === 'Simulated model'
                           ? 'Simulated result · no Qwen inference'
                           : 'Stored model metadata'}
-                      </span>
-                      <br />
-                      {selected.model_id ?? 'Model unknown'}
-                      <br />
-                      Revision {selected.model_revision ?? 'unknown'}
-                    </div>
+                      </summary>
+                      <div>
+                        {selected.model_id ?? 'Model unknown'}
+                        <br />
+                        Revision {selected.model_revision ?? 'unknown'}
+                      </div>
+                    </details>
                   </>
                 ) : (
                   <div className="result-empty">
-                    <div className={`result-icon ${busy ? 'active' : ''}`}>
-                      {busy ? (
-                        <LoaderCircle className="spin" size={27} />
-                      ) : (
-                        <FileCode2 size={27} />
-                      )}
-                    </div>
-                    <h3>
-                      {busy
-                        ? deliveryUncertain
-                          ? 'Submission unconfirmed'
-                          : labels[status]
-                        : status === 'failed'
-                          ? 'Review failed'
-                          : 'Review results'}
-                    </h3>
                     <p>
                       {busy
                         ? status === 'submitting'
@@ -756,32 +636,11 @@ function Workspace({
                                 : 'Waiting for the saved task to finish. Inference mode is unknown.'
                         : status === 'failed'
                           ? 'Check the message above, adjust your code if needed, and run a new review.'
-                          : 'Your review will appear here, with findings, explanations, and practical suggestions.'}
+                          : 'Submit code to see the review here.'}
                     </p>
-                    {!busy && status !== 'failed' && (
-                      <div className="review-tags">
-                        <span>Correctness</span>
-                        <span>Security</span>
-                        <span>Clarity</span>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
-              {busy &&
-                !deliveryUncertain &&
-                runtime.info?.inference_mode === 'real' && (
-                  <div className="model-time-estimate" aria-live="off">
-                    <p>
-                      Rough model-time estimate: about {estimatedModelTime}.
-                    </p>
-                    <p>
-                      Queue time, model loading, and system load can make the
-                      total wait longer. This is not a countdown or measured
-                      progress.
-                    </p>
-                  </div>
-                )}
               <div
                 className="result-footer"
                 role="status"
@@ -795,8 +654,7 @@ function Workspace({
           </div>
           <AboutInstance runtime={runtime} />
           <footer className="workspace-note">
-            AI reviews can miss issues or make mistakes. Verify suggestions
-            before applying them.<span>Each review starts fresh.</span>
+            Verify AI suggestions before applying them.
           </footer>
         </div>
       </main>

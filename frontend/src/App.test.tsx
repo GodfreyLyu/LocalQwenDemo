@@ -98,11 +98,15 @@ it('uses a deterministic bounded input-size estimate with half-minute display pr
   expect(formatEstimatedModelTime(MAX_ESTIMATE_MS)).toBe('5 minutes');
 });
 
-it('shows the current Qwen3 model label while idle', async () => {
+it('keeps model details collapsed and the runtime bar compact while idle', async () => {
   mockWorkspace();
   render(<App />);
 
-  expect(await screen.findByText('Model: Qwen/Qwen3-1.7B')).toBeInTheDocument();
+  expect(await screen.findByText('Ready')).toBeInTheDocument();
+  expect(screen.getByText(/Model: Qwen\/Qwen3-1.7B/)).not.toBeVisible();
+  fireEvent.click(screen.getByText('About this instance'));
+  expect(screen.getByText(/Model: Qwen\/Qwen3-1.7B/)).toBeVisible();
+  expect(screen.getByText('Submit code to see the review here.')).toBeVisible();
   expect(
     screen.queryByText(/Rough model-time estimate:/),
   ).not.toBeInTheDocument();
@@ -219,13 +223,11 @@ it('locks conflicting controls and prevents duplicate submissions until completi
   fireEvent.click(run);
   fireEvent.click(run);
   expect(
-    screen.getByText('Rough model-time estimate: about 3.5 minutes.'),
-  ).toBeInTheDocument();
+    screen.queryByText(/Rough model-time estimate:/),
+  ).not.toBeInTheDocument();
   expect(
-    screen.getByText(
-      'Queue time, model loading, and system load can make the total wait longer. This is not a countdown or measured progress.',
-    ),
-  ).toBeInTheDocument();
+    screen.getByRole('status', { name: 'Review task status' }),
+  ).toHaveTextContent('Submitting your review');
   expect(editor).toBeDisabled();
   expect(screen.getByLabelText('Programming language')).toBeDisabled();
   expect(screen.getByRole('button', { name: 'New review' })).toBeDisabled();
@@ -314,7 +316,7 @@ it('shows an invalid model response as a failed review and unlocks the workspace
   expect(editor).not.toBeDisabled();
 });
 
-it('restores the source-sized estimate for a persisted running review', async () => {
+it('restores a persisted running review without a time estimate', async () => {
   mockWorkspace((path) => {
     if (path === '/api/v1/reviews')
       return response({
@@ -333,9 +335,19 @@ it('restores the source-sized estimate for a persisted running review', async ()
   });
   render(<App />);
 
+  await waitFor(() =>
+    expect(
+      screen.getByRole('status', { name: 'Review task status' }),
+    ).toHaveTextContent('Review in progress'),
+  );
   expect(
-    await screen.findByText('Rough model-time estimate: about 4 minutes.'),
-  ).toBeInTheDocument();
+    screen.queryByText(/Rough model-time estimate:/),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByText(
+      'Reviewing on local CPU. Time depends on code length and machine load.',
+    ),
+  ).toBeVisible();
   expect(screen.getByLabelText('Source code')).toHaveValue('x'.repeat(6000));
 });
 
@@ -423,12 +435,12 @@ it('translates network failures without exposing transport details', async () =>
 });
 
 it.each([
-  ['minikube', 'Local minikube', 'real', 'Real model · local CPU'],
+  ['minikube', 'Local minikube', 'real', 'Real model'],
   [
     'development',
     'Local development',
     'simulated',
-    'Simulated model · no Qwen inference',
+    'Simulated model (no Qwen inference)',
   ],
   ['unknown', 'Environment unknown', 'unknown', 'Inference mode unknown'],
 ])(
@@ -616,4 +628,110 @@ it('retries uncertain delivery only explicitly, with the same frozen input and i
   expect(
     JSON.parse(posts[0][1]?.body as string).client_request_id,
   ).toBeTruthy();
+});
+
+it('switches compact account forms without losing input or autocomplete and validation attributes', async () => {
+  mockWorkspace((path) =>
+    path.endsWith('/auth/me')
+      ? response({ error: { message: 'Sign in' } }, 401)
+      : undefined,
+  );
+  render(<App />);
+  const username = await screen.findByLabelText('Username');
+  const password = screen.getByLabelText('Password');
+  fireEvent.change(username, { target: { value: 'local-user' } });
+  fireEvent.change(password, { target: { value: 'a-valid-password' } });
+  expect(username).toHaveAttribute('autocomplete', 'username');
+  expect(username).toHaveAttribute('minlength', '3');
+  expect(password).toHaveAttribute('minlength', '12');
+  expect(password).toHaveAttribute('autocomplete', 'current-password');
+  fireEvent.click(screen.getByRole('button', { name: 'Create an account' }));
+  expect(screen.getByRole('heading', { name: 'Create account' })).toBeVisible();
+  expect(password).toHaveAttribute('autocomplete', 'new-password');
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  expect(screen.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  expect(username).toHaveValue('local-user');
+  expect(password).toHaveValue('a-valid-password');
+  expect(password).toHaveAttribute('autocomplete', 'current-password');
+  expect(document.querySelector('.auth-story, .code-card')).toBeNull();
+});
+
+it('keeps form submission locked and reports authentication errors inline', async () => {
+  let finish: (value: Response) => void = () => {};
+  const fetcher = mockWorkspace((path) => {
+    if (path.endsWith('/auth/me'))
+      return response({ error: { message: 'Sign in' } }, 401);
+    if (path.endsWith('/auth/login'))
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+  });
+  render(<App />);
+  fireEvent.change(await screen.findByLabelText('Username'), {
+    target: { value: 'alice' },
+  });
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: 'a-valid-password' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  expect(screen.getByLabelText('Username')).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: 'Create an account' }),
+  ).toBeDisabled();
+  expect(document.querySelector('form')).toHaveAttribute('aria-busy', 'true');
+  finish(
+    response(
+      {
+        error: {
+          code: 'invalid_credentials',
+          message: 'Invalid username or password.',
+        },
+      },
+      401,
+    ),
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Invalid username or password.',
+  );
+  expect(screen.getByLabelText('Username')).toHaveValue('alice');
+  expect(screen.getByRole('button', { name: 'Sign in' })).not.toBeDisabled();
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options?.method === 'POST'),
+  ).toHaveLength(1);
+});
+
+it('keeps history pagination, selection and new-review controls available', async () => {
+  const older = {
+    ...review,
+    review_id: 'review-2',
+    language: 'javascript',
+    source_code: 'let x = 2;',
+  };
+  mockWorkspace((path) => {
+    if (path === '/api/v1/reviews')
+      return response({ items: [review], next_cursor: 'older-page' });
+    if (path === '/api/v1/reviews?before=older-page')
+      return response({ items: [older], next_cursor: null });
+    if (path === '/api/v1/reviews/review-2') return response(older);
+  });
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Load older reviews' }),
+  );
+  const record = await screen.findByRole('button', {
+    name: /javascript review/i,
+  });
+  await waitFor(() => expect(record).not.toBeDisabled());
+  expect(screen.getByRole('button', { name: /python review/i })).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: 'Load older reviews' }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(record);
+  await waitFor(() =>
+    expect(screen.getByLabelText('Source code')).toHaveValue(older.source_code),
+  );
+  expect(record).toHaveAttribute('aria-current', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'New review' }));
+  expect(screen.getByLabelText('Source code')).toHaveValue('');
+  expect(screen.getByText('Submit code to see the review here.')).toBeVisible();
 });

@@ -90,9 +90,9 @@ export function environmentLabel(info: RuntimeInfo | null) {
 }
 export function modeLabel(info: RuntimeInfo | null) {
   return info?.inference_mode === 'simulated'
-    ? 'Simulated model · no Qwen inference'
+    ? 'Simulated model (no Qwen inference)'
     : info?.inference_mode === 'real'
-      ? 'Real model · local CPU'
+      ? 'Real model'
       : 'Inference mode unknown';
 }
 export function canSubmit(runtime: RuntimeState) {
@@ -120,7 +120,7 @@ export function servicePresentation(runtime: RuntimeState): [string, string] {
     ];
   if (canSubmit(runtime))
     return [
-      'Accepting submissions',
+      'Ready',
       'The service can accept submissions. Queue capacity and account limits are checked when you submit.',
     ];
   switch (runtime.info.service_status) {
@@ -162,13 +162,4 @@ export function servicePresentation(runtime: RuntimeState): [string, string] {
         'The service has not confirmed readiness. Submissions are paused.',
       ];
   }
-}
-export function instanceDescription(info: RuntimeInfo | null) {
-  if (info?.deployment_environment === 'minikube')
-    return info.inference_mode === 'real'
-      ? 'The model runs on CPU in minikube on this machine. Submit snippets and revisit saved reviews.'
-      : 'This instance runs in minikube on this machine. Submit snippets and revisit saved reviews.';
-  if (info?.deployment_environment === 'development')
-    return 'A directly started local development instance. Submit snippets and revisit saved reviews.';
-  return 'Submit code snippets and revisit saved reviews. The deployment environment is not confirmed.';
 }
