@@ -774,7 +774,7 @@ def preflight(args, owner):
                 "--",
                 "python",
                 "-c",
-                "from app.model import snapshot_has_model_weights; "
+                "from app.inference.model import snapshot_has_model_weights; "
                 "from app.config import MODEL_REVISION; "
                 "p='/models/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/'+MODEL_REVISION; "
                 "print(int(snapshot_has_model_weights(p)))",

@@ -1,5 +1,6 @@
 """The runtime can only construct a local client, even under hostile host SDK settings."""
 
+import json
 import os
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,8 +10,8 @@ from botocore.awsrequest import AWSResponse
 from pydantic import ValidationError
 
 from app.config import Settings
-from app.local_dynamodb import local_client, validate_local_endpoint
-from app.users import DynamoUsers
+from app.persistence.local_dynamodb import local_client, validate_local_endpoint
+from app.persistence.users import DynamoUsers
 
 
 @pytest.mark.parametrize(
@@ -39,7 +40,7 @@ from app.users import DynamoUsers
 )
 def test_nonlocal_missing_or_ambiguous_endpoints_fail_before_sdk(endpoint, monkeypatch):
     session = Mock(side_effect=AssertionError("No SDK initialization permitted"))
-    monkeypatch.setattr("app.local_dynamodb.boto3.Session", session)
+    monkeypatch.setattr("app.persistence.local_dynamodb.boto3.Session", session)
     with pytest.raises(ValueError) as error:
         local_client(endpoint)
     assert "PRIVATE" not in str(error.value) and "SECRET" not in str(error.value)
@@ -124,9 +125,80 @@ def test_client_ignores_host_credentials_profiles_metadata_and_endpoint_override
             request.url,
             200,
             {"content-type": "application/x-amz-json-1.0"},
-            SimpleNamespace(stream=lambda: iter([b'{"Table":{"TableStatus":"ACTIVE"}}'])),
+            SimpleNamespace(
+                stream=lambda: iter(
+                    [
+                        json.dumps(
+                            {
+                                "Table": {
+                                    "TableStatus": "ACTIVE",
+                                    "KeySchema": [{"AttributeName": "login_id", "KeyType": "HASH"}],
+                                    "AttributeDefinitions": [
+                                        {"AttributeName": "login_id", "AttributeType": "S"}
+                                    ],
+                                }
+                            }
+                        ).encode()
+                    ]
+                )
+            ),
         )
 
     monkeypatch.setattr("botocore.httpsession.URLLib3Session.send", offline_send)
     users.ping()  # Exercise the actual serializer/signing/transport choice; no network is used.
     assert sent == ["http://127.0.0.1:8001/"]
+
+
+def test_startup_transport_has_one_attempt_even_with_sdk_retry_environment(monkeypatch):
+    from botocore.exceptions import ConnectTimeoutError
+
+    monkeypatch.setenv("AWS_MAX_ATTEMPTS", "99")
+    monkeypatch.setenv("AWS_RETRY_MODE", "adaptive")
+    settings = Settings(
+        _env_file=None,
+        signing_secret="local-test-" * 4,
+        dynamodb_endpoint_url="http://127.0.0.1:8001",
+    )
+    users = DynamoUsers(settings)
+    assert users.client.meta.config.retries["total_max_attempts"] == 3
+    startup = users._startup_client.meta.config
+    assert startup.retries == {"mode": "standard", "total_max_attempts": 1}
+    assert (startup.connect_timeout, startup.read_timeout) == (3, 5)
+    assert startup.proxies == {}
+    send = Mock(side_effect=ConnectTimeoutError(endpoint_url="PRIVATE"))
+    monkeypatch.setattr("botocore.httpsession.URLLib3Session.send", send)
+    try:
+        with pytest.raises(ConnectTimeoutError):
+            users.ping()
+        send.assert_called_once()  # Actual botocore pipeline; no hidden SDK retry or real network.
+    finally:
+        users.client.close()
+        users._startup_client.close()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"TableStatus": "CREATING"},
+        {"KeySchema": [{"AttributeName": "wrong", "KeyType": "HASH"}]},
+        {"AttributeDefinitions": [{"AttributeName": "login_id", "AttributeType": "N"}]},
+    ],
+)
+def test_startup_ping_rejects_invalid_table_without_writing(change):
+    users = DynamoUsers.__new__(DynamoUsers)
+    users.table_name = "test-users"
+    users.client = Mock()
+    users._startup_client = Mock()
+    users._startup_client.describe_table.return_value = {
+        "Table": {
+            "TableStatus": "ACTIVE",
+            "KeySchema": [{"AttributeName": "login_id", "KeyType": "HASH"}],
+            "AttributeDefinitions": [{"AttributeName": "login_id", "AttributeType": "S"}],
+            **change,
+        }
+    }
+    with pytest.raises(ValueError, match="schema/status mismatch"):
+        users.ping()
+    assert len(users._startup_client.mock_calls) == 1
+    users._startup_client.describe_table.assert_called_once_with(TableName="test-users")
+    assert users.client.mock_calls == []

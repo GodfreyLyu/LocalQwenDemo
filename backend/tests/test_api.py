@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import sqlite3
+import threading
 import time
 from uuid import uuid4
 
@@ -9,13 +10,13 @@ import boto3
 import pytest
 from argon2 import extract_parameters
 from argon2.low_level import Type
-from conftest import FakeModel, register, wait_review
+from conftest import FakeModel, register, wait_ready, wait_review
 from fastapi.testclient import TestClient
 
 from app.coordinator import milliseconds_since
 from app.errors import AppError, ValidationReason
-from app.main import SERVICE_NAME, SafeFormatter
-from app.model import INVALID_REVIEW_MESSAGE, validate_review_output
+from app.inference.model import INVALID_REVIEW_MESSAGE, validate_review_output
+from app.logging import SERVICE_NAME, SafeFormatter
 
 
 def test_registration_hashing_cookie_and_normalization(factory):
@@ -113,8 +114,8 @@ def test_user_isolation_and_model_provenance(factory):
     review_id = response.json()["review_id"]
     review = wait_review(client, review_id)
     assert review["status"] == "completed"
-    assert review["model_id"] == "Qwen/Qwen3-1.7B"
-    assert len(review["model_revision"]) == 40 and "user_id" not in review
+    assert review["model_id"] == "Simulated model"
+    assert review["model_revision"] == "fixture-v1" and "user_id" not in review
     other = TestClient(
         client.app, base_url="https://testserver", headers={"Origin": "https://testserver"}
     )
@@ -383,7 +384,7 @@ def test_http_log_uses_monotonic_duration_and_route_template(factory, monkeypatc
     register(client)
     capsys.readouterr()
     ticks = iter([100.0, 100.125])
-    monkeypatch.setattr("app.main.monotonic", lambda: next(ticks))
+    monkeypatch.setattr("app.api.middleware.monotonic", lambda: next(ticks))
     real_review_id = str(uuid4())
 
     response = client.get(f"/api/v1/reviews/{real_review_id}?secret=PRIVATE_QUERY")
@@ -408,10 +409,24 @@ def test_successful_health_probes_are_suppressed_but_failures_are_logged(factory
     assert client.get("/health/ready").status_code == 200
     assert "http_request" not in capsys.readouterr().err
 
-    client.app.state.coordinator.ready = False
-    client.app.state.coordinator.state = "model_loading"
-    assert client.get("/health/ready").status_code == 503
-    events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    release = threading.Event()
+    entered = threading.Event()
+
+    class LoadingModel(FakeModel):
+        def load(self):
+            entered.set()
+            assert release.wait(5)
+
+    loading = factory(LoadingModel(), ready=False)
+    try:
+        # Account-startup logs must finish before asserting the last HTTP event.
+        assert entered.wait(2)
+        capsys.readouterr()
+        assert loading.get("/health/ready").status_code == 503
+        events = [json.loads(line) for line in capsys.readouterr().err.splitlines()]
+    finally:
+        release.set()
+        wait_ready(loading)
     assert [event["route"] for event in events if event["event"] == "http_request"] == [
         "/health/ready"
     ]
@@ -579,7 +594,7 @@ def test_stuck_native_inference_fails_liveness_without_starting_a_second_job(fac
 
 
 def test_cache_failure_keeps_public_readiness_contract(factory):
-    from app.model_cache import ModelCacheIncompleteError
+    from app.inference.model_cache import ModelCacheIncompleteError
 
     class IncompleteCacheModel:
         def load(self):
@@ -605,3 +620,20 @@ def test_forwarding_headers_cannot_create_new_rate_limit_identity(factory):
         headers={"CloudFront-Viewer-Address": "192.0.2.10:1234", "X-Forwarded-For": "192.0.2.11"},
     )
     assert response.status_code == 429
+
+
+def test_routers_keep_each_application_settings_and_storage_isolated(factory, tmp_path):
+    first = factory(data_dir=tmp_path / "first", source_max_chars=3)
+    second = factory(data_dir=tmp_path / "second", source_max_chars=100)
+    register(first, "alice")
+    register(second, "bob")
+    assert first.get("/api/v1/auth/me").json()["source_max_chars"] == 3
+    assert second.get("/api/v1/auth/me").json()["source_max_chars"] == 100
+    payload = {"source_code": "value = 1"}
+    assert first.post("/api/v1/reviews", json=payload).status_code == 422
+    response = second.post("/api/v1/reviews", json=payload)
+    assert response.status_code == 202
+    review_id = response.json()["review_id"]
+    assert wait_review(second, review_id)["status"] == "completed"
+    assert first.get("/api/v1/reviews").json()["items"] == []
+    assert first.get(f"/api/v1/reviews/{review_id}").status_code == 404

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
-from app.local_dynamodb import local_client, validate_local_endpoint  # noqa: E402
+from app.persistence.local_dynamodb import local_client, validate_local_endpoint  # noqa: E402
 
 
 def initialize():

@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.main import SafeFormatter
-from app.model import download_model_snapshot, snapshot_has_model_weights
-from app.model_cache import ModelCacheIncompleteError, validate_model_snapshot
+from app.inference.model import download_model_snapshot, snapshot_has_model_weights
+from app.inference.model_cache import ModelCacheIncompleteError, validate_model_snapshot
+from app.logging import SafeFormatter
 from app.startup import startup_stage
 
 SHARDS = ("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors")
@@ -214,7 +214,7 @@ def test_real_load_pipeline_stops_at_failed_stage(snapshot, monkeypatch, caplog,
     import sys
     from unittest.mock import Mock
 
-    from app.model import TransformersModel
+    from app.inference.model import TransformersModel
 
     calls = []
 

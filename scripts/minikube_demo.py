@@ -439,7 +439,7 @@ def init_users():
     with forward("review-dynamodb", 8000) as port:
         env = clean_env() | {"DYNAMODB_ENDPOINT_URL": f"http://127.0.0.1:{port}"}
         run([sys.executable, ROOT / "scripts/init_local_users.py"], env=env)
-        from app.local_dynamodb import local_client
+        from app.persistence.local_dynamodb import local_client
 
         db = local_client(f"http://127.0.0.1:{port}")
         table = db.describe_table(TableName="llm-review-users")["Table"]

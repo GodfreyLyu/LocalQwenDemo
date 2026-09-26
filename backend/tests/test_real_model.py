@@ -9,7 +9,7 @@ import pytest
 
 from app.config import MODEL_REVISION, Settings
 from app.errors import AppError
-from app.model import TransformersModel
+from app.inference.model import TransformersModel
 
 
 @pytest.mark.real_model

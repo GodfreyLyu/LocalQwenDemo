@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.local_dynamodb import validate_local_endpoint
+from app.persistence.local_dynamodb import validate_local_endpoint
 
 MODEL_REVISION = "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"
 
@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     environment: Literal["local", "test"] = "local"
+    deployment_environment: Literal["minikube", "development", "unknown"] = "unknown"
+    enable_api_docs: bool = False
     release_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{7,64}$")
     signing_secret: SecretStr
     allowed_origin: str = "http://localhost:5173"

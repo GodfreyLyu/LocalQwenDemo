@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.model as model_module
+import app.inference.model as model_module
 from app.config import MODEL_REVISION
 from app.errors import AppError, ValidationReason
-from app.model import (
+from app.inference.model import (
     INVALID_REVIEW_MESSAGE,
     REVIEW_GENERATION_PARAMETERS,
     STARTUP_GENERATION_SEED,
@@ -868,3 +868,28 @@ def test_timeout_in_third_section_preserves_partial_diagnostics(monkeypatch):
     }
     assert fields["section_first_token_ms"]["suggestions"] == 1224
     assert not any(fields["section_limits_reached"].values())
+
+
+@pytest.mark.parametrize("failure", ["cancelled", "input_limit", "preparation_error"])
+def test_failure_before_generation_does_not_report_generation_metrics(monkeypatch, failure):
+    recorder = RecordingLogger()
+    monkeypatch.setattr(model_module, "logger", recorder)
+    model, tokenizer, generator = make_transformers_model(monkeypatch)
+    stop = threading.Event()
+    expected_error = AppError
+    if failure == "cancelled":
+        stop.set()
+    elif failure == "input_limit":
+        tokenizer.input_tokens = model.settings.model_max_input_tokens + 1
+    else:
+        expected_error = RuntimeError
+
+        def fail_preparation(*args, **kwargs):
+            raise RuntimeError("PRIVATE_PREPARATION_SENTINEL")
+
+        monkeypatch.setattr(tokenizer.__class__, "__call__", fail_preparation)
+
+    with pytest.raises(expected_error):
+        model.review("PRIVATE_SOURCE_SENTINEL", "python", stop)
+    assert generator.calls == []
+    assert recorder.events == []

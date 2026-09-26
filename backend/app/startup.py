@@ -4,7 +4,7 @@ import logging
 import re
 from contextlib import contextmanager
 
-from app.model_cache import ModelCacheIncompleteError
+from app.inference.model_cache import ModelCacheIncompleteError
 
 logger = logging.getLogger("review")
 STAGES = frozenset(
@@ -47,7 +47,13 @@ def safe_diagnostic_fields(fields):
     name = fields.get("exception_type")
     if isinstance(name, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name):
         result["exception_type"] = name
-    for key, lower, upper in (("errno", 1, 4095), ("http_status", 100, 599)):
+    for key, lower, upper in (
+        ("errno", 1, 4095),
+        ("http_status", 100, 599),
+        ("startup_attempt", 0, 1000),
+        ("startup_wait_ms", 0, 10000),
+        ("startup_elapsed_ms", 0, 3600000),
+    ):
         value = fields.get(key)
         if type(value) is int and lower <= value <= upper:
             result[key] = value

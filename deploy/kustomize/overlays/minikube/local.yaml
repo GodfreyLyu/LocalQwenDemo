@@ -4,6 +4,7 @@ metadata:
   name: review-config
 data:
   ENVIRONMENT: local
+  DEPLOYMENT_ENVIRONMENT: minikube
   COOKIE_SECURE: 'false'
   ALLOWED_ORIGIN: http://localhost:8080
   DYNAMODB_ENDPOINT_URL: http://review-dynamodb:8000

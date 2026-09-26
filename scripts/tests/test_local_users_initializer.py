@@ -9,7 +9,7 @@ from botocore.stub import Stubber
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import init_local_users as init  # noqa: E402
 
-from app.local_dynamodb import local_client  # noqa: E402
+from app.persistence.local_dynamodb import local_client  # noqa: E402
 
 TABLE = {
     "TableName": "llm-review-users",

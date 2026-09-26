@@ -42,6 +42,7 @@ def validate():
             "QUEUE_CAPACITY": "8",
             "MAX_RETRIES": "1",
             "ENVIRONMENT": "local",
+            "DEPLOYMENT_ENVIRONMENT": "minikube",
             "ALLOWED_ORIGIN": "http://localhost:8080",
             "COOKIE_SECURE": "false",
             "DYNAMODB_ENDPOINT_URL": "http://review-dynamodb:8000",

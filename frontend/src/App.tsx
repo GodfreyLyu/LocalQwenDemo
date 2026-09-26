@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
-  Check,
   Code2,
   FileCode2,
   History,
@@ -19,6 +18,14 @@ import type {
   Session,
   Status,
 } from './api';
+import {
+  canSubmit,
+  environmentLabel,
+  instanceDescription,
+  useRuntime,
+} from './runtime';
+import { AboutInstance, RuntimePanel } from './RuntimePanel';
+import type { RuntimeState } from './runtime';
 import { CodeEditor } from './CodeEditor';
 import { Markdown } from './Markdown';
 import {
@@ -29,14 +36,15 @@ import {
 const example =
   'def average(values):\n    total = sum(values)\n    return total / len(values)\n';
 const labels: Record<Status, string> = {
-  idle: 'Ready when you are',
+  idle: 'No active review',
   submitting: 'Submitting your review…',
-  queued: 'In the queue. Your code is saved.',
-  running: 'Reviewing your code…',
+  queued: 'Queued · saved and waiting to run',
+  running: 'Review in progress',
   completed: 'Review complete',
   failed: 'Review could not be completed',
 };
 export default function App() {
+  const runtime = useRuntime();
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(true);
   const [bootError, setBootError] = useState('');
@@ -65,9 +73,13 @@ export default function App() {
       </div>
     );
   return session ? (
-    <Workspace session={session} onLogout={() => setSession(null)} />
+    <Workspace
+      session={session}
+      onLogout={() => setSession(null)}
+      runtime={runtime}
+    />
   ) : (
-    <Auth onLogin={setSession} />
+    <Auth onLogin={setSession} runtime={runtime} />
   );
 }
 
@@ -84,7 +96,13 @@ function Brand() {
   );
 }
 
-function Auth({ onLogin }: { onLogin: (session: Session) => void }) {
+function Auth({
+  onLogin,
+  runtime,
+}: {
+  onLogin: (session: Session) => void;
+  runtime: RuntimeState;
+}) {
   const [register, setRegister] = useState(false);
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
@@ -116,22 +134,15 @@ function Auth({ onLogin }: { onLogin: (session: Session) => void }) {
       <section className="auth-story">
         <Brand />
         <div>
-          <span className="eyebrow">A FRESH PERSPECTIVE</span>
-          <h1>
-            Good code gets
-            <br />a second look.
-          </h1>
-          <p>
-            Find the subtle bugs. Understand the tradeoffs.
-            <br />
-            Move forward with a little more confidence.
-          </p>
+          <span className="eyebrow">LOCAL CODE REVIEW</span>
+          <h1>Local AI code review workbench</h1>
+          <p>{instanceDescription(runtime.info)}</p>
           <div className="code-card">
             <div className="code-card-top">
               <span />
               <span />
               <span />
-              <small>one small improvement</small>
+              <small>example snippet</small>
             </div>
             <pre>
               <span className="code-muted">{'def average(values):'}</span>
@@ -145,14 +156,14 @@ function Auth({ onLogin }: { onLogin: (session: Session) => void }) {
               </span>
             </pre>
             <div className="code-card-note">
-              <Check size={16} /> An edge case, caught before it matters.
+              Example only · choose behavior appropriate to your code.
             </div>
           </div>
         </div>
         <div className="privacy-note">
           <ShieldCheck size={18} />
           <span>
-            Reviewed by a local model on our backend.
+            Local inference. No external inference API.
             <br />
             Your source code is never executed.
           </span>
@@ -160,13 +171,16 @@ function Auth({ onLogin }: { onLogin: (session: Session) => void }) {
       </section>
       <section className="auth-form-wrap">
         <form onSubmit={submit} className="auth-form">
-          <span className="eyebrow">YOUR REVIEW WORKSPACE</span>
-          <h2>{register ? 'Make room for better code.' : 'Welcome back.'}</h2>
+          <span className="eyebrow">THIS INSTANCE’S LOCAL ACCOUNTS</span>
+          <h2>
+            {register ? 'Create a local account' : 'Sign in to this instance'}
+          </h2>
           <p>
             {register
-              ? 'Create an account to save your independent code reviews.'
-              : 'Sign in to pick up where you left off.'}
+              ? 'Create a local account to keep your review history separate.'
+              : 'Use your local account to access your review history.'}
           </p>
+          <RuntimePanel runtime={runtime} />
           <label>
             Username
             <input
@@ -208,7 +222,7 @@ function Auth({ onLogin }: { onLogin: (session: Session) => void }) {
             {register ? 'Create account' : 'Sign in'}
           </button>
           <p className="auth-switch">
-            {register ? 'Already have an account?' : 'New to LocalQwenDemo?'}{' '}
+            {register ? 'Already have an account?' : 'New to this instance?'}{' '}
             <button
               type="button"
               className="text-button"
@@ -222,9 +236,9 @@ function Auth({ onLogin }: { onLogin: (session: Session) => void }) {
             </button>
           </p>
           <div className="auth-footnote">
-            One submission. One focused review.
-            <br />
-            No conversations to manage.
+            Accounts belong to this instance. No cloud sync or sharing across
+            instances.
+            <AboutInstance runtime={runtime} />
           </div>
         </form>
       </section>
@@ -235,9 +249,11 @@ function Auth({ onLogin }: { onLogin: (session: Session) => void }) {
 function Workspace({
   session,
   onLogout,
+  runtime,
 }: {
   session: Session;
   onLogout: () => void;
+  runtime: RuntimeState;
 }) {
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('auto');
@@ -250,6 +266,8 @@ function Workspace({
   const [historyLoading, setHistoryLoading] = useState(true);
   const [expired, setExpired] = useState(false);
   const [working, setWorking] = useState(false);
+  const [deliveryUncertain, setDeliveryUncertain] = useState(false);
+  const pendingBody = useRef<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const locked = useRef(false);
   const mounted = useRef(true);
@@ -309,15 +327,22 @@ function Workspace({
   useEffect(() => {
     if (!pendingId || expired) return;
     let canceled = false;
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const review = await api<Review>(`/api/v1/reviews/${pendingId}`);
+        const review = await api<Review>(`/api/v1/reviews/${pendingId}`, {
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(15000),
+          ]),
+        });
         if (canceled) return;
         setSelected(review);
         setCode(review.source_code);
         setLanguage(review.language);
         setStatus(review.status);
+        setMessage(review.error_message ?? '');
         if (isActive(review.status)) {
           timer = setTimeout(poll, 1500);
         } else {
@@ -340,11 +365,12 @@ function Workspace({
     void poll();
     return () => {
       canceled = true;
+      controller.abort();
       clearTimeout(timer);
     };
   }, [pendingId, expired, failure, refreshHistory]);
   async function runReview() {
-    if (locked.current || blocked) return;
+    if (locked.current || blocked || !canSubmit(runtime)) return;
     if (!code.trim()) {
       setMessage('Enter source code before running a review.');
       return;
@@ -365,36 +391,52 @@ function Workspace({
       language,
       client_request_id: requestKey.current,
     });
-    // Retry uncertain delivery with the same key and frozen input, never a second job.
-    while (mounted.current) {
-      try {
-        const accepted = await api<{ review_id: string; status: Status }>(
-          '/api/v1/reviews',
-          { method: 'POST', body },
-          session.csrf_token,
+    pendingBody.current = body;
+    await deliverReview();
+  }
+  async function deliverReview() {
+    if (!pendingBody.current) return;
+    setDeliveryUncertain(false);
+    setMessage('');
+    try {
+      const accepted = await api<{ review_id: string; status: Status }>(
+        '/api/v1/reviews',
+        { method: 'POST', body: pendingBody.current },
+        session.csrf_token,
+      );
+      if (!mounted.current) return;
+      pendingBody.current = null;
+      setPendingId(accepted.review_id);
+      setStatus(accepted.status);
+    } catch (error) {
+      if (!mounted.current) return;
+      failure(error);
+      const rejectedByReadiness =
+        error instanceof ApiError &&
+        [
+          'model_loading',
+          'inference_draining',
+          'inference_stuck',
+          'startup_or_storage_failure',
+          'ready',
+        ].includes(error.code);
+      if (
+        error instanceof ApiError &&
+        !rejectedByReadiness &&
+        (error.status === 0 || error.status >= 500)
+      ) {
+        // Keep the original input and request ID; retry only at the user's request.
+        setDeliveryUncertain(true);
+        setMessage(
+          `${error.message} Delivery is unconfirmed. Retry with the same request ID to avoid creating a duplicate review.`,
         );
-        if (!mounted.current) return;
-        setPendingId(accepted.review_id);
-        setStatus(accepted.status);
-        setMessage('');
-        return;
-      } catch (error) {
-        if (!mounted.current) return;
-        failure(error);
-        if (
-          error instanceof ApiError &&
-          (error.status === 0 || error.status >= 500)
-        ) {
-          setMessage(`${error.message} Reconnecting safely…`);
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-          continue;
-        }
-        setStatus('failed');
-        locked.current = false;
-        if (error instanceof ApiError && error.code === 'review_active')
-          void refreshHistory();
         return;
       }
+      pendingBody.current = null;
+      setStatus('failed');
+      locked.current = false;
+      if (error instanceof ApiError && error.code === 'review_active')
+        void refreshHistory();
     }
   }
   async function selectReview(id: string) {
@@ -511,10 +553,7 @@ function Workspace({
           )}
         </div>
         <div className="sidebar-bottom">
-          <div className="model-label">
-            <span className="status-dot completed" /> BACKEND INFERENCE
-          </div>
-          <p>Qwen3-1.7B</p>
+          <p className="local-account-note">Local account · this instance</p>
           <div className="account">
             <span className="avatar">{session.login_id[0].toUpperCase()}</span>
             <span title={session.login_id}>{session.login_id}</span>
@@ -537,22 +576,31 @@ function Workspace({
             <span className="breadcrumb-divider">/</span>
             <span>Code review</span>
           </div>
-          <span className="demo-pill">CUSTOMER DEMO</span>
+          <span className="demo-pill">{environmentLabel(runtime.info)}</span>
         </header>
         <div className="work-content">
           <div className="page-heading">
             <div>
-              <span className="eyebrow">AN INDEPENDENT SECOND LOOK</span>
-              <h1>Small details. Better code.</h1>
-              <p>Paste a snippet. Get a focused review of what matters.</p>
+              <span className="eyebrow">LOCAL CODE REVIEW</span>
+              <h1>Local AI code review workbench</h1>
+              <p>{instanceDescription(runtime.info)}</p>
             </div>
             <div className="private-badge">
               <ShieldCheck size={16} /> No code execution
             </div>
           </div>
+          <RuntimePanel runtime={runtime} />
           {message && (
             <div role="alert" className="notice error">
-              {message}
+              <span>{message}</span>
+              {deliveryUncertain && !expired && (
+                <button
+                  className="text-button"
+                  onClick={() => void deliverReview()}
+                >
+                  Retry same submission
+                </button>
+              )}
               {expired && (
                 <button className="text-button" onClick={onLogout}>
                   Return to sign in
@@ -632,6 +680,7 @@ function Workspace({
                   onClick={() => void runReview()}
                   disabled={
                     blocked ||
+                    !canSubmit(runtime) ||
                     !code.trim() ||
                     code.length > session.source_max_chars
                   }
@@ -641,7 +690,7 @@ function Workspace({
                   ) : (
                     <Sparkles size={16} />
                   )}
-                  Run Review
+                  Run review
                 </button>
               </div>
             </section>
@@ -653,9 +702,11 @@ function Workspace({
                 <span className={`result-status ${status}`}>
                   {status === 'completed'
                     ? 'COMPLETED'
-                    : busy
-                      ? 'IN PROGRESS'
-                      : 'OUTPUT'}
+                    : status === 'failed'
+                      ? 'FAILED'
+                      : busy
+                        ? status.toUpperCase()
+                        : 'OUTPUT'}
                 </span>
               </div>
               <div className="result-body" aria-live="polite">
@@ -663,9 +714,15 @@ function Workspace({
                   <>
                     <Markdown content={selected.review_result} />
                     <div className="result-provenance">
-                      {selected.model_id}
+                      <span>
+                        {selected.model_id === 'Simulated model'
+                          ? 'Simulated result · no Qwen inference'
+                          : 'Stored model metadata'}
+                      </span>
                       <br />
-                      Revision {selected.model_revision}
+                      {selected.model_id ?? 'Model unknown'}
+                      <br />
+                      Revision {selected.model_revision ?? 'unknown'}
                     </div>
                   </>
                 ) : (
@@ -679,14 +736,24 @@ function Workspace({
                     </div>
                     <h3>
                       {busy
-                        ? labels[status]
+                        ? deliveryUncertain
+                          ? 'Submission unconfirmed'
+                          : labels[status]
                         : status === 'failed'
-                          ? 'Let’s try that again.'
-                          : 'A fresh pair of eyes.'}
+                          ? 'Review failed'
+                          : 'Review results'}
                     </h3>
                     <p>
                       {busy
-                        ? 'Your review is saved and processing. You can return to it from your history.'
+                        ? status === 'submitting'
+                          ? 'Waiting for the service to confirm the submission. Your input is kept here.'
+                          : status === 'queued'
+                            ? 'Your task is saved and waiting to run. You can revisit it from history.'
+                            : runtime.info?.inference_mode === 'simulated'
+                              ? 'Generating a deterministic test result. No real Qwen inference is running.'
+                              : runtime.info?.inference_mode === 'real'
+                                ? 'Reviewing on local CPU. Time depends on code length and machine load.'
+                                : 'Waiting for the saved task to finish. Inference mode is unknown.'
                         : status === 'failed'
                           ? 'Check the message above, adjust your code if needed, and run a new review.'
                           : 'Your review will appear here, with findings, explanations, and practical suggestions.'}
@@ -701,21 +768,32 @@ function Workspace({
                   </div>
                 )}
               </div>
-              {busy && (
-                <div className="model-time-estimate" aria-live="off">
-                  <p>Estimated model time: about {estimatedModelTime}.</p>
-                  <p>
-                    Queue time, model loading, and system load can make the
-                    total wait longer.
-                  </p>
-                </div>
-              )}
-              <div className="result-footer" role="status">
+              {busy &&
+                !deliveryUncertain &&
+                runtime.info?.inference_mode === 'real' && (
+                  <div className="model-time-estimate" aria-live="off">
+                    <p>
+                      Rough model-time estimate: about {estimatedModelTime}.
+                    </p>
+                    <p>
+                      Queue time, model loading, and system load can make the
+                      total wait longer. This is not a countdown or measured
+                      progress.
+                    </p>
+                  </div>
+                )}
+              <div
+                className="result-footer"
+                role="status"
+                aria-label="Review task status"
+              >
                 <span className={`status-dot ${status}`} />
-                {labels[status]}
+                Task:{' '}
+                {deliveryUncertain ? 'Submission unconfirmed' : labels[status]}
               </div>
             </section>
           </div>
+          <AboutInstance runtime={runtime} />
           <footer className="workspace-note">
             AI reviews can miss issues or make mistakes. Verify suggestions
             before applying them.<span>Each review starts fresh.</span>

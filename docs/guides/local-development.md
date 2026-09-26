@@ -110,6 +110,58 @@ For real inference with emulated accounts (no Docker), install the optional mode
 
 ## Success criteria and tests
 
+### Backend code map
+
+The Uvicorn entry point remains `app.main:create_app`. The factory wires application
+state, middleware, error handlers and routers; each router reads the current app's
+state from the request, so separate app instances do not share stores or settings.
+
+| Module under `backend/app` | Responsibility |
+| --- | --- |
+| `main.py` | Application construction and coordinator lifecycle |
+| `api/routes/auth.py`, `api/routes/reviews.py`, `api/routes/health.py` | Account, review and health endpoints |
+| `api/schemas.py`, `api/auth.py` | Request validation and session/CSRF checks |
+| `rate_limit.py` | Shared per-application admission quotas, independent of HTTP/authentication |
+| `health.py`, `api/routes/runtime.py`, `inference/identity.py` | Readiness observation, runtime HTTP presentation and typed adapter identity |
+| `api/middleware.py`, `api/http_errors.py` | Bounded request bodies, response headers and safe error responses |
+| `logging.py` | Structured logging and field allowlists |
+| `coordinator.py` | Serial queue processing, persistence and timeout draining |
+| `review_service.py`, `api/dependencies.py`, `domain.py` | Admission policy, typed HTTP dependencies and internal record/result types |
+| `inference/model.py`, `inference/generation.py` | Model loading, tokenization, serial inference, sampling policy and metrics |
+| `inference/prompts.py`, `inference/review_output.py` | Pure prompt construction and output normalization/validation |
+| `persistence/storage.py`, `persistence/users.py` | SQLite history/sessions and local DynamoDB accounts |
+
+Transport regression tests also cover chunked body limits and disconnects. API tests
+cover separate application instances, and model tests cover failures before generation
+as well as partial-generation diagnostics.
+
+### Canonical imports and compatibility
+
+Use `app.api.*`, `app.inference.*` and `app.persistence.*` for moved implementations.
+The startup command remains `app.main:create_app`; package discovery already includes
+`app*`. `app.model` explicitly re-exports its established model/helper API and logger
+for older scripts, while `app.auth` retains only `RateLimiter`. These facades do not
+contain implementations and are not internal dependencies. Monkeypatch the canonical
+implementation module, for example `app.inference.model` or
+`app.persistence.users.local_client`, rather than the compatibility facade.
+
+### Optional interface documentation
+
+For a local interview/demo session, set `ENABLE_API_DOCS=true` explicitly when
+starting the backend. Swagger UI is then available at `http://127.0.0.1:8000/docs`
+and its schema at `/openapi.json` on that backend. Both default to disabled; ReDoc
+stays disabled. No deployment manifest enables this switch, and the existing
+frontend proxy does not publish these paths. The schema documents success field
+allowlists and the custom error envelope, including 422 validation errors.
+
+Interactive writes still require the configured Origin, session cookie and CSRF
+header. The UI is for inspecting contracts; it does not bypass authentication or
+provide a special login path. Use the regular frontend or test harness for the
+complete user flow. See [architecture](../reference/architecture.md) for the request
+walkthrough, type choices, state transitions and multi-process limitations.
+
+### Verification
+
 With the fake harness, the API must report ready, registration/login must work in the browser, and results must be labeled as deterministic output. Use the [testing guide](../testing/README.md) for quick, complete, browser and opt-in real-model checks.
 
 ## Common failures and handling
@@ -119,3 +171,19 @@ For a broken interpreter, use the recovery section above. For a 403, open `http:
 ## Dependency maintenance
 
 `backend/requirements.lock`, `requirements-dev.lock`, `requirements-model.lock`, and `frontend/package-lock.json` pin resolved dependencies. The backend Dockerfile installs a pinned CPU-only PyTorch wheel to avoid CUDA packages on the demo node. To update Python locks deliberately, use `uv pip compile` with Python 3.12; review and rerun all relevant checks. Review Docker base image tags before updating the local deployment.
+
+## Instance labels in the workbench
+
+Fixed interface copy remains English, matching the project's language convention.
+The workbench distinguishes deployment environment, inference adapter, readiness and
+individual review state. The minikube overlay sets `DEPLOYMENT_ENVIRONMENT=minikube`;
+the direct-start `.env.example` and the local harness use `development`. Existing local
+`.env` files are not rewritten: add `DEPLOYMENT_ENVIRONMENT=development` deliberately
+when using that startup method. Unconfigured deployments display “Environment unknown”.
+This setting changes only display metadata, not model selection or runtime policy.
+
+The fake harness visibly reports simulated inference. Its newly completed records have
+fixture provenance, and no CPU-model time estimate is shown for simulation. “About this
+instance” explains account isolation, processing, model provenance and storage lifecycle.
+The runtime endpoint's exact semantics and backward-compatibility limits are documented
+in the [API reference](../reference/api.md#read-only-instance-runtime).

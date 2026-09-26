@@ -13,6 +13,7 @@ Request/response bodies use JSON, except that successful logout returns **204 wi
 | `POST /api/v1/reviews`                     | 202     | Atomically accept or return an idempotent review                                                |
 | `GET /api/v1/reviews?limit=20&before=UUID` | 200     | Current user's history and `next_cursor`                                                        |
 | `GET /api/v1/reviews/{UUID}`               | 200     | Current user's complete review/job state                                                        |
+| `GET /api/v1/runtime` | 200 | Explicit environment, active model identity and readiness observation |
 | `GET /health/live`                         | 200/503 | Process/coordinator liveness                                                                    |
 | `GET /health/ready`                        | 200/503 | Coordinator/model readiness plus a live writable SQLite check; DynamoDB is validated at startup |
 
@@ -37,6 +38,19 @@ Submission body:
 `language` defaults to `auto`; any valid short language hint is accepted. `client_request_id` is optional; the server generates a UUID if omitted. Browsers generate and retain it for uncertain-delivery retries. The response contains `review_id`, `status`, and `client_request_id`. An idempotent response may already be completed or failed.
 
 The default source limit is 12,000 characters. The largest of the three complete section prompts, including instructions, must fit 2,048 tokens; the character and token limits are independently enforced. Oversized HTTP bodies are rejected at 128 KiB before JSON parsing. Nothing is compiled, parsed as an executable language, or saved as a source file.
+
+Response models in `backend/app/api/schemas.py` explicitly allowlist fields. Detail
+responses contain `review_id`, `status`, `client_request_id`, `language`, `source_code`,
+`review_result`, `error_code`, `error_message`, `model_id`, `model_revision`,
+`retry_count`, `created_at`, and `updated_at`. Internal user IDs and operation metadata
+are never serialized. History returns `items` and nullable `next_cursor`; each item
+contains only `review_id`, `language`, `status`, `error_code`, `created_at`, `updated_at`.
+IDs stay strings, timestamps stay numeric Unix seconds, and absent result/error/model
+values stay null. No response model excludes null values.
+
+The optional local `ENABLE_API_DOCS=true` switch exposes `/docs` and `/openapi.json`
+on the backend. Both are off by default and remain off in the maintained deployment.
+It does not change session, Origin or CSRF requirements.
 
 Errors use:
 
@@ -63,3 +77,37 @@ Errors use:
 | 503     | Model loading/draining, storage failure, unavailable account service      |
 
 Inference errors mark the stored job as `failed`, with codes such as `inference_timeout`, `empty_model_response`, `invalid_model_response`, `inference_failed`, or `interrupted`. `invalid_model_response` means the local model returned text that did not satisfy the minimum structured, source-linked review contract. A successful GET still returns 200 when describing a failed job.
+
+## Read-only instance runtime
+
+`GET /api/v1/runtime` is a public, non-sensitive display endpoint (no session required).
+It returns HTTP 200 when the observation succeeds, including when the service is not ready.
+The existing `/health/live` and `/health/ready` HTTP status and body contracts are unchanged.
+
+- `deployment_environment`: `minikube`, `development`, or `unknown`, from explicit
+  `DEPLOYMENT_ENVIRONMENT` configuration. Default is `unknown`; neither hostname nor
+  the existing logging/test `ENVIRONMENT` setting implies a deployment environment.
+- `inference_mode`: `real` for the built-in Transformers adapter, `simulated` for an
+  explicitly marked fixture, otherwise `unknown`. Deployment environment does not select inference.
+- `model_id`, `model_revision`, `model_source`, `device`: configured pinned identity and
+  `cpu` for the built-in real adapter; `Simulated model`, `fixture-v1`, `test_fixture`
+  and null device for the deterministic adapter. Unrecognized adapters expose null identity,
+  `unknown` source and null device. No model weights are loaded by this endpoint.
+- `service_status`, `accepting_submissions`: reuse the coordinator and SQLite readiness
+  check. Shutdown is reported as `shutting_down`. Readiness permits an attempt; authentication,
+  CSRF, rate, input, active-review and atomic queue-capacity checks still decide admission.
+
+This is not a cluster-health API and contains no credentials, paths, account data, pod
+inventory or host metrics. It does not query Kubernetes or inspect host configuration.
+The UI polls sequentially five seconds after each response, with an eight-second timeout
+and unmount cancellation. Failed/malformed observations disable new submissions without
+clearing input. Unknown fields/states never imply readiness; recovery restores controls.
+Service status and persisted task status are shown separately.
+
+Unconfirmed POST delivery is retried only through the explicit retry button, using the
+same frozen source, language and request ID. Readiness rejections are not automatically
+retried. Accepted tasks continue to be fetched from their existing history record.
+
+New simulated result records use the fixture identity rather than the configured Qwen
+identity. Existing history is not migrated: older simulated records can contain Qwen
+configuration metadata, so stored metadata alone is not proof of real inference.

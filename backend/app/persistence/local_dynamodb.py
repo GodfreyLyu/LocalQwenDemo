@@ -43,7 +43,7 @@ def validate_local_endpoint(endpoint: str, *, loopback_only: bool = False) -> st
     return endpoint
 
 
-def local_client(endpoint: str, region: str = "ap-northeast-1"):
+def local_client(endpoint: str, region: str = "ap-northeast-1", *, startup_check: bool = False):
     validate_local_endpoint(endpoint)
     os.environ.update(
         AWS_EC2_METADATA_DISABLED="true",
@@ -74,7 +74,12 @@ def local_client(endpoint: str, region: str = "ap-northeast-1"):
         config=Config(
             connect_timeout=3,
             read_timeout=5,
-            retries={"max_attempts": 2},
+            # Startup owns its retry budget; ordinary account operations keep SDK retries.
+            retries=(
+                {"mode": "standard", "total_max_attempts": 1}
+                if startup_check
+                else {"max_attempts": 2}
+            ),
             proxies={},
             ignore_configured_endpoint_urls=True,
         ),

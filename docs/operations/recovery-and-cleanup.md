@@ -24,6 +24,55 @@ accounts and the startup-validated model are ready. The default cold deployment 
 is 3600 seconds and warm budget 600 seconds; the whole-review inference timeout remains
 300 seconds. A longer startup allowance does not change inference parameters.
 
+### Temporary account-store connection failures
+
+Only the startup `users_storage` check retries connection failures. An initial
+`ConnectTimeoutError` no longer permanently ends initialization if the database
+recovers within the startup retry budget. The order remains SQLite initialization,
+account-store check, queue recovery, model loading/validation, final storage check,
+and queue processing. Only the account-store check repeats.
+
+The allowlist is botocore `ConnectTimeoutError`, `ReadTimeoutError`,
+`EndpointConnectionError` (including unavailable/refused endpoints), and
+`ConnectionClosedError`. Other exceptions fail immediately, including configuration,
+credentials/permissions, missing tables, service `ClientError` responses, and table
+schema/status mismatches. The check requires an ACTIVE table with the existing
+`login_id` string hash-key schema. It only describes the table; it never creates,
+repairs, deletes or clears account storage.
+
+Startup checks use a separate SDK client with one total request attempt, a 3-second
+connect timeout and a 5-second read timeout. Normal account operations retain their
+existing SDK retry settings. The asynchronous backoff is 1, 2, 4, 8, then 10 seconds
+maximum; the final wait is shortened to the remaining budget. The **120-second
+monotonic budget includes both calls and waits**. No new call starts at or after the
+deadline. An in-flight call is awaited, not abandoned via an asyncio timeout, and
+cannot make startup succeed after the deadline. Consequently completion/failure
+reporting can extend past 120 seconds while the final request returns (normally
+up to one 3-second connect / 5-second read attempt). Socket timeouts are not hard
+wall-clock bounds on OS DNS resolution, scheduling or a continuously trickling
+response. There is no parallel check or overlapping retry.
+
+During retries, `/health/live` stays responsive and alive; `/health/ready` remains
+503 with the compatible `model_loading` state and submissions remain rejected.
+Success continues initialization in the same process. Exhaustion or a non-retryable
+error enters the existing `startup_or_storage_failure` state. A database recovery
+*after* this final failure does not restart initialization automatically; inspect
+and use the existing deliberate restart procedure. Probes and deployment budgets
+have not changed.
+
+Shutdown wakes a pending backoff immediately and stops later checks or startup
+stages. If a check is already in flight, the existing coordinator shutdown grace
+(default 20 seconds) applies while the bounded SDK call returns. A deliberately
+shorter shutdown grace can expire first; cancellation does not forcibly kill a
+Python worker thread, but no follow-up request is scheduled.
+
+Safe events are `users_storage_check_started`, `users_storage_retry_scheduled`,
+`users_storage_ready`, `users_storage_retry_exhausted`, and
+`users_storage_check_stopped`. They include `stage: users_storage`,
+`startup_attempt`, `startup_elapsed_ms`, and, when retrying, `startup_wait_ms` and
+`exception_type`. Final failures also emit the existing `coordinator_failed` event.
+These logs omit exception text, endpoints, credentials and account data.
+
 | Symptom | Evidence and safe next step |
 | --- | --- |
 | No running profile or API unavailable | Start/fix the cluster yourself, then rerun diagnostics. The script never starts or recreates a cluster. |

@@ -55,7 +55,7 @@ export async function api<T>(
   } catch {
     throw new ApiError(
       'network_failure',
-      'Connection interrupted. Check your network; your work is still here.',
+      'Cannot connect to the local service. Check that the runtime environment and local access channel are running.',
       0,
     );
   }
@@ -73,7 +73,8 @@ export async function api<T>(
   if (!response.ok)
     throw new ApiError(
       data.error?.code ?? 'service_unavailable',
-      data.error?.message ??
+      errorMessages[data.error?.code] ??
+        data.error?.message ??
         'The service is temporarily unavailable. Please retry.',
       response.status,
     );
@@ -81,3 +82,16 @@ export async function api<T>(
 }
 export const isActive = (status: Status) =>
   ['submitting', 'queued', 'running'].includes(status);
+
+const errorMessages: Record<string, string> = {
+  model_loading:
+    'The local model service is preparing and loading. Submit when it is ready.',
+  inference_draining:
+    'The previous inference is stopping. Please wait for service readiness.',
+  inference_stuck:
+    'Inference has not stopped. Check the backend logs before restarting the service.',
+  startup_or_storage_failure:
+    'Service startup or storage failed. Check the backend logs for details.',
+  storage_unavailable:
+    'Review storage is unavailable. Check the backend logs and instance storage.',
+};

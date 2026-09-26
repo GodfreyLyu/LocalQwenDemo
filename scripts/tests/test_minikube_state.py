@@ -310,7 +310,7 @@ def real_build_inputs(monkeypatch, tmp_path):
         "backend/pyproject.toml": '[project]\nname = "fixture"\n',
         "backend/requirements.lock": "fastapi==0.115.0\n",
         "backend/requirements-model.lock": "transformers==4.57.6\n",
-        "backend/app/model.py": "MODEL = 'fixed'\n",
+        "backend/app/inference/model.py": "MODEL = 'fixed'\n",
         "frontend/Dockerfile": "FROM node:24\n",
         "frontend/package.json": '{"name":"fixture"}\n',
         "frontend/src/App.tsx": 'export const title = "Review";\n',
@@ -348,7 +348,7 @@ def test_verify_unchanged_real_build_inputs_for_both_components(real_build_input
 @pytest.mark.parametrize(
     "context,path",
     [
-        ("backend", "app/model.py"),
+        ("backend", "app/inference/model.py"),
         ("frontend", "src/App.tsx"),
     ],
 )

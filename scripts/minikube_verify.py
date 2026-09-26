@@ -45,7 +45,7 @@ def completed_review(value):
     )
     sys.path.insert(0, str(ROOT / "backend"))
     from app.errors import AppError
-    from app.model import validate_review_output
+    from app.inference.model import validate_review_output
 
     try:
         validate_review_output(value.get("review_result") or "", SOURCE)
@@ -123,7 +123,7 @@ def cache_inventory():
     result = backend_python(
         "import json, os; from pathlib import Path; "
         f"p=Path('/models/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/{REVISION}'); "
-        "from app.model import snapshot_has_model_weights; "
+        "from app.inference.model import snapshot_has_model_weights; "
         "assert snapshot_has_model_weights(str(p)); "
         "print(json.dumps({f.name: [f.stat().st_size, "
         "f.stat().st_mtime_ns, f.stat().st_ino] "

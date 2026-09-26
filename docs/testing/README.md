@@ -13,6 +13,22 @@ Backend pytest discovers `backend/tests`; it does not implicitly cover `scripts/
 model doubles; the real-model smoke test is opt-in and normally skipped. A skip is not
 a real-model success. No test may weaken ownership or security just to pass.
 
+### Package migration checks
+
+Backend tests retain their component-based layout under `backend/tests`. Application
+implementations now live in `app.api`, `app.inference` and `app.persistence`; tests
+replace dependencies at those canonical locations (including monkeypatch strings).
+The existing public limiter test still exercises `app.auth.RateLimiter`, and the
+model-identity test also exercises the `app.model.TransformersModel` compatibility
+export without loading weights.
+
+Script checks cover the local harness, users initializer and evaluator after import
+migration. Remote command strings use the canonical inference package; the evaluator
+fingerprints the relocated implementation files, not the legacy facade. Browser
+regression starts the unchanged factory entry through the fake-model harness, using
+isolated accounts/history. Historical reports retain the source paths from their
+original revisions.
+
 ## Test matrix
 
 | Surface | Entry | What it establishes |

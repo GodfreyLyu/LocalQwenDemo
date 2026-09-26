@@ -10,6 +10,8 @@ from app.main import create_app
 
 
 class FakeModel:
+    simulated = True
+
     def __init__(self, result="## Summary\nCheck empty input before division.", delay=0.01):
         self.result, self.delay = result, delay
         self.calls = self.active = self.peak = 0
@@ -70,8 +72,8 @@ def factory(tmp_path, monkeypatch):
         # Only the test transport uses Moto's intercepted SDK endpoint. Runtime factory safety
         # is tested separately; no application mode allows a regional endpoint.
         monkeypatch.setattr(
-            "app.users.local_client",
-            lambda endpoint, region: boto3.client(
+            "app.persistence.users.local_client",
+            lambda endpoint, region, **kwargs: boto3.client(
                 "dynamodb",
                 region_name=region,
                 aws_access_key_id="testing",

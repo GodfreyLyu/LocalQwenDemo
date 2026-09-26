@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.config import MODEL_REVISION, Settings  # noqa: E402
 from app.errors import AppError, ValidationReason  # noqa: E402
-from app.model import (  # noqa: E402
+from app.inference.model import (  # noqa: E402
     REQUIRED_SECTIONS,
     REVIEW_GENERATION_PARAMETERS,
     TransformersModel,
@@ -39,7 +39,7 @@ from app.model import (  # noqa: E402
     logger,
     validate_review_output,
 )
-from app.model_cache import validate_model_snapshot  # noqa: E402
+from app.inference.model_cache import validate_model_snapshot  # noqa: E402
 
 TOOL_VERSION = "1.0.0"
 FIXTURES = ROOT / "scripts/evaluation/fixtures-v1.json"
@@ -185,7 +185,13 @@ def build_report(settings, suite, selected, real, manual):
         "implementation_sha256": digest_files(
             [
                 ROOT / f"backend/app/{name}.py"
-                for name in ("model", "config", "model_cache", "errors", "startup")
+                for name in (
+                    "inference/model",
+                    "config",
+                    "inference/model_cache",
+                    "errors",
+                    "startup",
+                )
             ]
         ),
         "dependency_locks_sha256": digest_files(

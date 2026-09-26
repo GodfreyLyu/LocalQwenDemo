@@ -32,9 +32,11 @@ def main():
 
     from app.config import Settings
     from app.main import create_app
-    from app.users import DynamoUsers
+    from app.persistence.users import DynamoUsers
 
     class DemoModel:
+        simulated = True
+
         def load(self):
             pass
 
@@ -52,6 +54,7 @@ def main():
 
     settings = Settings(
         environment="local",
+        deployment_environment="development",
         signing_secret=secrets.token_urlsafe(48),
         cookie_secure=False,
         allowed_origin="http://localhost:5173",

@@ -987,3 +987,112 @@ p {
     height: 23px;
   }
 }
+
+/* Compact instance information, separate from the review task status. */
+.runtime-panel {
+  border: 1px solid #dce3d5;
+  border-radius: 8px;
+  background: #f9faf7;
+  padding: 12px 15px;
+  margin-bottom: 18px;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.runtime-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 5px;
+}
+.simulated-label {
+  color: #855312;
+}
+.service-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 7px;
+  color: #52634e;
+}
+.service-status > span:last-child {
+  flex-basis: 100%;
+}
+.about-instance {
+  margin-top: 18px;
+  border-top: 1px solid #dce3d5;
+  padding-top: 12px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #5c6f56;
+  overflow-wrap: anywhere;
+}
+.about-instance summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.about-instance summary:focus-visible {
+  outline: 3px solid #6c9e84;
+  outline-offset: 3px;
+}
+.about-instance > div {
+  max-width: 850px;
+  padding-top: 12px;
+}
+.auth-footnote .about-instance {
+  text-align: left;
+}
+.notice {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.notice > span {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.page-heading p {
+  line-height: 1.7;
+}
+.page-heading h1 {
+  font-size: clamp(24px, 2.5vw, 32px);
+}
+.auth-story h1 {
+  font-size: clamp(32px, 3.3vw, 48px);
+  letter-spacing: -1.5px;
+}
+.sidebar {
+  overflow-y: auto;
+}
+.result-footer {
+  color: #5c6f56;
+}
+.sidebar-bottom > .local-account-note {
+  display: block;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+@media (max-width: 560px) {
+  .sidebar,
+  .auth-story,
+  .auth-form-wrap {
+    min-width: 0;
+  }
+  .history-list {
+    max-width: 100%;
+  }
+  .runtime-panel {
+    padding: 10px 12px;
+  }
+  .editor-footer {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+.runtime-model {
+  margin: 0 0 5px;
+  color: #52634e;
+}
