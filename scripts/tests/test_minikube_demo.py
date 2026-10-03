@@ -507,6 +507,8 @@ def test_cold_wait_also_updates_probe_budget():
 @pytest.mark.parametrize(
     "failure_stage",
     [
+        "ollama_host_resolution",
+        "resource_render",
         "image_build",
         "image_load",
         "dependency_apply",
@@ -540,6 +542,18 @@ def test_deployment_records_actual_failure_stage_and_never_claims_false_success(
         "minikube_home": "/test/.minikube",
         "cluster_uid": "test-uid",
     }
+    import minikube_ollama
+
+    resolution_calls = []
+
+    def resolve_host():
+        resolution_calls.append(None)
+        fail_at("ollama_host_resolution")
+        if failure_stage == "resource_render" and len(resolution_calls) == 2:
+            return "192.168.71.254"
+        return "192.168.70.254"
+
+    monkeypatch.setattr(minikube_ollama, "resolve_host_ip", resolve_host)
     monkeypatch.setattr(demo, "state", lambda **kw: owner)
     monkeypatch.setattr(demo, "guard_cluster", lambda: owner)
     monkeypatch.setattr(demo, "require_local_docker", lambda: None)
@@ -600,7 +614,13 @@ def test_deployment_records_actual_failure_stage_and_never_claims_false_success(
         {"kind": "Deployment", "metadata": {"name": name}}
         for name in ("review-dynamodb", "review-backend", "review-frontend")
     ]
-    monkeypatch.setattr(demo, "render", lambda *a: rendered)
+    render_calls = []
+
+    def render_step(*args):
+        render_calls.append(args)
+        return rendered
+
+    monkeypatch.setattr(demo, "render", render_step)
     applied = []
 
     def apply_step(resources, owner):
@@ -633,11 +653,26 @@ def test_deployment_records_actual_failure_stage_and_never_claims_false_success(
     assert report["preflight"]["status"] == "failed"
     assert report["diagnostic_warnings"] == plan["report"]["blockers"]
     assert not report["review_completed"] and not report["ui_verified"]
+    if not failure_stage:
+        assert render_calls[0][-1] == "192.168.70.254"
+        expected_network = {
+            "hostname": "host.minikube.internal",
+            "ipv4": "192.168.70.254",
+            "port": 11434,
+        }
+        for name in ("plan.json", "deployment.json"):
+            assert json.loads((tmp_path / name).read_text())["ollama_network"] == expected_network
     output = capsys.readouterr()
     if failure_stage:
         assert f"Deployment failed during {failure_stage}" in output.err
         assert "Ready is not inference acceptance" not in output.out
-    if failure_stage in {"image_build", "image_load", "dependency_apply"}:
+    if failure_stage in {
+        "ollama_host_resolution",
+        "resource_render",
+        "image_build",
+        "image_load",
+        "dependency_apply",
+    }:
         assert not applied
     elif failure_stage in {
         "dependency_readiness",

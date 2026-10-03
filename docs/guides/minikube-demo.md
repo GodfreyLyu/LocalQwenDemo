@@ -68,6 +68,51 @@ scripts/minikube_demo.sh stop
 
 [Historical diagnostics, repairs, and their limitations](../reports/minikube-maintenance-2026-09-20-to-21.md) are separate from this procedure.
 
+## Host Ollama network rule
+
+Every `up` resolves `host.minikube.internal` using `getent ahostsv4` inside the
+selected, verified Docker-driver node. It requires exactly one RFC1918 private
+IPv4 address (duplicate STREAM/DGRAM/RAW records are deduplicated). Empty,
+ambiguous, invalid, public, loopback, link-local and IPv6-only answers stop the
+attempt before namespace creation, image builds or application changes; there is
+no cached-address fallback. After builds, the script resolves again and stops if
+the address changed before rendering/applying application resources.
+
+The deployment render adds only that address as a `/32`, TCP port `11434`, to the
+backend's existing NetworkPolicy. The checked-in overlay contains no host IP.
+Each render starts from that overlay, so subsequent `up` replaces the previous
+managed address instead of accumulating allowances. DNS/DynamoDB/HTTPS and other
+Pods' rules are preserved. `plan.json` and a successful `deployment.json` record
+`ollama_network` (hostname, IPv4 address, port) for the selected target. These are
+observations, not a cache or proof of connectivity.
+
+Run from the repository root after starting your chosen cluster:
+
+```bash
+scripts/minikube_demo.sh up --profile minikube
+```
+
+This remains a full application deployment with the side effects described above.
+The generated rule is not continuously reconciled: rerun deployment after changing
+the Docker network or cluster. Raw `kubectl apply -k` bypasses address discovery
+and does not enable host Ollama egress. Offline ownership/capacity renders also do
+not resolve addresses. IPv6-only host networking is not supported by this path.
+
+Ollama need not be running to generate the rule. This change does not switch the
+application from Transformers to Ollama, modify its bind address, run inference,
+or establish NetworkPolicy enforcement. Verify connectivity separately from the
+actual backend Pod using the private kubeconfig printed by the deployment script:
+
+```bash
+kubectl --kubeconfig /path/to/target/kubeconfig --context minikube \
+  -n local-review-demo exec deployment/review-backend -c review-backend -- \
+  python -c 'import urllib.request; o=urllib.request.build_opener(urllib.request.ProxyHandler({})); r=o.open("http://host.minikube.internal:11434/api/version", timeout=5); print(r.status, r.read().decode())'
+```
+
+Expect HTTP 200 and an Ollama version. This probe runs no model and creates no
+review. A policy-capable CNI is still required for isolation; identifying a CNI
+by name alone does not prove whether a particular version enforces policies.
+
 ## State and ownership protection
 
 The entire cluster need not belong to this project. Application resources are created only in the dedicated `local-review-demo` namespace. Existing namespaces or resources with conflicting ownership are not adopted.

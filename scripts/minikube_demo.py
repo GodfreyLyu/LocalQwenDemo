@@ -451,7 +451,7 @@ def init_users():
     print("DynamoDB Local table verified; existing accounts retained.")
 
 
-def render(port, images=None, cold_timeout=3600, storage_class="standard"):
+def render(port, images=None, cold_timeout=3600, storage_class="standard", ollama_host_ip=None):
     import yaml
 
     resources = list(
@@ -475,6 +475,16 @@ def render(port, images=None, cold_timeout=3600, storage_class="standard"):
                 if name in images:
                     container["image"] = images[name]
                     container["imagePullPolicy"] = "Never"
+    if ollama_host_ip is not None:
+        from minikube_ollama import egress_rule
+
+        policies = [
+            r
+            for r in resources
+            if r["kind"] == "NetworkPolicy" and r["metadata"]["name"] == "review-backend"
+        ]
+        require(len(policies) == 1, "Expected one backend NetworkPolicy in the minikube render.")
+        policies[0]["spec"]["egress"].append(egress_rule(ollama_host_ip))
     return resources
 
 
@@ -629,6 +639,11 @@ def deploy_application(args, plan, stage):
     arch = plan["architecture"]
     owner = state(optional=True)
     ns = check_ownership(owner)
+    from minikube_ollama import HOSTNAME, PORT, resolve_host_ip
+
+    stage("ollama_host_resolution")
+    ollama_host_ip = resolve_host_ip()
+    print(f"Ollama egress: {HOSTNAME} -> {ollama_host_ip}/32 TCP {PORT}", flush=True)
     if owner is None:
         owner = TARGET | {"owner": secrets.token_hex(24), "state_version": 2}
         save("owner.json", owner)
@@ -667,6 +682,7 @@ def deploy_application(args, plan, stage):
         storage_class=plan["storage_class"],
         build_fingerprints=plan["fingerprints"],
         source_root=str(ROOT),
+        ollama_network={"hostname": HOSTNAME, "ipv4": ollama_host_ip, "port": PORT},
         images={},
         image_ids={},
         runtime_image_ids={},
@@ -717,7 +733,11 @@ def deploy_application(args, plan, stage):
         planned["runtime_image_ids"][name] = runtime_id
         save("plan.json", planned)
     stage("resource_render")
-    resources = render(port, images, args.cold_timeout, plan["storage_class"])
+    require(
+        resolve_host_ip() == ollama_host_ip,
+        "Ollama host address changed during deployment; rerun up to generate a fresh rule.",
+    )
+    resources = render(port, images, args.cold_timeout, plan["storage_class"], ollama_host_ip)
     # Preflight ALL resource conflicts before applying any application changes.
     stage("resource_ownership_check")
     for resource in resources:
