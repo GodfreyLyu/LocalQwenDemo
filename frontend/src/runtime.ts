@@ -8,8 +8,11 @@ export interface RuntimeInfo {
   accepting_submissions: boolean;
   model_id: string | null;
   model_revision: string | null;
-  model_source: 'backend_configuration' | 'test_fixture' | 'unknown';
-  device: 'cpu' | null;
+  model_source:
+    'backend_configuration' | 'ollama_api' | 'test_fixture' | 'unknown';
+  device: 'cpu' | 'gpu' | 'mixed' | null;
+  inference_backend?: 'ollama' | 'transformers';
+  quantization?: string | null;
 }
 export interface RuntimeState {
   info: RuntimeInfo | null;
@@ -29,10 +32,15 @@ function validInfo(value: RuntimeInfo): boolean {
     (value.model_id === null || typeof value.model_id === 'string') &&
     (value.model_revision === null ||
       typeof value.model_revision === 'string') &&
-    ['backend_configuration', 'test_fixture', 'unknown'].includes(
+    ['backend_configuration', 'ollama_api', 'test_fixture', 'unknown'].includes(
       value.model_source,
     ) &&
-    (value.device === null || value.device === 'cpu')
+    (value.device === null || ['cpu', 'gpu', 'mixed'].includes(value.device)) &&
+    (value.inference_backend === undefined ||
+      ['ollama', 'transformers'].includes(value.inference_backend)) &&
+    (value.quantization === undefined ||
+      value.quantization === null ||
+      typeof value.quantization === 'string')
   );
 }
 export function useRuntime(): RuntimeState {

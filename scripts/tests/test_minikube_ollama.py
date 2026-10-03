@@ -119,7 +119,7 @@ def test_real_render_replaces_environment_value_and_preserves_other_resources(mo
         assert rendered == expected
         rules = backend_policy(rendered)["spec"]["egress"]
         assert len([r for r in rules if {"protocol": "TCP", "port": 11434} in r["ports"]]) == 1
-    assert "11434" not in json.dumps(baseline)
+    assert "11434" not in json.dumps(backend_policy(baseline))
     assert "192.168.65.254" not in json.dumps(baseline)
 
 
@@ -139,3 +139,36 @@ def test_resolution_failure_precedes_namespace_build_and_application_mutations(m
     save.assert_not_called()
     kubectl.assert_not_called()
     build.assert_not_called()
+
+
+@pytest.mark.parametrize("backend", ["ollama", "transformers"])
+def test_explicit_adapter_render_preserves_budget_and_network(backend):
+    resources = d.render(8080, ollama_host_ip="192.168.65.254", model_backend=backend)
+    config = next(
+        r["data"]
+        for r in resources
+        if r["kind"] == "ConfigMap" and r["metadata"]["name"] == "review-config"
+    )
+    assert config["MODEL_BACKEND"] == backend
+    assert config["MODEL_MAX_INPUT_TOKENS"] == "2048"
+    assert config["MODEL_MAX_OUTPUT_TOKENS"] == "384"
+    assert config["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434"
+    assert config["OLLAMA_MODEL_DIGEST"].startswith("sha256:")
+    assert network.egress_rule("192.168.65.254") in backend_policy(resources)["spec"]["egress"]
+
+
+def test_acceptance_uses_ollama_digest_and_rejects_hf_revision():
+    import minikube_verify as v
+
+    identity = {"model_id": "qwen3:1.7b", "model_revision": "sha256:" + "a" * 64}
+    review = identity | {
+        "status": "completed",
+        "source_code": v.SOURCE,
+        "language": "python",
+        "review_result": "## Summary\nThe average function computes a mean of values.\n\n"
+        "## Findings\nEmpty values causes division by zero.\n\n"
+        "## Suggestions\nGuard average against empty values before division.",
+    }
+    v.completed_review(review, identity)
+    with pytest.raises(d.DemoError, match="identity"):
+        v.completed_review(review | {"model_revision": v.REVISION}, identity)

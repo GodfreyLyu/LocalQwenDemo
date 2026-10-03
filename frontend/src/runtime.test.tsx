@@ -1,4 +1,11 @@
-import { act, renderHook } from '@testing-library/react';
+import { AboutInstance } from './RuntimePanel';
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { RUNTIME_POLL_MS, useRuntime } from './runtime';
 
 it('never overlaps polling and aborts requests and scheduled work on unmount', async () => {
@@ -90,4 +97,33 @@ it('times out a hung request, shows disconnection, and recovers on the next poll
   } finally {
     vi.useRealTimers();
   }
+});
+
+it('accepts observed Ollama identity and labels digest, quantization and device', async () => {
+  const info = {
+    deployment_environment: 'minikube' as const,
+    inference_mode: 'real' as const,
+    service_status: 'ready',
+    accepting_submissions: true,
+    model_id: 'qwen3:1.7b',
+    model_revision: 'sha256:' + 'a'.repeat(64),
+    model_source: 'ollama_api' as const,
+    device: 'gpu' as const,
+    inference_backend: 'ollama' as const,
+    quantization: 'Q4_K_M',
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify(info))),
+  );
+  const { result, unmount } = renderHook(useRuntime);
+  await waitFor(() => expect(result.current.connection).toBe('connected'));
+  render(<AboutInstance runtime={result.current} />);
+  expect(screen.getByText(/Real model via local Ollama/)).toHaveTextContent(
+    'gpu',
+  );
+  expect(screen.getByText(/Model: qwen3/)).toHaveTextContent('Digest:');
+  expect(screen.getByText(/Model: qwen3/)).toHaveTextContent('Q4_K_M');
+  expect(screen.queryByText(/Real model on local CPU/)).not.toBeInTheDocument();
+  unmount();
 });

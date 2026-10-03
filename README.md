@@ -1,26 +1,27 @@
 # LocalQwenDemo
 
-**A local CPU-based LLM code-review service with automated deployment to an existing minikube cluster.**
+**A local LLM code-review service with native Ollama inference with automated deployment to an existing minikube cluster.**
 
 Paste a code snippet, receive a structured review, and revisit it in your private history.
-The React UI and FastAPI backend run `Qwen/Qwen3-1.7B` locally on CPU at a pinned revision.
-Submitted code is treated as text: it is never executed or sent to an external inference API.
+The React UI and FastAPI backend run in minikube; native host Ollama runs `qwen3:1.7b`
+Q4_K_M at a pinned digest. An explicit Transformers CPU backend remains available.
+Submitted code is treated as text: it is never executed or sent to a cloud inference API.
 The maintained deployment uses a user-managed, native, single-node minikube with the Docker
 driver. Local development tools are also available.
 
-[Quick start](#quick-start) · [Architecture](#architecture) · [Documentation](#documentation) · [Development](#development-and-contributing)
+[Ollama acceptance](docs/reports/ollama-integration-2026-10-03.md) · [Quick start](#quick-start) · [Architecture](#architecture) · [Documentation](#documentation) · [Development](#development-and-contributing)
 
 ## Key capabilities
 
 - **Durable submissions:** SQLite atomically records jobs, enforces queue capacity and
   deduplicates matching request IDs per account. Queued work survives restart; interrupted running
   work has a bounded retry policy.
-- **One inference at a time:** a background coordinator uses one CPU inference executor.
+- **One inference at a time:** a background coordinator uses one inference executor.
   Timed-out generation drains before another review can run; readiness reflects this state.
 - **Private accounts and history:** password hashing, signed sessions, exact Origin and
   CSRF checks protect access. History is scoped to the authenticated account.
-- **Reusable model cache:** startup checks every indexed weight shard and its structure,
-  reuses a complete cache, and fails clearly if download or validation cannot complete.
+- **Verified model identity:** Ollama startup verifies its digest, template and tokenizer;
+  saved reviews retain the actual model digest. The CPU backend validates cached weight shards.
 - **Owned deployment and recovery:** minikube automation checks target identity and resource
   ownership, builds/loads local images, and reuses data. Shared state and locks support
   multiple checkouts; explicit import and cleanup paths handle recovery.
@@ -38,6 +39,10 @@ service, not a validated highly available or publicly exposed production platfor
 [Open full-size image](docs/assets/application-architecture.png) ·
 [Edit the diagram in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO/LocalQwenDemo-%E2%80%94-Application-Architecture?node-id=0-1)
 
+The diagram describes the retained Transformers CPU path. In the default Ollama
+path, the executor calls host Ollama through `host.minikube.internal:11434`; the model
+weights and GPU computation are outside the cluster.
+
 The outer boundary is the minikube namespace `local-review-demo`; the inner boundary
 is one FastAPI backend process. Re-export the FigJam board after editing it to update
 this image.
@@ -52,8 +57,9 @@ stored status. The coordinator, executor and SQLite access layer run within the 
 The API and coordinator use that layer to access the same history PVC.
 
 The three cylinders are separate PVCs. The backend uses the history and model-cache PVCs;
-DynamoDB Local uses the accounts PVC. Cold startup may download the pinned snapshot from
-Hugging Face; complete cached weights are reused and are not baked into application images.
+DynamoDB Local uses the accounts PVC. Ollama uses host-managed weights and a pinned
+tokenizer cached in the backend PVC. The CPU adapter downloads/reuses its pinned HF
+weights there. Model weights are not baked into application images.
 
 ### Deployment management
 
@@ -88,7 +94,10 @@ imports and identity checks.
 Use macOS or Linux with Python 3.12, Docker, minikube and a kubectl compatible with the
 cluster. Docker and the node must match the host architecture; no silent emulation is used.
 Node 24 is needed for frontend development/tests, not the image-based deployment path.
-Installation and the first image/model download need network access.
+Installation and the first image/model download need network access. Start native Ollama,
+run `ollama pull qwen3:1.7b`, and expose port 11434 to the minikube host gateway as described
+in the [deployment guide](docs/guides/minikube-demo.md#host-ollama-network-rule).
+`up` selects Ollama by default; `up --model-backend transformers` explicitly selects CPU.
 
 The backend alone requests **2 CPUs / 4 GiB RAM** and is limited to **2 CPUs / 6 GiB**.
 Leave capacity for Kubernetes, the frontend, DynamoDB Local and other workloads. The three

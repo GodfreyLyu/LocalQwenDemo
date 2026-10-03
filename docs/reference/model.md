@@ -2,7 +2,54 @@
 
 [Documentation index](../README.md)
 
-The sole review model is [`Qwen/Qwen3-1.7B`](https://huggingface.co/Qwen/Qwen3-1.7B), pinned to Hugging Face commit [`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`](https://huggingface.co/Qwen/Qwen3-1.7B/tree/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e). Hugging Face's official metadata resolved that exact revision on 2026-09-12. The model is licensed under Apache-2.0. Its two BF16 safetensors files and locally verified SHA-256 values are:
+## Active backend selection
+
+Minikube now defaults to **native host Ollama** (`MODEL_BACKEND=ollama`), using
+`qwen3:1.7b` Q4_K_M. `OLLAMA_BASE_URL` is `http://host.minikube.internal:11434` in
+minikube and `http://localhost:11434` for direct development. It accepts only local
+HTTP endpoints on port 11434, disables proxy environment variables and redirects.
+`OLLAMA_MODEL_DIGEST` optionally pins a manifest digest; the maintained overlay pins
+`sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7`.
+The loaded digest is checked before and after each review to reject changed tags.
+
+Ollama uses the same three-section prompts, total output budget, quality validator,
+and serial durable queue. `/api/chat` uses streaming internally to observe first
+content latency and support cancellation; the browser still polls saved jobs.
+`think=false` renders the stock template's `/no_think` control and empty thinking
+prefix. Unexpected thinking/tool output is rejected. No reasoning is stored or logged.
+
+Startup downloads only the pinned `tokenizer.json`, verifies the stock template
+SHA-256, vocabulary, merges, architecture and size against `/api/show`, then checks
+one-token generation. All responses must report the same exact prompt token count
+as local admission. `num_ctx` includes both the input and output budgets, preventing
+context truncation for admitted requests. A custom template requires an explicitly
+implemented and tested renderer; character-count estimates are never used.
+
+Startup availability checks retry transient failures for up to 60 seconds; missing
+models, incompatible identities and malformed metadata fail immediately.
+
+Timeout/shutdown cancels the in-flight async HTTP operation and closes its connection
+before the adapter exits. Ollama owns remote generation cleanup; the single worker
+is not reused while the local operation remains active. Connection, missing-model,
+identity/tokenizer mismatch, timeout and malformed-stream failures produce explicit
+errors with no fallback or model download. Subsequent submissions may recover when
+the service is available; replacing the model digest requires a backend restart.
+
+`/api/v1/runtime` identifies Ollama by actual tag/digest and quantization from its API.
+Device means placement **observed at startup or the last completed review** from
+`/api/ps`, not continuous GPU monitoring. Saved review `model_revision` contains the
+Ollama `sha256:` digest; old HF revisions and simulated records are preserved.
+
+Use `up --model-backend transformers` for the explicit CPU path. Backend settings
+still default to Transformers for compatibility; the minikube overlay and `.env.example`
+select Ollama. See [deployment commands](../guides/minikube-demo.md).
+
+## Transformers CPU reference
+
+The following loading, weight-cache and tokenizer details describe the retained
+Transformers adapter. Its historical measurements are not Ollama benchmarks.
+
+The Transformers review model is [`Qwen/Qwen3-1.7B`](https://huggingface.co/Qwen/Qwen3-1.7B), pinned to Hugging Face commit [`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`](https://huggingface.co/Qwen/Qwen3-1.7B/tree/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e). Hugging Face's official metadata resolved that exact revision on 2026-09-12. The model is licensed under Apache-2.0. Its two BF16 safetensors files and locally verified SHA-256 values are:
 
 | File                               | SHA-256                                                            |
 | ---------------------------------- | ------------------------------------------------------------------ |

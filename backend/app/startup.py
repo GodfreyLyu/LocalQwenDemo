@@ -4,6 +4,7 @@ import logging
 import re
 from contextlib import contextmanager
 
+from app.errors import AppError
 from app.inference.model_cache import ModelCacheIncompleteError
 
 logger = logging.getLogger("review")
@@ -13,6 +14,7 @@ STAGES = frozenset(
         "users_storage",
         "queue_recovery",
         "model_load",
+        "ollama_validation",
         "model_dependencies",
         "cache_lookup",
         "model_download",
@@ -72,6 +74,16 @@ def failure_fields(exc):
     fields["error_code"] = (
         "model_cache_incomplete"
         if isinstance(exc, ModelCacheIncompleteError)
+        else exc.code
+        if isinstance(exc, AppError)
+        and exc.code
+        in {
+            "ollama_unavailable",
+            "ollama_model_missing",
+            "ollama_model_mismatch",
+            "inference_timeout",
+            "invalid_model_response",
+        }
         else "startup_or_storage_failure"
     )
     return fields

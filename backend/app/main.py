@@ -11,6 +11,7 @@ from app.api.routes import auth, health, reviews, runtime
 from app.config import Settings
 from app.coordinator import Coordinator
 from app.inference.model import ReviewModel, TransformersModel
+from app.inference.ollama import OllamaModel
 from app.logging import configure_logging
 from app.persistence.storage import Store
 from app.persistence.users import DynamoUsers, UserStore
@@ -46,7 +47,9 @@ def create_app(
     app.state.settings = config
     app.state.store = store = Store(config.data_dir)
     app.state.users = user_store = users or DynamoUsers(config)
-    app.state.model = review_model = model or TransformersModel(config)
+    app.state.model = review_model = model or (
+        OllamaModel(config) if config.model_backend == "ollama" else TransformersModel(config)
+    )
     app.state.coordinator = Coordinator(store, user_store, review_model, config)
     app.state.limiter = limiter = RateLimiter()
     app.state.review_service = ReviewService(

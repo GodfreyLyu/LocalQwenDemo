@@ -654,7 +654,8 @@ def test_deployment_records_actual_failure_stage_and_never_claims_false_success(
     assert report["diagnostic_warnings"] == plan["report"]["blockers"]
     assert not report["review_completed"] and not report["ui_verified"]
     if not failure_stage:
-        assert render_calls[0][-1] == "192.168.70.254"
+        assert render_calls[0][-2] == "192.168.70.254"
+        assert render_calls[0][-1] == "ollama"
         expected_network = {
             "hostname": "host.minikube.internal",
             "ipv4": "192.168.70.254",

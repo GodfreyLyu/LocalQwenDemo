@@ -98,9 +98,10 @@ the Docker network or cluster. Raw `kubectl apply -k` bypasses address discovery
 and does not enable host Ollama egress. Offline ownership/capacity renders also do
 not resolve addresses. IPv6-only host networking is not supported by this path.
 
-Ollama need not be running to generate the rule. This change does not switch the
-application from Transformers to Ollama, modify its bind address, run inference,
-or establish NetworkPolicy enforcement. Verify connectivity separately from the
+Address discovery itself needs no running Ollama server. The minikube overlay now
+selects Ollama by default, so application readiness requires a reachable host Ollama
+server with the pinned model installed. The script does not modify the host bind
+address or establish NetworkPolicy enforcement. Verify connectivity separately from the
 actual backend Pod using the private kubeconfig printed by the deployment script:
 
 ```bash
@@ -244,11 +245,35 @@ The minikube overlay retains `OMP_NUM_THREADS=2`; see the [model reference](../r
 
 ### Acceptance procedure
 
-The model is pinned to `Qwen/Qwen3-1.7B` / `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`, using TransformersModel on CPU, Torch 2.8.0, BF16, 2 threads, `trust_remote_code=False`, safetensors, `enable_thinking=False`, 2048 input / 384 total output tokens, a 300-second timeout, one worker, and concurrency 1. Acceptance uses the production three-section generation, prompts, quality gates, authentication/CSRF, user history isolation, rate limits, and durable queue. There is no fake model, external inference, or automatic float32 fallback. Weights go only into the PVC, not images or Git; the host cache is not moved.
+Default minikube inference uses native host Ollama with `qwen3:1.7b`, Q4_K_M,
+pinned manifest digest `sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7`.
+Install the model with `ollama pull qwen3:1.7b` and configure Ollama to listen on an
+address reachable from minikube before `up`. A changed upstream tag must be reviewed
+and its digest explicitly updated in the overlay; startup rejects a mismatch.
+
+```bash
+scripts/minikube_demo.sh up --profile minikube --model-backend ollama
+scripts/minikube_demo.sh verify --profile minikube
+# Explicit CPU baseline / fallback (never automatic):
+scripts/minikube_demo.sh up --profile minikube --model-backend transformers
+```
+
+Both adapters retain three separate section prompts, 2048 input / 384 total output
+tokens, a 300-second whole-job timeout, one worker, unchanged validation and account
+isolation. The Ollama adapter calls `/api/chat` with `think=false`, verifies the stock
+chat template and GGUF vocabulary/merges against the pinned HF tokenizer, and checks
+`prompt_eval_count` on every response. Unsupported templates fail startup. Ollama
+weights stay on the host; only tokenizer assets are required in the model-cache PVC.
+Runtime and saved results expose the actual Ollama digest rather than the HF revision.
+
+The explicit Transformers path keeps `Qwen/Qwen3-1.7B` / HF revision
+`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`, Torch 2.8.0 CPU, BF16 and two threads.
+The existing image and resource reservations retain capacity for that fallback;
+Ollama migration alone does not reduce those reservations.
 
 `verify` checks the homepage and security headers through the same localhost entry point, live/ready JSON, and 401 responses for unauthenticated API requests. It registers/logs in a dedicated account, checks Cookie/CSRF behavior and rejection of an incorrect Origin, and submits the fixed `average(values)` sample. Acceptance requires a real `completed` result, the correct model/revision, valid Summary/Findings/Suggestions, the existing quality checks, and mention of the sample's empty-input/division-by-zero issue. A failed, timed-out, or invalid_model_response result, HTTP 200 alone, or a Running Pod is not success. The script does not retry blindly.
 
-It then checks history, repeat login, and isolation from a second user. With an idle queue, it performs controlled recreation of only this project's backend/DynamoDB Pods and verifies that the old Cookie, account, history body, and pinned weight file size/mtime/inode survive. It records review duration, cgroup current/peak memory, and warm recreation time. Unavailable measurements are recorded as `not_measured`.
+It then checks history, repeat login, and isolation from a second user. With an idle queue, it performs controlled recreation of only this project's backend/DynamoDB Pods and verifies that the old Cookie, account, history body, and active adapter cache file size/mtime/inode survive (tokenizer for Ollama, weights for Transformers), and that model identity remains unchanged. It records review duration, cgroup current/peak memory, and warm recreation time. Unavailable measurements are recorded as `not_measured`.
 
 Network acceptance is recorded separately: allowed paths must succeed; the prohibited backend→frontend path is probed with a Python socket, and only an actual timeout counts as observed blocking. A CNI reported as policy-capable fails acceptance if it allows that path. A CNI without policy support may still allow product inference acceptance to proceed, but `network_policy.enforcement_verified=false` and network isolation must not be reported as passed.
 

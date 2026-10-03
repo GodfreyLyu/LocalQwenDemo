@@ -48,17 +48,22 @@ export function AboutInstance({ runtime }: { runtime: RuntimeState }) {
         <p>
           {environmentLabel(info)}.{' '}
           {info?.inference_mode === 'real'
-            ? 'Real model on local CPU.'
+            ? info.inference_backend === 'ollama'
+              ? `Real model via local Ollama. Device at last inference: ${info.device ?? 'unknown'}.`
+              : 'Real model on local CPU.'
             : modeLabel(info)}
         </p>
         <p>
-          Model: {info?.model_id ?? 'Unknown'}. Revision:{' '}
+          Model: {info?.model_id ?? 'Unknown'}.{' '}
+          {info?.inference_backend === 'ollama' ? 'Digest' : 'Revision'}:{' '}
           <code>{info?.model_revision ?? 'Unknown'}</code>. Source:{' '}
-          {info?.model_source === 'backend_configuration'
-            ? 'backend model configuration (pinned weight revision)'
-            : info?.model_source === 'test_fixture'
-              ? 'deterministic test fixture, not Qwen weights'
-              : 'unknown'}
+          {info?.model_source === 'ollama_api'
+            ? `Ollama API; quantization ${info.quantization ?? 'unknown'}`
+            : info?.model_source === 'backend_configuration'
+              ? 'backend model configuration (pinned weight revision)'
+              : info?.model_source === 'test_fixture'
+                ? 'deterministic test fixture, not Qwen weights'
+                : 'unknown'}
           .
         </p>
         <p>
@@ -73,10 +78,10 @@ export function AboutInstance({ runtime }: { runtime: RuntimeState }) {
           reset when the harness restarts.
         </p>
         <p>
-          The built-in Qwen adapter uses local CPU inference; the simulated
-          adapter returns a test fixture. Neither calls an external inference
-          API or executes submitted source code. Initial environment or model
-          preparation may download dependencies and weights.
+          Real reviews use the configured local Ollama service or the in-process
+          Transformers CPU adapter. The simulated adapter returns a test
+          fixture. Submitted source code is never executed. Initial environment
+          or model preparation may download dependencies and weights.
         </p>
         <p>
           Environment comes from explicit backend deployment configuration,

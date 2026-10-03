@@ -1,5 +1,7 @@
+import ipaddress
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +26,10 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-1"
     dynamodb_table: str = "llm-review-users"
     dynamodb_endpoint_url: str
+    model_backend: Literal["transformers", "ollama"] = "transformers"
+    ollama_base_url: str = "http://host.minikube.internal:11434"
+    ollama_model: str = Field(default="qwen3:1.7b", pattern=r"^[a-zA-Z0-9._:/-]{1,128}$")
+    ollama_model_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     model_id: Literal["Qwen/Qwen3-1.7B"] = "Qwen/Qwen3-1.7B"
     model_revision: str = Field(default=MODEL_REVISION, pattern=r"^[0-9a-f]{40}$")
     hf_home: Path = Path("/models/huggingface")
@@ -47,5 +53,31 @@ class Settings(BaseSettings):
             raise ValueError("SIGNING_SECRET must contain at least 32 characters.")
         if self.allowed_origin.endswith("/"):
             raise ValueError("ALLOWED_ORIGIN must not end with a slash.")
+        url = urlsplit(self.ollama_base_url)
+        allowed_host = url.hostname in {
+            "localhost",
+            "host.minikube.internal",
+            "host.docker.internal",
+        }
+        try:
+            address = ipaddress.ip_address(url.hostname or "")
+            allowed_host = address.is_loopback or any(
+                address in ipaddress.ip_network(n)
+                for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+            )
+        except ValueError:
+            pass
+        if (
+            url.scheme != "http"
+            or not allowed_host
+            or url.username
+            or url.password
+            or url.path not in ("", "/")
+            or url.query
+            or url.fragment
+            or url.port != 11434
+        ):
+            raise ValueError("OLLAMA_BASE_URL must be a local HTTP endpoint on port 11434.")
+        self.ollama_base_url = self.ollama_base_url.rstrip("/")
         validate_local_endpoint(self.dynamodb_endpoint_url)
         return self
