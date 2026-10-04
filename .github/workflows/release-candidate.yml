@@ -25,9 +25,10 @@ jobs:
       contents: write
       packages: write
       pull-requests: write
+      statuses: read
     outputs:
-      published: ${{ steps.publish.outputs.published == 'true' || (steps.plan.outputs.changed == 'false' && steps.plan.outputs.existing_candidate_sha != '') }}
-      candidate_sha: ${{ steps.publish.outputs.candidate_sha || steps.plan.outputs.existing_candidate_sha }}
+      published: ${{ steps.publish.outputs.published }}
+      candidate_sha: ${{ steps.publish.outputs.candidate_sha }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -50,11 +51,11 @@ jobs:
           if [ "$REBUILD" = true ]; then args+=(--force); fi
           python scripts/release/publish.py prepare --workspace "$RUNNER_TEMP/release" "${args[@]}"
       - uses: docker/setup-qemu-action@v3
-        if: steps.plan.outputs.changed == 'true'
+        if: steps.plan.outputs.materialize == 'true'
       - uses: docker/setup-buildx-action@v3
-        if: steps.plan.outputs.changed == 'true'
+        if: steps.plan.outputs.materialize == 'true'
       - uses: docker/login-action@v3
-        if: steps.plan.outputs.changed == 'true'
+        if: steps.plan.outputs.materialize == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -88,7 +89,7 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
       - name: Materialize and validate snapshot
-        if: steps.plan.outputs.changed == 'true'
+        if: steps.plan.outputs.materialize == 'true'
         env:
           BACKEND_DIGEST: ${{ steps.backend.outputs.digest || steps.plan.outputs.backend_digest }}
           FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest || steps.plan.outputs.frontend_digest }}
@@ -99,9 +100,8 @@ jobs:
           docker buildx imagetools inspect "$FRONTEND_REPOSITORY@$FRONTEND_DIGEST"
           python scripts/release/snapshot.py render --plan "$RUNNER_TEMP/release/plan.json" --output "$RUNNER_TEMP/release/candidate" --backend-digest "$BACKEND_DIGEST" --frontend-digest "$FRONTEND_DIGEST"
           python scripts/validate_helm.py --root "$RUNNER_TEMP/release/candidate" --snapshot
-      - name: Create or update release PR
+      - name: Create immutable version branch and release PR
         id: publish
-        if: steps.plan.outputs.changed == 'true'
         run: python scripts/release/publish.py publish --workspace "$RUNNER_TEMP/release"
   validate-candidate:
     needs: candidate
@@ -112,3 +112,25 @@ jobs:
     permissions:
       contents: read
       statuses: write
+      pull-requests: read
+  supersede:
+    needs: [candidate, validate-candidate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml==6.0.3
+      - name: Close older PRs only after the new snapshot passes validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
+        run: python scripts/release/publish.py supersede --candidate-sha "$CANDIDATE_SHA"

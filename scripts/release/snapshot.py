@@ -1,8 +1,10 @@
 """Deterministic release inputs and allowlisted deployment snapshots; no cluster access."""
 
 import argparse
+import copy
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -76,7 +78,9 @@ def plan(root, previous, repository):
             and DIGEST.fullmatch(old.get("digest", ""))
             and SHA.fullmatch(old.get("sourceSha", ""))
         )
-        images[component] = old if reuse else {"repository": name, "sourceSha": source}
+        images[component] = (
+            copy.deepcopy(old) if reuse else {"repository": name, "sourceSha": source}
+        )
     return {
         "schemaVersion": 1,
         "sourceSha": source,
@@ -87,9 +91,29 @@ def plan(root, previous, repository):
     }
 
 
+def candidate_metadata(root, base, run_number, run_id):
+    version = yaml.safe_load((root / CHART / "Chart.yaml").read_text())["version"]
+    if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version):
+        raise ValueError("Source Chart version must be a stable numeric SemVer")
+    if not SHA.fullmatch(base):
+        raise ValueError("Invalid release base SHA")
+    if not re.fullmatch(r"[1-9][0-9]*", str(run_number)) or not re.fullmatch(
+        r"[1-9][0-9]*", str(run_id)
+    ):
+        raise ValueError("Positive GitHub run number and run ID are required")
+    version += "-rc." + str(run_number)
+    return {
+        "version": version,
+        "branch": "release-candidate/" + version,
+        "runId": str(run_id),
+        "runNumber": int(run_number),
+        "baseSha": base,
+    }
+
+
 def materialize(root, destination, candidate, digests):
     """Destination is a dedicated candidate checkout; only generated paths are replaced."""
-    manifest = {k: v for k, v in candidate.items() if k not in {"changed", "build"}}
+    manifest = copy.deepcopy({k: v for k, v in candidate.items() if k not in {"changed", "build"}})
     for component, entry in manifest["images"].items():
         if candidate["build"][component]:
             entry["digest"] = digests[component]
@@ -105,8 +129,9 @@ def materialize(root, destination, candidate, digests):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(root / name, target)
     chart = yaml.safe_load((target_chart / "Chart.yaml").read_text())
-    # A stable SemVer prerelease identifies the exact main commit, including retries.
-    chart["version"] = chart["version"].split("-")[0] + "-sha." + manifest["sourceSha"][:12]
+    if manifest.get("schemaVersion") != 2 or "candidate" not in manifest:
+        raise ValueError("New snapshots require versioned candidate metadata")
+    chart["version"] = manifest["candidate"]["version"]
     chart["appVersion"] = manifest["sourceSha"]
     (target_chart / "Chart.yaml").write_text(yaml.safe_dump(chart, sort_keys=False))
     manifest["chartVersion"] = chart["version"]
@@ -139,6 +164,9 @@ def main():
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--previous", type=Path)
     parser.add_argument("--repository")
+    parser.add_argument("--base-sha")
+    parser.add_argument("--run-number", default=os.environ.get("GITHUB_RUN_NUMBER"))
+    parser.add_argument("--run-id", default=os.environ.get("GITHUB_RUN_ID"))
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--backend-digest", default="")
@@ -150,9 +178,12 @@ def main():
             if args.previous and args.previous.exists()
             else {}
         )
-        args.plan.write_text(
-            json.dumps(plan(args.root, previous, args.repository), indent=2) + "\n"
+        candidate = plan(args.root, previous, args.repository)
+        candidate["schemaVersion"] = 2
+        candidate["candidate"] = candidate_metadata(
+            args.root, args.base_sha or "", args.run_number, args.run_id
         )
+        args.plan.write_text(json.dumps(candidate, indent=2) + "\n")
     else:
         materialize(
             args.root,

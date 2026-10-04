@@ -7,28 +7,38 @@ the source Chart in main and review the generated release PR.
 
 ## Automated release flow
 
-Every push to main calls the existing source quality workflow, fingerprints the
-actual component inputs, builds changed images for linux/amd64 and linux/arm64,
-pushes them to GHCR, renders and validates a deployment snapshot, then opens or
-updates `automation/deployment-release` → `deployment-release`.
+Every push to main calls the source quality workflow, fingerprints the actual
+component inputs, builds changed images for linux/amd64 and linux/arm64, pushes
+them to GHCR, and renders and validates a snapshot. It creates a versioned branch,
+for example `release-candidate/0.1.0-rc.42`, and a PR to `deployment-release`.
+Only a reviewed PR can update the approved release branch.
+
+The version combines main's stable Chart version and the Release candidate
+workflow's `GITHUB_RUN_NUMBER`. Failed or no-op runs can leave gaps; a rerun keeps
+the same number. The branch is created atomically and never updated, force-pushed,
+rebased or deleted. Another change requires another workflow run/version.
 
 The initial release builds both images. Later releases retain each unchanged
 image's digest and original source SHA. Configuration-only updates reuse images;
 documentation outside the published deployment inputs produces no empty PR.
-Build fingerprints compare with the open candidate, or the approved release when
-there is no open candidate, so failed/cancelled intermediate runs do not lose changes.
-Source quality runs even when there is no deployable difference.
+Fingerprints compare with the newest validated open candidate on the current
+release base, or the approved release, so failed/cancelled intermediate runs do
+not lose changes. Source quality runs even without a deployable difference.
 
-The candidate branch is based on deployment-release and receives only the Chart,
-release values, provenance, deployment tools and this guide. It never contains the
-frontend/backend source trees. One PR accumulates changes until reviewed. The bot
-uses a branch lease and checks both main and the release base before publishing.
-An older run cannot replace a newer candidate. If the release base changes during
-a build, rerun the workflow on the latest main.
+A candidate is one commit based on the current deployment-release and contains
+only the Chart, release values, provenance, deployment tools and this guide.
+Application source trees are not copied. CI validates the exact candidate branch head and its
+release base, posts `deployment/snapshot`, and only then closes older automatic
+PRs with a link to the replacement. Their branches remain available for audit.
+Until validation succeeds, the previous PR stays open; a failed candidate never
+replaces it. Existing legacy `automation/deployment-release` PRs follow this same
+migration rule. Supersession itself is a separate job and can be retried.
 
-`release.json` records the main SHA, input fingerprints, Chart version and each
-image's source SHA/digest. The Chart uses a deterministic `-sha.<commit>` SemVer
-prerelease. Merging the PR approves a snapshot; it does not deploy a cluster.
+`release.json` format 2 records the main SHA, input fingerprints, image source
+SHAs/digests, version, branch, workflow run ID/number and release base SHA. The
+Chart version matches the candidate version and appVersion identifies main's
+commit. Legacy format 1 remains readable for migration. Merging a PR approves
+a snapshot; deploying it to a selected cluster remains an explicit operation.
 
 ### One-time repository setup
 
@@ -51,18 +61,40 @@ prerelease. Merging the PR approves a snapshot; it does not deploy a cluster.
    public package visibility. For private packages, create an image pull Secret in
    the deployment namespace and supply `imagePullSecrets: [{name: ghcr-pull}]`.
 
-Recommended branch protection for deployment-release: require a reviewed PR and
-the `deployment/snapshot` commit status. The release workflow calls validation
-directly after publishing and posts that status to the exact candidate SHA. This
-does not depend on a GITHUB_TOKEN-generated PR starting another workflow. The
-release-branch PR entrypoint also validates same-repository manual updates.
-The validator executes trusted main code and treats the candidate as data.
+Repository protection is recorded in `deploy/release/branch-protection.json`:
+require one approving review, dismiss stale approvals, require `deployment/snapshot`
+from GitHub Actions, require an up-to-date base, enforce rules for administrators,
+and block force pushes and deletion. The candidate ruleset in
+`deploy/release/candidate-ruleset.json` prevents updates and deletion of
+`release-candidate/*` with no bypass actors; creation is allowed. Keep automatic
+branch deletion disabled. Maintainers apply these settings using the repository
+administration API; the release workflow has no administration access.
 
-To retry a failed build, rerun **Release candidate** on current main. The manual
-`rebuild` option republishes both images, for example after registry cleanup or
-when intentionally refreshing base images. To retry candidate validation alone,
-dispatch **Deployment validation** on main with the full candidate SHA. A normal
-retry with an unchanged open candidate also invokes validation again.
+```bash
+gh api --method PUT repos/GodfreyLyu/LocalQwenDemo/branches/deployment-release/protection \
+  --input deploy/release/branch-protection.json
+gh api --method POST repos/GodfreyLyu/LocalQwenDemo/rulesets \
+  --input deploy/release/candidate-ruleset.json
+```
+
+Create the ruleset once; update its existing ID when changing the policy.
+The release workflow invokes validation directly, so it does not depend on a
+GITHUB_TOKEN-created PR triggering another workflow. The bootstrap PR entrypoint
+also invokes validation, using trusted main code and treating snapshots as data.
+The existing public-repository entrypoint remains unchanged during migration.
+
+Rerun a failed **Release candidate** run to recover build or PR creation failures.
+Once its version branch exists, retry verifies and reuses its exact snapshot,
+commit, digests and PR, including when `rebuild` was selected. It refuses content,
+run identity or release-base drift and never reopens a rejected/merged PR. If
+main or the approved base has changed, start a **new** workflow run on current
+main. Do not use GitHub's Update branch button on immutable candidates.
+
+To intentionally rebuild images, start a new manual run with `rebuild=true`.
+To retry validation alone, dispatch **Deployment validation** on main with the
+full candidate SHA. This only validates; rerun the release workflow's failed jobs
+to complete pending supersession. An unchanged validated open candidate is
+reused and revalidated without creating an empty PR.
 
 ## Deploy a reviewed snapshot to an explicit Minikube profile
 
@@ -172,11 +204,12 @@ Secret are not part of the release. The namespace is retained. A retained claim
 is not automatically portable across namespaces or clusters, and StorageClass
 changes do not migrate existing data.
 
-To roll back, open a PR restoring the desired earlier Chart, release-values and
-release.json together, validate it, merge and explicitly deploy it. Reuse retained
-PVCs/Secret. Helm or Git rollback does not undo database changes. If main has moved
-on, close or review an existing automatic candidate so it does not accidentally
-re-promote the version you just rolled back.
+For an audited rollback, revert the intended application/Chart/configuration
+changes through a PR to main. CI then produces a new versioned candidate against
+the current approved release; review, merge and explicitly deploy that snapshot.
+Do not restore an old release.json verbatim: its version and release base belong
+to an earlier candidate. Reuse retained PVCs/Secret. A rollback does not undo
+database changes; verify compatibility before deploying earlier application code.
 
 ## Verification
 
@@ -186,6 +219,7 @@ python scripts/validate_helm.py --snapshot
 
 Source CI also checks source Chart variants, configuration rollouts, PVC retention,
 single-worker constraints, cumulative changes, image reuse/provenance, malformed
-digests and explicit target selection. Offline checks do not prove real model
+digests, immutable version/retry behavior, failed-candidate preservation, stale
+base rejection, supersession and explicit target selection. Offline checks do not prove real model
 inference, multi-architecture image execution or the behavior of a particular CNI;
 those are separate environment acceptance checks.

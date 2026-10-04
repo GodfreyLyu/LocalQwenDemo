@@ -26,7 +26,7 @@ jobs:
         with:
           ref: main
           path: validator
-          persist-credentials: false
+          fetch-depth: 0
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.snapshot-sha }}
@@ -39,12 +39,22 @@ jobs:
         with:
           version: v3.17.3
       - run: pip install pyyaml==6.0.3
+      - name: Verify immutable head and current release base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.snapshot-sha }}
+        run: python validator/scripts/release/publish.py verify --root validator --candidate-sha "$CANDIDATE_SHA"
       - name: Validate snapshot using trusted main code
         run: python validator/scripts/validate_helm.py --root snapshot --snapshot
       - name: Validate Kubernetes resource schemas
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash validator/scripts/check_helm_schema.sh snapshot
+      - name: Recheck candidate provenance after validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.snapshot-sha }}
+        run: python validator/scripts/release/publish.py verify --root validator --candidate-sha "$CANDIDATE_SHA"
       - name: Record status on the exact candidate commit
         if: always()
         env:
