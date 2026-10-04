@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "sourceSha": "86f460c9d1fd10ecba57bafd16ba4c6ebe29b138",
+  "inputs": {
+    "backend": "b60096640cc5d9d901e41d14e8e2c420212c54436bf5754721a543375dec2798",
+    "frontend": "2909bf239d68130281ccb0b703f2ff2bb1aaac8ef7cc3b4c243e1f08987d779c",
+    "deployment": "724ac6e326a307a53f7863c1e539f5d23fddb1f27ececee028618fe41efd1088"
+  },
+  "images": {
+    "backend": {
+      "repository": "ghcr.io/godfreylyu/localqwendemo-backend",
+      "sourceSha": "86f460c9d1fd10ecba57bafd16ba4c6ebe29b138",
+      "digest": "sha256:b219058f5bd98faac31ba02f23f906100e83fb662fa1d5194e2f8935f6cec4ad"
+    },
+    "frontend": {
+      "repository": "ghcr.io/godfreylyu/localqwendemo-frontend",
+      "sourceSha": "86f460c9d1fd10ecba57bafd16ba4c6ebe29b138",
+      "digest": "sha256:d933c35090500cf182ca7c748990e5c9e04883c97acaf13fb5be4fd63aa62500"
+    }
+  },
+  "chartVersion": "0.1.0-sha.86f460c9d1fd"
+}

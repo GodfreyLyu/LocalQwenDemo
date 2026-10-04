@@ -1,0 +1,18 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: default-deny
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  policyTypes:
+  - Ingress
+  - Egress
+{{- end }}

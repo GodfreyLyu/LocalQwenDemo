@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-frontend
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  progressDeadlineSeconds: 2100
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: review-frontend
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: review-frontend
+        app.kubernetes.io/part-of: local-review-demo
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-review-config.yaml") . | sha256sum }}
+        checksum/nginx: {{ .Files.Get "files/nginx.conf" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - image: {{ include "review.image" .Values.frontend.image | quote }}
+        imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+        name: review-frontend
+        ports:
+        - containerPort: 8080
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources: {{ .Values.frontend.resources | toJson }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        startupProbe:
+          failureThreshold: 12
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+        volumeMounts:
+        - mountPath: /etc/nginx/nginx.conf
+          name: local-nginx
+          readOnly: true
+          subPath: nginx.conf
+        - mountPath: /tmp
+          name: tmp
+      securityContext:
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+        runAsGroup: 101
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: review-frontend
+      terminationGracePeriodSeconds: 60
+      volumes:
+      - configMap:
+          name: review-local-nginx
+        name: local-nginx
+      - emptyDir:
+          sizeLimit: 128Mi
+        name: tmp
+      imagePullSecrets: {{ .Values.imagePullSecrets | toJson }}

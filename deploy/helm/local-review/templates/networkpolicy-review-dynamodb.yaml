@@ -1,0 +1,29 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-dynamodb
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  egress: []
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: review-backend
+          app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    ports:
+    - port: 8000
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: review-dynamodb
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  policyTypes:
+  - Ingress
+  - Egress
+{{- end }}
