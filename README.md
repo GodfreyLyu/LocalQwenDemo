@@ -1,5 +1,7 @@
 # LocalQwenDemo
 
+Helm release automation and deployment: [guide](docs/guides/helm-release.md).
+
 **A local LLM code-review service with native Ollama inference with automated deployment to an existing minikube cluster.**
 
 Paste a code snippet, receive a structured review, and revisit it in your private history.

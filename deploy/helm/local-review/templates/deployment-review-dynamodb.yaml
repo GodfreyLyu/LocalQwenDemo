@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-dynamodb
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: review-dynamodb
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: review-dynamodb
+        app.kubernetes.io/part-of: local-review-demo
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-review-config.yaml") . | sha256sum }}
+        checksum/nginx: {{ .Files.Get "files/nginx.conf" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - args:
+        - -jar
+        - DynamoDBLocal.jar
+        - -sharedDb
+        - -dbPath
+        - /data
+        - -disableTelemetry
+        env:
+        - name: JAVA_TOOL_OPTIONS
+          value: -Xms64m -Xmx256m -Djava.io.tmpdir=/tmp -Duser.home=/tmp
+        image: {{ include "review.image" .Values.dynamodb.image | quote }}
+        imagePullPolicy: {{ .Values.dynamodb.image.pullPolicy }}
+        livenessProbe:
+          periodSeconds: 10
+          tcpSocket:
+            port: http
+        name: review-dynamodb
+        ports:
+        - containerPort: 8000
+          name: http
+        readinessProbe:
+          periodSeconds: 5
+          tcpSocket:
+            port: http
+        resources: {{ .Values.dynamodb.resources | toJson }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        startupProbe:
+          failureThreshold: 40
+          periodSeconds: 3
+          tcpSocket:
+            port: http
+        volumeMounts:
+        - mountPath: /data
+          name: data
+        - mountPath: /tmp
+          name: tmp
+      initContainers:
+{{- if .Values.volumePermissions.enabled }}
+      - args:
+        - import os; os.chown('/data', 1000, 10001); os.chmod('/data', 0o770)
+        command:
+        - python
+        - -c
+        image: {{ include "review.image" .Values.backend.image | quote }}
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        name: volume-permissions
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - CHOWN
+            - FOWNER
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 0
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /data
+          name: data
+{{- end }}
+      securityContext:
+        fsGroup: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ default "review-dynamodb" .Values.persistence.dynamodb.existingClaim | quote }}
+      - emptyDir:
+          sizeLimit: 128Mi
+        name: tmp
+      imagePullSecrets: {{ .Values.imagePullSecrets | toJson }}
