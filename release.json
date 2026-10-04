@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "sourceSha": "d81cd2bf3590116e0f54d63f9f91178f5e9232bf",
+  "inputs": {
+    "backend": "b60096640cc5d9d901e41d14e8e2c420212c54436bf5754721a543375dec2798",
+    "frontend": "2909bf239d68130281ccb0b703f2ff2bb1aaac8ef7cc3b4c243e1f08987d779c",
+    "deployment": "5b01d3f7c5ecd773050b952e89d52ff0f9969dc8cf80f41ec642c2e07f1142a8"
+  },
+  "images": {
+    "backend": {
+      "repository": "ghcr.io/godfreylyu/localqwendemo-backend",
+      "sourceSha": "d81cd2bf3590116e0f54d63f9f91178f5e9232bf",
+      "digest": "sha256:04ca634da146d973205e6d3643bac91f49baa4858a858a8825447911aab5203e"
+    },
+    "frontend": {
+      "repository": "ghcr.io/godfreylyu/localqwendemo-frontend",
+      "sourceSha": "d81cd2bf3590116e0f54d63f9f91178f5e9232bf",
+      "digest": "sha256:9eba8164c47000f63c931132cb803ca26611acc29a49dd06b144df62dec8a240"
+    }
+  },
+  "candidate": {
+    "version": "0.1.0-rc.3",
+    "branch": "release-candidate/0.1.0-rc.3",
+    "runId": "37180843030",
+    "runNumber": 3,
+    "baseSha": "5e9e56e38aa0fb288ec93ea498766d80295c1f44"
+  },
+  "chartVersion": "0.1.0-rc.3"
+}

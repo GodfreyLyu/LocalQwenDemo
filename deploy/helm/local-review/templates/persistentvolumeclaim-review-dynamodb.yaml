@@ -1,0 +1,20 @@
+{{- if not .Values.persistence.dynamodb.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-dynamodb
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.dynamodb.size | quote }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+{{- end }}

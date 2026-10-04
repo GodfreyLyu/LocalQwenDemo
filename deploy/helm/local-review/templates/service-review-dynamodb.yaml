@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-dynamodb
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http
+  selector:
+    app: review-dynamodb
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
