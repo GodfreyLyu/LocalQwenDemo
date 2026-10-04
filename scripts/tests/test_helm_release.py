@@ -678,3 +678,17 @@ def test_snapshot_rejects_invalid_version_provenance(source, tmp_path, field, va
 def test_version_requires_valid_workflow_identity(source, number, run_id):
     with pytest.raises(ValueError, match="Positive GitHub"):
         snapshot.candidate_metadata(source, "a" * 40, number, run_id)
+
+
+def test_snapshot_verification_needs_no_pull_request_api_access(
+    source, tmp_path, publishing, monkeypatch
+):
+    old = first_candidate(source, tmp_path, publishing)
+
+    def denied(*args, **kwargs):
+        raise AssertionError("Bootstrap validation must not require PR API permissions")
+
+    monkeypatch.setattr(publish, "pull_requests", denied)
+    manifest, base = publish.verify_snapshot(source, old["headRefOid"])
+    assert manifest["candidate"]["branch"] == old["headRefName"]
+    assert manifest["candidate"]["baseSha"] == base

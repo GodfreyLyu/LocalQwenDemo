@@ -307,27 +307,37 @@ def publish(root, workspace, repository):
     output("pr_number", pr_number)
 
 
-def verify_candidate(root, repository, sha):
+def verify_snapshot(root, sha):
+    """Verify immutable refs with contents access, compatible with the bootstrap caller."""
     if not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise ValueError("Invalid candidate SHA")
-    # Fetch through a PR's branch, never execute anything from that branch.
-    matching = [p for p in pull_requests(repository) if managed(p) and p["headRefOid"] == sha]
-    if len(matching) != 1:
-        raise ValueError("Expected one open same-repository release PR for this commit")
-    pr = matching[0]
-    branch = pr["headRefName"]
+    command("git", "fetch", "origin", sha, cwd=root)
+    manifest = manifest_at(root, sha)
+    branch = manifest.get("candidate", {}).get("branch", LEGACY_HEAD)
+    if not branch.startswith(PREFIX) and branch != LEGACY_HEAD:
+        raise ValueError("Unexpected candidate branch")
     fetch_branch(root, branch)
     base = remote(root, BASE)
     fetch_branch(root, BASE)
     if remote(root, branch) != sha or parents(root, sha) != [base]:
         raise ValueError("Candidate or release base changed; generate a new candidate")
-    manifest = manifest_at(root, sha)
     if manifest.get("schemaVersion") == 2:
         metadata = manifest["candidate"]
-        if metadata["branch"] != branch or metadata["baseSha"] != base:
+        if not branch.startswith(PREFIX) or metadata["baseSha"] != base:
             raise ValueError("Candidate branch/base provenance mismatch")
     elif branch != LEGACY_HEAD:
         raise ValueError("Versioned branches require versioned provenance")
+    return manifest, base
+
+
+def verify_candidate(root, repository, sha):
+    manifest, base = verify_snapshot(root, sha)
+    matching = [p for p in pull_requests(repository) if managed(p) and p["headRefOid"] == sha]
+    if len(matching) != 1:
+        raise ValueError("Expected one open same-repository release PR for this commit")
+    pr = matching[0]
+    if pr["headRefName"] != manifest.get("candidate", {}).get("branch", LEGACY_HEAD):
+        raise ValueError("Candidate PR branch provenance mismatch")
     return pr, manifest, base
 
 
@@ -386,7 +396,7 @@ def main():
     elif args.action == "publish":
         publish(root, args.workspace.resolve(), args.repository)
     elif args.action == "verify":
-        verify_candidate(root, args.repository, args.candidate_sha)
+        verify_snapshot(root, args.candidate_sha)
     else:
         supersede(root, args.repository, args.candidate_sha)
 

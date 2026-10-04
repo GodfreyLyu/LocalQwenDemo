@@ -25,6 +25,7 @@ jobs:
       contents: write
       packages: write
       pull-requests: write
+      statuses: read
     outputs:
       published: ${{ steps.publish.outputs.published }}
       candidate_sha: ${{ steps.publish.outputs.candidate_sha }}
@@ -118,6 +119,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      statuses: read
     steps:
       - uses: actions/checkout@v6
         with:

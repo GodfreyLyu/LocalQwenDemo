@@ -39,7 +39,7 @@ jobs:
         with:
           version: v3.17.3
       - run: pip install pyyaml==6.0.3
-      - name: Verify open PR, immutable head and current release base
+      - name: Verify immutable head and current release base
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ inputs.snapshot-sha }}

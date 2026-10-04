@@ -27,7 +27,7 @@ not lose changes. Source quality runs even without a deployable difference.
 
 A candidate is one commit based on the current deployment-release and contains
 only the Chart, release values, provenance, deployment tools and this guide.
-Application source trees are not copied. CI validates the exact PR head and its
+Application source trees are not copied. CI validates the exact candidate branch head and its
 release base, posts `deployment/snapshot`, and only then closes older automatic
 PRs with a link to the replacement. Their branches remain available for audit.
 Until validation succeeds, the previous PR stays open; a failed candidate never
