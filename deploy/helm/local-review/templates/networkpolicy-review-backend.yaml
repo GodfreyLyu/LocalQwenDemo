@@ -1,0 +1,68 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-backend
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+  - ports:
+    - port: 443
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 169.254.0.0/16
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+  - ports:
+    - port: 8000
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app: review-dynamodb
+          app.kubernetes.io/instance: {{ .Release.Name | quote }}
+{{- if and (eq .Values.model.backend "ollama") .Values.networkPolicy.ollamaHostCidr }}
+  - to:
+    - ipBlock:
+        cidr: {{ .Values.networkPolicy.ollamaHostCidr | quote }}
+    ports:
+    - protocol: TCP
+      port: 11434
+{{- end }}
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: review-frontend
+          app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    ports:
+    - port: 8000
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: review-backend
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  policyTypes:
+  - Ingress
+  - Egress
+{{- end }}

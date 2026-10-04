@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-backend
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  progressDeadlineSeconds: {{ add .Values.startupTimeoutSeconds 120 }}
+  replicas: {{ .Values.backend.replicas }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: review-backend
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: review-backend
+        app.kubernetes.io/part-of: local-review-demo
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-review-config.yaml") . | sha256sum }}
+        checksum/nginx: {{ .Files.Get "files/nginx.conf" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: OMP_NUM_THREADS
+          value: {{ .Values.model.cpuThreads | toString | quote }}
+        envFrom:
+        - configMapRef:
+            name: review-config
+        - secretRef:
+            name: {{ .Values.signingSecret.existingSecret | quote }}
+        image: {{ include "review.image" .Values.backend.image | quote }}
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health/live
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+        name: review-backend
+        ports:
+        - containerPort: 8000
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources: {{ .Values.backend.resources | toJson }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        startupProbe:
+          failureThreshold: {{ div (add .Values.startupTimeoutSeconds 9) 10 }}
+          httpGet:
+            path: /health/ready
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /data
+          name: history
+        - mountPath: /models/huggingface
+          name: model-cache
+      initContainers:
+{{- if .Values.volumePermissions.enabled }}
+      - args:
+        - import os; [(os.chown(p, 10001, 10001), os.chmod(p, 0o770)) for p in ['/data', '/models/huggingface']]
+        command:
+        - python
+        - -c
+        image: {{ include "review.image" .Values.backend.image | quote }}
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        name: volume-permissions
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - CHOWN
+            - FOWNER
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 0
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /data
+          name: history
+        - mountPath: /models/huggingface
+          name: model-cache
+{{- end }}
+      - name: initialize-users
+        image: {{ include "review.image" .Values.backend.image | quote }}
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        command:
+        - python
+        - -m
+        - app.persistence.initialize_users
+        envFrom:
+        - configMapRef:
+            name: review-config
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: review-backend
+      terminationGracePeriodSeconds: 60
+      volumes:
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: tmp
+      - name: history
+        persistentVolumeClaim:
+          claimName: {{ default "review-history" .Values.persistence.history.existingClaim | quote }}
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: {{ default "review-model-cache" .Values.persistence.modelCache.existingClaim | quote }}
+      imagePullSecrets: {{ .Values.imagePullSecrets | toJson }}

@@ -1,0 +1,49 @@
+apiVersion: v1
+data:
+  ALLOWED_ORIGIN: {{ .Values.config.allowedOrigin | toString | quote }}
+  AWS_ACCESS_KEY_ID: local
+  AWS_CONFIG_FILE: /dev/null
+  AWS_EC2_METADATA_DISABLED: 'true'
+  AWS_REGION: ap-northeast-1
+  AWS_SECRET_ACCESS_KEY: local
+  AWS_SHARED_CREDENTIALS_FILE: /dev/null
+  COOKIE_SECURE: {{ .Values.config.cookieSecure | toString | quote }}
+  DATA_DIR: /data
+  DEPLOYMENT_ENVIRONMENT: {{ .Values.config.deploymentEnvironment | toString | quote }}
+  DYNAMODB_ENDPOINT_URL: http://review-dynamodb:8000
+  DYNAMODB_TABLE: {{ .Values.dynamodb.table | toString | quote }}
+  ENVIRONMENT: local
+  HF_HOME: /models/huggingface
+  HF_HUB_DISABLE_TELEMETRY: '1'
+  HF_HUB_DISABLE_XET: '1'
+  HOME: /tmp
+  INFERENCE_TIMEOUT_SECONDS: {{ .Values.model.timeoutSeconds | toString | quote }}
+  MAX_RETRIES: {{ .Values.config.maxRetries | toString | quote }}
+  MODEL_BACKEND: {{ .Values.model.backend | toString | quote }}
+  MODEL_CPU_THREADS: {{ .Values.model.cpuThreads | toString | quote }}
+  MODEL_DTYPE: {{ .Values.model.dtype | toString | quote }}
+  MODEL_ID: {{ .Values.model.id | toString | quote }}
+  MODEL_INFERENCE_CONCURRENCY: '1'
+  MODEL_MAX_INPUT_TOKENS: {{ .Values.model.maxInputTokens | toString | quote }}
+  MODEL_MAX_OUTPUT_TOKENS: {{ .Values.model.maxOutputTokens | toString | quote }}
+  MODEL_REVISION: {{ .Values.model.revision | toString | quote }}
+  OLLAMA_BASE_URL: {{ .Values.model.ollamaBaseUrl | toString | quote }}
+  OLLAMA_MODEL: {{ .Values.model.ollamaModel | toString | quote }}
+{{- if .Values.model.ollamaModelDigest }}
+  OLLAMA_MODEL_DIGEST: {{ .Values.model.ollamaModelDigest | toString | quote }}
+{{- end }}
+  QUEUE_CAPACITY: {{ .Values.config.queueCapacity | toString | quote }}
+  SESSION_TTL_SECONDS: {{ .Values.config.sessionTtlSeconds | toString | quote }}
+  SOURCE_MAX_CHARS: {{ .Values.config.sourceMaxChars | toString | quote }}
+  ENABLE_API_DOCS: {{ .Values.config.enableApiDocs | toString | quote }}
+{{- if .Values.config.releaseSha }}
+  RELEASE_SHA: {{ .Values.config.releaseSha | quote }}
+{{- end }}
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/part-of: local-review-demo
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+  name: review-config
+  namespace: {{ .Release.Namespace | quote }}
