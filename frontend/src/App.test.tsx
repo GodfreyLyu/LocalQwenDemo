@@ -317,21 +317,17 @@ it('shows an invalid model response as a failed review and unlocks the workspace
 });
 
 it('restores a persisted running review without a time estimate', async () => {
+  let resolveDetail!: (value: Response) => void;
+  const detail = new Promise<Response>((resolve) => {
+    resolveDetail = resolve;
+  });
   mockWorkspace((path) => {
     if (path === '/api/v1/reviews')
       return response({
         items: [{ ...review, status: 'running' }],
         next_cursor: null,
       });
-    if (path === '/api/v1/reviews/review-1')
-      return response({
-        ...review,
-        status: 'running',
-        source_code: 'x'.repeat(6000),
-        review_result: null,
-        model_id: null,
-        model_revision: null,
-      });
+    if (path === '/api/v1/reviews/review-1') return detail;
   });
   render(<App />);
 
@@ -344,11 +340,30 @@ it('restores a persisted running review without a time estimate', async () => {
     screen.queryByText(/Rough model-time estimate:/),
   ).not.toBeInTheDocument();
   expect(
-    screen.getByText(
+    await screen.findByText(
       'Reviewing on local CPU. Time depends on code length and machine load.',
     ),
   ).toBeVisible();
-  expect(screen.getByLabelText('Source code')).toHaveValue('x'.repeat(6000));
+  const editor = screen.getByLabelText('Source code');
+  // History provides the running status before the detail request restores code.
+  expect(editor).toHaveValue('');
+  expect(editor).toBeDisabled();
+
+  resolveDetail(
+    response({
+      ...review,
+      status: 'running',
+      source_code: 'x'.repeat(6000),
+      review_result: null,
+      model_id: null,
+      model_revision: null,
+    }),
+  );
+  await waitFor(() => expect(editor).toHaveValue('x'.repeat(6000)));
+  expect(editor).toBeDisabled();
+  expect(
+    screen.queryByText(/Rough model-time estimate:/),
+  ).not.toBeInTheDocument();
 });
 
 it('resumes an active review from persisted history', async () => {
