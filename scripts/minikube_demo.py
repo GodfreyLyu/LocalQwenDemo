@@ -451,7 +451,14 @@ def init_users():
     print("DynamoDB Local table verified; existing accounts retained.")
 
 
-def render(port, images=None, cold_timeout=3600, storage_class="standard"):
+def render(
+    port,
+    images=None,
+    cold_timeout=3600,
+    storage_class="standard",
+    ollama_host_ip=None,
+    model_backend=None,
+):
     import yaml
 
     resources = list(
@@ -464,6 +471,9 @@ def render(port, images=None, cold_timeout=3600, storage_class="standard"):
             resource["spec"]["storageClassName"] = storage_class
         if resource["kind"] == "ConfigMap" and resource["metadata"]["name"] == "review-config":
             resource["data"]["ALLOWED_ORIGIN"] = f"http://localhost:{port}"
+            if model_backend is not None:
+                require(model_backend in {"ollama", "transformers"}, "Unknown model backend.")
+                resource["data"]["MODEL_BACKEND"] = model_backend
         if resource["kind"] == "Deployment" and resource["metadata"]["name"] == "review-backend":
             resource["spec"]["progressDeadlineSeconds"] = cold_timeout + 120
             for container in resource["spec"]["template"]["spec"]["containers"]:
@@ -475,6 +485,16 @@ def render(port, images=None, cold_timeout=3600, storage_class="standard"):
                 if name in images:
                     container["image"] = images[name]
                     container["imagePullPolicy"] = "Never"
+    if ollama_host_ip is not None:
+        from minikube_ollama import egress_rule
+
+        policies = [
+            r
+            for r in resources
+            if r["kind"] == "NetworkPolicy" and r["metadata"]["name"] == "review-backend"
+        ]
+        require(len(policies) == 1, "Expected one backend NetworkPolicy in the minikube render.")
+        policies[0]["spec"]["egress"].append(egress_rule(ollama_host_ip))
     return resources
 
 
@@ -629,6 +649,11 @@ def deploy_application(args, plan, stage):
     arch = plan["architecture"]
     owner = state(optional=True)
     ns = check_ownership(owner)
+    from minikube_ollama import HOSTNAME, PORT, resolve_host_ip
+
+    stage("ollama_host_resolution")
+    ollama_host_ip = resolve_host_ip()
+    print(f"Ollama egress: {HOSTNAME} -> {ollama_host_ip}/32 TCP {PORT}", flush=True)
     if owner is None:
         owner = TARGET | {"owner": secrets.token_hex(24), "state_version": 2}
         save("owner.json", owner)
@@ -667,6 +692,8 @@ def deploy_application(args, plan, stage):
         storage_class=plan["storage_class"],
         build_fingerprints=plan["fingerprints"],
         source_root=str(ROOT),
+        model_backend=getattr(args, "model_backend", None) or "ollama",
+        ollama_network={"hostname": HOSTNAME, "ipv4": ollama_host_ip, "port": PORT},
         images={},
         image_ids={},
         runtime_image_ids={},
@@ -717,7 +744,18 @@ def deploy_application(args, plan, stage):
         planned["runtime_image_ids"][name] = runtime_id
         save("plan.json", planned)
     stage("resource_render")
-    resources = render(port, images, args.cold_timeout, plan["storage_class"])
+    require(
+        resolve_host_ip() == ollama_host_ip,
+        "Ollama host address changed during deployment; rerun up to generate a fresh rule.",
+    )
+    resources = render(
+        port,
+        images,
+        args.cold_timeout,
+        plan["storage_class"],
+        ollama_host_ip,
+        planned["model_backend"],
+    )
     # Preflight ALL resource conflicts before applying any application changes.
     stage("resource_ownership_check")
     for resource in resources:
@@ -922,6 +960,11 @@ def main():
         "--storage-class", help="existing minikube-hostpath StorageClass; default: standard"
     )
     parser.add_argument("--port", type=int, help="localhost HTTP port; set during up; default 8080")
+    parser.add_argument(
+        "--model-backend",
+        choices=["ollama", "transformers"],
+        help="up: explicit inference backend; default ollama (no automatic fallback)",
+    )
     parser.add_argument("--cold-timeout", type=int, default=3600)
     parser.add_argument("--warm-timeout", type=int, default=600)
     parser.add_argument(

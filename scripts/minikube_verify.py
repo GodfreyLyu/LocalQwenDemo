@@ -33,10 +33,12 @@ REVISION = "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"
 SOURCE = "def average(values):\n    return sum(values) / len(values)\n"
 
 
-def completed_review(value):
+def completed_review(value, identity=None):
+    identity = identity or {"model_id": MODEL, "model_revision": REVISION}
     require(value.get("status") == "completed", "Review did not complete successfully.")
     require(
-        value.get("model_id") == MODEL and value.get("model_revision") == REVISION,
+        value.get("model_id") == identity["model_id"]
+        and value.get("model_revision") == identity["model_revision"],
         "Model identity/revision mismatch.",
     )
     require(
@@ -89,13 +91,13 @@ def login(client, credentials):
     )
 
 
-def history_contains(client, review_id):
+def history_contains(client, review_id, identity=None):
     rows = request(client, "GET", "/api/v1/reviews?limit=50", 200)
     require(
         any(row["review_id"] == review_id for row in rows["items"]), "History lost accepted review."
     )
     detail = request(client, "GET", f"/api/v1/reviews/{review_id}", 200)
-    completed_review(detail)
+    completed_review(detail, identity)
     return detail
 
 
@@ -121,19 +123,21 @@ def memory_sample():
 
 def cache_inventory():
     result = backend_python(
-        "import json, os; from pathlib import Path; "
-        f"p=Path('/models/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/{REVISION}'); "
-        "from app.inference.model import snapshot_has_model_weights; "
-        "assert snapshot_has_model_weights(str(p)); "
-        "print(json.dumps({f.name: [f.stat().st_size, "
-        "f.stat().st_mtime_ns, f.stat().st_ino] "
-        "for f in p.iterdir() if f.suffix == '.safetensors'}))"
+        "import json; from pathlib import Path; from app.config import Settings\n"
+        "s=Settings()\n"
+        "p=s.hf_home/'hub'/'models--Qwen--Qwen3-1.7B'/'snapshots'/s.model_revision\n"
+        "if s.model_backend == 'ollama':\n"
+        "    files=[p/'tokenizer.json']\n"
+        "else:\n"
+        "    from app.inference.model import snapshot_has_model_weights\n"
+        "    assert snapshot_has_model_weights(str(p))\n"
+        "    files=list(p.glob('*.safetensors'))\n"
+        "assert files and all(f.is_file() and f.stat().st_size > 0 for f in files)\n"
+        "print(json.dumps({f.name:[f.stat().st_size, f.stat().st_mtime_ns, f.stat().st_ino] "
+        "for f in files}))"
     )
     data = json.loads(result.stdout)
-    require(
-        data and sum(v[0] for v in data.values()) > 3_000_000_000,
-        "Pinned safetensors cache missing or incomplete.",
-    )
+    require(bool(data), "Active adapter cache missing or incomplete.")
     return data
 
 
@@ -165,14 +169,30 @@ def runtime_checks(owner):
             )
     info = json.loads(
         backend_python(
-            "import json, os, platform, torch; "
-            "assert torch.__version__.split('+')[0] == '2.8.0'; assert torch.version.cuda is None; "
-            "assert os.getuid() == 10001 and os.getgid() == 10001; "
-            "assert all(os.access(p, os.W_OK) for p in ['/data','/models/huggingface']); "
-            "torch.set_num_threads(2); a=torch.ones((8,8), dtype=torch.bfloat16); "
-            "assert torch.isfinite(a@a).all(); "
-            "print(json.dumps({'machine':platform.machine(), 'torch':torch.__version__, "
-            "'dtype':'bfloat16'}))"
+            "import json, os, platform, urllib.request\n"
+            "from app.config import Settings\n"
+            "s=Settings()\n"
+            "assert os.getuid() == 10001 and os.getgid() == 10001\n"
+            "assert all(os.access(p, os.W_OK) for p in ['/data','/models/huggingface'])\n"
+            "op=urllib.request.build_opener(urllib.request.ProxyHandler({}))\n"
+            "identity=json.load(op.open('http://127.0.0.1:8000/api/v1/runtime',timeout=5))\n"
+            "assert identity['inference_mode']=='real' and identity['accepting_submissions']\n"
+            "result={'machine':platform.machine(),'model_backend':s.model_backend,'identity':identity}\n"
+            "if s.model_backend == 'ollama':\n"
+            "    assert identity['inference_backend']=='ollama'\n"
+            "    assert identity['model_id']==s.ollama_model\n"
+            "    assert identity['model_revision'].startswith('sha256:')\n"
+            "    assert not s.ollama_model_digest or "
+            "identity['model_revision']==s.ollama_model_digest\n"
+            "else:\n"
+            "    import torch\n"
+            "    assert torch.__version__.split('+')[0]=='2.8.0' and torch.version.cuda is None\n"
+            "    assert identity['model_id']==s.model_id "
+            "and identity['model_revision']==s.model_revision\n"
+            "    torch.set_num_threads(2); a=torch.ones((8,8),dtype=torch.bfloat16)\n"
+            "    assert torch.isfinite(a@a).all()\n"
+            "    result.update(torch=torch.__version__,dtype='bfloat16')\n"
+            "print(json.dumps(result))"
         ).stdout
     )
     from minikube_demo import native_arch
@@ -233,7 +253,7 @@ def runtime_checks(owner):
             "Network isolation has not been verified. Using the existing CNI without modifying "
             "cluster network components."
         )
-    print("Native CPU/BF16, PVCs, permissions, table and allowed network paths verified.")
+    print("Active model identity, PVCs, permissions, table and allowed network paths verified.")
     return info
 
 
@@ -298,6 +318,13 @@ def verify(owner, args):
         verify_images(record)
         report["stage"] = "runtime_validation"
         report["runtime"] = runtime_checks(owner)
+        identity = report["runtime"].get("identity")
+        expected_backend = record.get("model_backend")
+        if expected_backend:
+            require(
+                report["runtime"].get("model_backend") == expected_backend,
+                "Deployed model backend changed; run up again.",
+            )
         cache_before = cache_inventory()
         require_idle()
         # No credentials or application mutations before all state/build/runtime gates pass.
@@ -370,6 +397,9 @@ def verify(owner, args):
                                 "inference_failed",
                                 "interrupted",
                                 "empty_model_response",
+                                "ollama_unavailable",
+                                "ollama_model_missing",
+                                "ollama_model_mismatch",
                             }
                             else "unknown_failure"
                         )
@@ -378,7 +408,7 @@ def verify(owner, args):
                             f"Real review failed: {safe}; no blind retry or quality relaxation."
                         )
                     if detail["status"] == "completed":
-                        completed_review(detail)
+                        completed_review(detail, identity)
                         break
                     time.sleep(2)
                 else:
@@ -390,10 +420,10 @@ def verify(owner, args):
                 )
                 result_before = detail["review_result"]
                 report["container_memory"] = memory_sample()
-                history_contains(client, review_id)
+                history_contains(client, review_id, identity)
                 request(client, "POST", "/api/v1/auth/logout", 204, json={})
                 login(client, credentials)
-                history_contains(client, review_id)
+                history_contains(client, review_id, identity)
                 with httpx.Client(
                     base_url=origin, headers={"Origin": origin}, trust_env=False
                 ) as other:
@@ -416,13 +446,15 @@ def verify(owner, args):
                 with forward("review-frontend", 8080, port):
                     # Same cookie survives; this also proves the signing Secret was reused.
                     request(client, "GET", "/api/v1/auth/me", 200)
-                    persisted = history_contains(client, review_id)
+                    persisted = history_contains(client, review_id, identity)
                     require(
                         persisted["review_result"] == result_before,
                         "Persisted review body changed across restart.",
                     )
                     login(client, credentials)
-                    history_contains(client, review_id)
+                    history_contains(client, review_id, identity)
+                after = runtime_checks(owner)
+                require(after.get("identity") == identity, "Model identity changed across restart.")
                 report["persistence_verified"] = True
             report["api_acceptance_passed"] = (
                 report["review_completed"] and report["persistence_verified"]

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: review-local-nginx
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "review.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+    {{- .Files.Get "files/nginx.conf" | nindent 4 }}

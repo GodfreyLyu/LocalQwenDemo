@@ -473,9 +473,18 @@ function Workspace({
           )}
         </div>
         <div className="sidebar-bottom">
-          <p className="local-account-note">Local account · this instance</p>
-          <div className="account">
-            <span title={session.login_id}>{session.login_id}</span>
+          <div className="account" aria-label="Account">
+            <div className="account-details">
+              <span className="account-name" title={session.login_id}>
+                {session.login_id}
+              </span>
+              <small
+                className="local-account-note"
+                title="Account for this instance only"
+              >
+                Local account
+              </small>
+            </div>
             <button
               className="icon-button"
               aria-label="Log out"
@@ -617,7 +626,10 @@ function Workspace({
                       <div>
                         {selected.model_id ?? 'Model unknown'}
                         <br />
-                        Revision {selected.model_revision ?? 'unknown'}
+                        {selected.model_revision?.startsWith('sha256:')
+                          ? 'Digest'
+                          : 'Revision'}{' '}
+                        {selected.model_revision ?? 'unknown'}
                       </div>
                     </details>
                   </>
@@ -632,7 +644,9 @@ function Workspace({
                             : runtime.info?.inference_mode === 'simulated'
                               ? 'Generating a deterministic test result. No real Qwen inference is running.'
                               : runtime.info?.inference_mode === 'real'
-                                ? 'Reviewing on local CPU. Time depends on code length and machine load.'
+                                ? runtime.info.inference_backend === 'ollama'
+                                  ? 'Reviewing with local Ollama. Time depends on code length and machine load.'
+                                  : 'Reviewing on local CPU. Time depends on code length and machine load.'
                                 : 'Waiting for the saved task to finish. Inference mode is unknown.'
                         : status === 'failed'
                           ? 'Check the message above, adjust your code if needed, and run a new review.'

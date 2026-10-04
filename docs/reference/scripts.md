@@ -32,7 +32,7 @@ Exit 0 means a valid `not_run` plan or a real `passed` result, distinguished in 
 | Command | Preconditions and actual effects |
 | --- | --- |
 | `doctor` | Discover/select a running target and read resource/version/storage diagnostics; temporary private kubeconfig; reads Docker/cluster and may execute diagnostic commands in the owned backend; no resource mutations. Nonzero for failed or missing diagnostics |
-| `up` | Authorization required: mandatory target/ownership/native-architecture/storage checks, private target state/lock, advisory diagnostics, native image build/reuse/load, namespace/Secret/PVC/workload changes, local users table initialization and readiness waits; model download may follow. Does not start/resize clusters, rotate existing key or push images |
+| `up` | Authorization required: mandatory target/ownership/native-architecture/storage checks, fresh node-side host Ollama IPv4 resolution and generated `/32:11434` backend egress, private target state/lock, advisory diagnostics, native image build/reuse/load, namespace/Secret/PVC/workload changes, local users table initialization and readiness waits; model download may follow. Does not start/resize clusters, rotate existing key or push images |
 | `verify` | Authorization required: matching completed deployment/build evidence before HTTP/account/review writes; real inference, isolation checks, controlled workload recreation and persistence checks. Produces report and private acceptance credentials |
 | `port-forward` | Completed deployment record and saved port; creates an owned foreground loopback kubectl child and cleans it up on exit; no unknown process termination |
 | `status` | Existing valid ownership; reads selected resources/CNI, opens target operation lock; no workload changes |
@@ -63,6 +63,7 @@ Internal modules have no standalone CLI:
 
 | Module | Responsibility / callers |
 | --- | --- |
+| `minikube_ollama.py` | Resolve the host endpoint inside the verified node, reject unsafe/ambiguous addresses, build exact IPv4 `/32` TCP 11434 egress; no standalone CLI or model execution |
 | `minikube_target.py` | `connected_target` selects/verifies home/profile/API/cluster UID; temporary kubeconfig is removed on exit. `deployment_requirements` enforces hard constraints; `preflight` measures advisory capacity; fingerprints support image reuse |
 | `minikube_state.py` | Validate owner/plan/deployment/attempt consistency; preserve prior reports; bind source, local Docker image and loaded CRI image proof. Lazy `api()` resolves the active CLI's selected target |
 | `minikube_verify.py` | Called under the CLI lock after target/ownership guards; validates state/images, exercises real HTTP/inference, restarts idle owned workloads, records bounded evidence. No UI automation |

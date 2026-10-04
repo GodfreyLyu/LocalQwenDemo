@@ -30,8 +30,8 @@ class SectionMetrics:
 @dataclass
 class GenerationMetrics:
     output_token_limit: int
-    worker_intraop_threads: int
-    worker_interop_threads: int
+    worker_intraop_threads: int | None
+    worker_interop_threads: int | None
     sections: dict[str, SectionMetrics] = field(default_factory=dict)
     duration_seconds: float = 0.0
 
