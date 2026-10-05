@@ -1,0 +1,51 @@
+# Device allocation/injection test only; does not run Vulkan or model inference.
+# Managed manually with kubectl, outside Terraform.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-smoke-test
+  namespace: gpu-tests
+  labels:
+    app.kubernetes.io/name: gpu-smoke-test
+    app.kubernetes.io/part-of: local-platform
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 120
+  automountServiceAccountToken: false
+  nodeSelector:
+    kubernetes.io/os: linux
+    kubernetes.io/arch: arm64
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: check-device
+      image: busybox:1.37.0
+      imagePullPolicy: IfNotPresent
+      command: [sh, -ec]
+      args:
+        - |
+          test -c /dev/dri/renderD128
+          test -r /dev/dri/renderD128
+          test -w /dev/dri/renderD128
+          exec 3<>/dev/dri/renderD128
+          exec 3>&-
+          ls -l /dev/dri/renderD128
+          echo 'PASS: devic.es/dri allocated and render device opened as non-root.'
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+          devic.es/dri: 1
+        limits:
+          cpu: 100m
+          memory: 32Mi
+          devic.es/dri: 1

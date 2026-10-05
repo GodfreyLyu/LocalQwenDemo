@@ -35,6 +35,9 @@ jobs:
       - uses: azure/setup-kubectl@v4
         with:
           version: 'v1.35.0'
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.17.3
       - name: Offline script regressions (no cluster writes)
         run: scripts/check_scripts.sh
       - name: Frontend lint, tests, and build

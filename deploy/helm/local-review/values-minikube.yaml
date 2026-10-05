@@ -1,0 +1,19 @@
+# Local learning environment. Apply after release-values.yaml.
+# Copy to an ignored/local file before adding machine-specific overrides.
+model:
+  backend: ollama
+  ollamaBaseUrl: http://host.minikube.internal:11434
+persistence:
+  storageClass: standard
+signingSecret:
+  existingSecret: review-secrets
+imagePullSecrets: []
+config:
+  allowedOrigin: http://localhost:8080
+  cookieSecure: false
+  deploymentEnvironment: minikube
+# This profile intentionally provides no NetworkPolicy isolation.
+# To enable it, use an enforcing CNI and supply the actual host IPv4 /32.
+networkPolicy:
+  enabled: false
+  ollamaHostCidr: ''

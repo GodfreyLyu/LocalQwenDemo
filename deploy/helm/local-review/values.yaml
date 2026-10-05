@@ -48,6 +48,7 @@ dynamodb:
       ephemeral-storage: 256Mi
 imagePullSecrets: []
 signingSecret:
+  # Pre-create in the release namespace with a stable SIGNING_SECRET (>=32 characters).
   existingSecret: review-secrets
 persistence:
   storageClass: standard
@@ -86,5 +87,7 @@ config:
   releaseSha: ''
 startupTimeoutSeconds: 3600
 networkPolicy:
+  # Use values-minikube.yaml for the local profile without network isolation.
   enabled: true
+  # Required with Ollama and enabled policies; one private host IPv4 address /32.
   ollamaHostCidr: ''

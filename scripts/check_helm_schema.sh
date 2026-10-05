@@ -14,3 +14,6 @@ for mode in ollama transformers; do
     --set "model.backend=$mode" --set networkPolicy.ollamaHostCidr=192.168.49.1/32 \
     | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
 done
+helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
+  -f "$repo_root/deploy/helm/local-review/values-minikube.yaml" \
+  | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0

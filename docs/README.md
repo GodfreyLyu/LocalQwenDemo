@@ -2,20 +2,20 @@
 
 LocalQwenDemo runs real CPU code review on an existing local minikube cluster. The
 [project homepage](../README.md) provides an overview, diagrams and a quick start.
-The operator manages cluster lifecycle; automation manages only verified,
-owned application resources.
+The operator manages cluster lifecycle and external services; standard Helm
+commands manage application resources using reviewed release and environment values.
 
 ## Choose a reading path
 
 | I want to…                             | Read                                                                                                | Purpose                                                                                      |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Try the application                    | [Quick start](../README.md#quick-start), then [minikube guide](guides/minikube-demo.md)             | Prepare a target, diagnose resources, deploy and open the same-origin UI                     |
+| Try the application                    | [Local Helm workflow](guides/minikube-demo.md), [release Helm guide](guides/helm-release.md)             | Prepare Secrets and environment values, install with Helm, and open the UI                     |
 | Understand the design                  | [Architecture](reference/architecture.md), [security](reference/security.md)                        | Follow jobs through one backend process and understand persistence and trust boundaries      |
 | Develop or contribute                  | [Local development](guides/local-development.md), [testing](testing/README.md)                      | Set up tools, use fake-model or Compose development, and choose offline checks               |
-| Move to another checkout               | [Shared state and import](guides/minikube-demo.md#state-and-ownership-protection)                   | Reuse trusted user-level state without treating paths or old images as ownership/build proof |
+| Move a legacy script deployment       | [Shared state and import](guides/minikube-legacy.md#state-and-ownership-protection)                   | Reuse trusted user-level state without treating paths or old images as ownership/build proof |
 | Investigate a failure                  | [Troubleshooting](operations/recovery-and-cleanup.md), [observability](operations/observability.md) | Inspect safe evidence before changing workloads, retrying inference or deleting anything     |
-| Remove an owned deployment             | [Undeploy](guides/minikube-demo.md#undeploy-and-recovery)                                           | Preserve data by default, or explicitly confirm a full owned-data purge                      |
-| Recover when all trusted state is lost | [Lost-state recovery](operations/minikube-lost-state-recovery.md)                                   | Preview independently verified resources; cleanup requires deliberate data abandonment       |
+| Remove a Helm deployment              | [Helm lifecycle](guides/helm-release.md#status-uninstall-and-rollback)                                           | Uninstall with Helm while retaining PVCs and the external signing Secret                      |
+| Recover legacy script state           | [Lost-state recovery](operations/minikube-lost-state-recovery.md)                                   | Preview independently verified resources; cleanup requires deliberate data abandonment       |
 | Validate results                       | [Testing and acceptance](testing/README.md), [model evaluation](testing/model-evaluation.md)        | Separate offline doubles, real reviews, persistence, full verify and browser acceptance      |
 | Review previous observations           | [Dated reports](reports/README.md)                                                                  | Inspect original environment, date, outcome and limitations; not current acceptance proof    |
 
@@ -34,8 +34,9 @@ owned application resources.
 ## How these documents fit together
 
 - **README:** overview, diagrams and quick start.
-- **`guides/`:** setup and deployment workflows. The minikube guide covers profile
-  selection, shared state, import, deployment, acceptance and normal cleanup.
+- **`guides/`:** setup and deployment workflows. The Helm guide covers standard
+  installation, environment values and release operations. The Minikube guide
+  covers the local Helm CLI; the separate legacy guide retains Kustomize recovery.
 - **`operations/`:** symptom-driven investigation and exceptional recovery. Lost-state
   cleanup has its own guide because its evidence and data-loss requirements differ from
   normal undeploy. The observability runbook applies the logging reference to investigations.

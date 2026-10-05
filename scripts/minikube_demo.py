@@ -333,7 +333,7 @@ def wait_rollout(name, seconds):
 
 
 @contextlib.contextmanager
-def forward(service, remote_port, local_port=None, *, wait=False):
+def forward(service, remote_port, local_port=None, *, wait=False, command=None, env=None):
     """Own one loopback-forward child for this context and clean up only that process.
 
     A free-port probe is not a reservation. Require its exact announcement, live
@@ -348,13 +348,13 @@ def forward(service, remote_port, local_port=None, *, wait=False):
     port_available(local_port)
     try:
         proc = subprocess.Popen(
-            kargs(
+            (command or kargs)(
                 "port-forward",
                 "--address=127.0.0.1",
                 "service/" + service,
                 f"{local_port}:{remote_port}",
             ),
-            env=clean_env(),
+            env=env if env is not None else clean_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
@@ -927,7 +927,7 @@ def main():
             "target, ownership, architecture and storage requirements remain mandatory. "
             "recover-cleanup defaults to a read-only preview; deletion requires explicit target "
             "identities and --execute --purge-data --confirm-data-loss local-review-demo. "
-            "See docs/guides/minikube-demo.md."
+            "See docs/guides/minikube-legacy.md."
         ),
     )
     parser.add_argument(
@@ -1145,7 +1145,7 @@ def cli():
         )
         print(
             f"ERROR: {message}\n"
-            "Next: scripts/minikube_demo.sh status / logs; docs/guides/minikube-demo.md",
+            "Next: scripts/minikube_demo.sh legacy status / logs; docs/guides/minikube-legacy.md",
             file=sys.stderr,
         )
         return 1

@@ -1,4 +1,7 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- if eq .Values.model.backend "ollama" }}
+{{- $_ := required "networkPolicy.ollamaHostCidr is required with Ollama and enabled NetworkPolicy; supply the host IPv4 /32 or use values-minikube.yaml for local deployment without isolation" .Values.networkPolicy.ollamaHostCidr }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

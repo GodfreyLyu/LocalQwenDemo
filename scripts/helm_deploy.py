@@ -10,22 +10,10 @@ import tempfile
 from pathlib import Path
 
 import yaml
-from helm_target import connect, pod_requests, quantity, require, run
+from helm_target import check_ownership, connect, pod_requests, quantity, require, run
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "deploy/helm/local-review"
-
-
-def check_ownership(resource, release, namespace):
-    metadata = resource["metadata"]
-    annotations = metadata.get("annotations", {})
-    require(
-        annotations.get("meta.helm.sh/release-name") == release
-        and annotations.get("meta.helm.sh/release-namespace") == namespace
-        and metadata.get("labels", {}).get("app.kubernetes.io/managed-by") == "Helm",
-        f"Existing {resource['kind']}/{metadata['name']} is not owned by this Helm release. "
-        "Follow the Kustomize migration guide; automatic takeover is disabled.",
-    )
 
 
 def install(target, args):
@@ -43,12 +31,23 @@ def install(target, args):
         args.namespace,
         *values,
     ]
-    rendered = list(yaml.safe_load_all(run(*base).stdout))
+    # Inspect model configuration before discovering the legacy wrapper's host CIDR.
+    rendered = list(yaml.safe_load_all(run(*base, "--set", "networkPolicy.enabled=false").stdout))
     cfg = next(
         r["data"]
         for r in rendered
         if r["kind"] == "ConfigMap" and r["metadata"]["name"] == "review-config"
     )
+    host_ip = None
+    if cfg["MODEL_BACKEND"] == "ollama":
+        require(
+            cfg["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434",
+            "Minikube wrapper expects the host Ollama endpoint",
+        )
+        host_ip = target.ollama_ip()
+        base += ["--set-string", "networkPolicy.ollamaHostCidr=" + host_ip + "/32"]
+    # Include policies in ownership checks once the actual host address is known.
+    rendered = list(yaml.safe_load_all(run(*base).stdout))
     backend = next(
         r
         for r in rendered
@@ -115,13 +114,7 @@ def install(target, args):
                             f"External PVC {name} is missing",
                         )
     overrides = {"config": {"allowedOrigin": f"http://localhost:{args.port}"}}
-    host_ip = None
-    if cfg["MODEL_BACKEND"] == "ollama":
-        require(
-            cfg["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434",
-            "Minikube wrapper expects the host Ollama endpoint",
-        )
-        host_ip = target.ollama_ip()
+    if host_ip:
         overrides["networkPolicy"] = {"ollamaHostCidr": host_ip + "/32"}
     # Secret values are neither command-line arguments nor output. Never rotate an existing key.
     if target.object("namespace", args.namespace) is None:
@@ -186,6 +179,7 @@ def install(target, args):
 
 
 def main():
+    print("Deprecated wrapper: use standard Helm or minikube_demo.sh for local builds.")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["install", "status", "port-forward", "uninstall"])
     parser.add_argument("--profile", required=True)

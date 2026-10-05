@@ -35,7 +35,7 @@ def invalid(field):
     d = api()
     raise d.DemoError(
         f"Deployment state is incomplete or invalid: {field}. "
-        f"Run scripts/minikube_demo.sh up --profile {d.PROFILE} to finish deployment, "
+        f"Run scripts/minikube_demo.sh legacy up --profile {d.PROFILE} to finish deployment, "
         "then retry verify. Do not delete owner.json or adopt running images as build evidence."
     )
 

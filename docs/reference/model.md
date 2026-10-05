@@ -42,7 +42,7 @@ Ollama `sha256:` digest; old HF revisions and simulated records are preserved.
 
 Use `up --model-backend transformers` for the explicit CPU path. Backend settings
 still default to Transformers for compatibility; the minikube overlay and `.env.example`
-select Ollama. See [deployment commands](../guides/minikube-demo.md).
+select Ollama. See [deployment commands](../guides/minikube-legacy.md).
 
 ## Transformers CPU reference
 

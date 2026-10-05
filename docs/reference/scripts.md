@@ -27,7 +27,7 @@ Exit 0 means a valid `not_run` plan or a real `passed` result, distinguished in 
 
 ## Minikube public entry
 
-`scripts/minikube_demo.sh COMMAND [OPTIONS]` resolves the checkout from its own path and execs `minikube_demo.py` using `REVIEW_PYTHON` or the backend virtual environment. The Python file may also be invoked directly; both entries use the same CLI. Operational commands require macOS/Linux, Python dev dependencies, local Docker, minikube and kubectl. Help parses before discovery; `stop` prints advice and performs no external operations.
+`scripts/minikube_demo.sh legacy COMMAND [OPTIONS]` resolves the checkout from its own path and execs `minikube_demo.py` using `REVIEW_PYTHON` or the backend virtual environment. The Python file may also be invoked directly; both entries use the same CLI. Operational commands require macOS/Linux, Python dev dependencies, local Docker, minikube and kubectl. Help parses before discovery; `stop` prints advice and performs no external operations.
 
 | Command | Preconditions and actual effects |
 | --- | --- |
@@ -55,7 +55,7 @@ Options:
 
 No force/skip-ownership option exists. Runtime errors exit 1; argparse errors exit 2; interruption exits 130.
 
-Generated target data: `${XDG_STATE_HOME:-$HOME/.local/state}/local-qwen-demo/targets/<profile>-<home-hash>/<cluster-uid>/` contains `owner.json`, `plan.json`, `startup.json`, `deployment.json`, `verification.json`, `undeployment.json`, independent `recovery-cleanup.json`, `kubeconfig`, private `acceptance-account.json` and archived `attempts/`. Shared locks live in `<state-root>/locks/`. `LOCAL_QWEN_STATE_HOME` or `--state-root` overrides the root. `--from-state` supplies an explicit legacy checkout/state source. `undeploy --purge-data --confirm-data-loss local-review-demo` explicitly deletes owned data; `--delete-timeout` bounds waits (1–600 seconds, default 120). Reports distinguish diagnostic findings, readiness, review completion, persistence and UI acceptance. Never share credential files or manufacture missing image proof. See [recovery and acceptance](../guides/minikube-demo.md) for the detailed procedure.
+Generated target data: `${XDG_STATE_HOME:-$HOME/.local/state}/local-qwen-demo/targets/<profile>-<home-hash>/<cluster-uid>/` contains `owner.json`, `plan.json`, `startup.json`, `deployment.json`, `verification.json`, `undeployment.json`, independent `recovery-cleanup.json`, `kubeconfig`, private `acceptance-account.json` and archived `attempts/`. Shared locks live in `<state-root>/locks/`. `LOCAL_QWEN_STATE_HOME` or `--state-root` overrides the root. `--from-state` supplies an explicit legacy checkout/state source. `undeploy --purge-data --confirm-data-loss local-review-demo` explicitly deletes owned data; `--delete-timeout` bounds waits (1–600 seconds, default 120). Reports distinguish diagnostic findings, readiness, review completion, persistence and UI acceptance. Never share credential files or manufacture missing image proof. See [recovery and acceptance](../guides/minikube-legacy.md) for the detailed procedure.
 
 Lost-state recovery additionally requires `--expect-cluster-uid`, `--expect-namespace-uid` and `--expect-owner`; `--restore-frontend` is a separate identity-protected restoration action. Recovery never imports state automatically. Read the [lost-state recovery procedure](../operations/minikube-lost-state-recovery.md) before using these options.
 

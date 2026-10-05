@@ -92,7 +92,7 @@ not successful reviews. The default gate does not run real inference.
 
 ## Authorized environment acceptance
 
-Follow [the minikube guide](../guides/minikube-demo.md). `up` establishes only readiness.
+Follow [the minikube guide](../guides/minikube-legacy.md). `up` establishes only readiness.
 `verify` requires matching deployment/build evidence, normal authentication, a real
 quality-valid completed review, isolation and persistence checks. It may create accounts,
 write reviews and restart owned workloads. Do not run a full verify just to inspect a

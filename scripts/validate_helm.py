@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 CHART = Path("deploy/helm/local-review")
+MINIKUBE_VALUES = CHART / "values-minikube.yaml"
 
 
 def validate_tree(root):
@@ -222,32 +223,40 @@ def main():
     if args.snapshot:
         validate_tree(root)
     values = [root / "release-values.yaml"] if args.snapshot else []
+    values.append(root / MINIKUBE_VALUES)
     subprocess.run(
         ["helm", "lint", str(root / CHART), *sum((["-f", str(v)] for v in values), [])],
         check=True,
     )
     keyed = validate_resources(render(root, values))
+    require(
+        not any(kind == "NetworkPolicy" for kind, _ in keyed),
+        "The Minikube profile must explicitly disable network policies",
+    )
     if args.snapshot:
         validate_snapshot(root, keyed)
-    else:
-        validate_resources(
-            render(
-                root,
-                settings=[
-                    "model.backend=transformers",
-                    "volumePermissions.enabled=false",
-                ],
-            )
+    validate_resources(
+        render(
+            root,
+            values,
+            settings=[
+                "model.backend=transformers",
+                "networkPolicy.enabled=true",
+                "volumePermissions.enabled=false",
+            ],
         )
-        validate_resources(
-            render(
-                root,
-                settings=[
-                    "networkPolicy.ollamaHostCidr=192.168.49.1/32",
-                    "persistence.history.existingClaim=retained-history",
-                ],
-            )
+    )
+    validate_resources(
+        render(
+            root,
+            values,
+            settings=[
+                "networkPolicy.enabled=true",
+                "networkPolicy.ollamaHostCidr=192.168.49.1/32",
+                "persistence.history.existingClaim=retained-history",
+            ],
         )
+    )
     print("Helm configuration and deployment invariants validated.")
 
 

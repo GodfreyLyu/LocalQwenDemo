@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -97,7 +98,9 @@ def test_first_release_builds_both_and_matches_provenance(source, tmp_path):
     manifest = released(source, tmp_path)
     root = tmp_path / "release"
     validate_helm.validate_tree(root)
-    resources = validate_helm.render(root, [root / "release-values.yaml"])
+    resources = validate_helm.render(
+        root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
+    )
     validate_helm.validate_snapshot(root, validate_helm.validate_resources(resources))
     assert manifest["images"]["backend"]["repository"] == "ghcr.io/owner/repo-backend"
     assert not (root / "backend").exists()
@@ -177,17 +180,29 @@ def test_schema_rejects_multiple_workers_and_invalid_configuration():
         "model.backend=invalid",
     ):
         result = subprocess.run(
-            ["helm", "template", "test", str(ROOT / snapshot.CHART), "--set", setting],
+            [
+                "helm",
+                "template",
+                "test",
+                str(ROOT / snapshot.CHART),
+                "-f",
+                str(ROOT / validate_helm.MINIKUBE_VALUES),
+                "--set",
+                setting,
+            ],
             capture_output=True,
         )
         assert result.returncode != 0
 
 
 def test_config_rollout_and_volume_retention():
-    before = validate_helm.validate_resources(validate_helm.render(ROOT))
+    before = validate_helm.validate_resources(
+        validate_helm.render(ROOT, [ROOT / validate_helm.MINIKUBE_VALUES])
+    )
     after = validate_helm.validate_resources(
         validate_helm.render(
             ROOT,
+            [ROOT / validate_helm.MINIKUBE_VALUES],
             settings=[
                 "config.queueCapacity=6",
                 "volumePermissions.enabled=false",
@@ -220,6 +235,59 @@ def test_ollama_rule_is_an_egress_rule():
         rule.get("to") == [{"ipBlock": {"cidr": "192.168.49.1/32"}}]
         and rule["ports"] == [{"protocol": "TCP", "port": 11434}]
         for rule in policy["egress"]
+    )
+
+
+@pytest.mark.parametrize(
+    "cidr", ["", "0.0.0.0/0", "192.168.1.0/24", "192.168.999.1/32", "8.8.8.8/32"]
+)
+def test_enabled_ollama_policy_rejects_missing_or_invalid_host(cidr):
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "test",
+            str(ROOT / snapshot.CHART),
+            "--set-string",
+            "networkPolicy.ollamaHostCidr=" + cidr,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "ollamaHostCidr" in result.stderr
+
+
+def test_standard_helm_snapshot_is_deterministic_and_preserves_image_pins(source, tmp_path):
+    released(source, tmp_path)
+    root = tmp_path / "release"
+    site_values = tmp_path / "site.yaml"
+    site_values.write_text(
+        "signingSecret:\n  existingSecret: site-signing\n"
+        "imagePullSecrets:\n  - name: ghcr-pull\n"
+        "config:\n  allowedOrigin: http://localhost:8081\n"
+    )
+    values = [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES, site_values]
+    resources = validate_helm.render(root, values)
+    assert resources == validate_helm.render(root, values)
+    keyed = validate_helm.validate_resources(resources)
+    validate_helm.validate_snapshot(root, keyed)
+    assert not any(r["kind"] in {"Secret", "NetworkPolicy"} for r in resources)
+    assert not any("helm.sh/hook" in r["metadata"].get("annotations", {}) for r in resources)
+    pod = keyed["Deployment", "review-backend"]["spec"]["template"]["spec"]
+    assert {"secretRef": {"name": "site-signing"}} in pod["containers"][0]["envFrom"]
+    assert pod["imagePullSecrets"] == [{"name": "ghcr-pull"}]
+    assert keyed["ConfigMap", "review-config"]["data"]["ALLOWED_ORIGIN"] == "http://localhost:8081"
+    # The same release is still valid with the explicitly configured policy profile.
+    validate_helm.validate_resources(
+        validate_helm.render(
+            root,
+            values,
+            [
+                "networkPolicy.enabled=true",
+                "networkPolicy.ollamaHostCidr=192.168.49.1/32",
+            ],
+        )
     )
 
 
@@ -392,8 +460,11 @@ def test_publishing_creates_distinct_immutable_versions_and_supersedes_after_val
     assert plan["build"] == {"backend": False, "frontend": True}
     publish.publish(source, workspace, "Owner/Repo")
     new = state["prs"][1]
-    assert new["headRefName"] == "release-candidate/0.1.0-rc.2"
-    assert old["headRefName"] == "release-candidate/0.1.0-rc.1"
+    chart_version = snapshot.yaml.safe_load((source / snapshot.CHART / "Chart.yaml").read_text())[
+        "version"
+    ]
+    assert new["headRefName"] == f"release-candidate/{chart_version}-rc.2"
+    assert old["headRefName"] == f"release-candidate/{chart_version}-rc.1"
     assert old["state"] == "OPEN"
     with pytest.raises(ValueError, match="validated"):
         publish.supersede(source, "Owner/Repo", new["headRefOid"])
@@ -576,11 +647,44 @@ def test_context_is_always_explicit_and_legacy_ownership_is_not_adopted(tmp_path
         )
 
 
+def test_legacy_wrapper_still_checks_policy_ownership_after_host_discovery(monkeypatch):
+    def kubectl(*args):
+        if args[1] == "nodes":
+            items = [
+                {
+                    "status": {
+                        "allocatable": {"cpu": "8", "memory": "16Gi"},
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                    }
+                }
+            ]
+        else:
+            assert args[1] == "pods"
+            items = []
+        return SimpleNamespace(stdout=json.dumps({"items": items}))
+
+    def resource(kind, name):
+        if kind == "storageclass":
+            return {"provisioner": "k8s.io/minikube-hostpath"}
+        if kind == "NetworkPolicy":
+            return {"kind": kind, "metadata": {"name": name}}
+        return None
+
+    monkeypatch.setattr(helm_deploy, "ROOT", ROOT)
+    monkeypatch.setattr(helm_deploy, "CHART", ROOT / snapshot.CHART)
+    target = SimpleNamespace(kubectl=kubectl, object=resource, ollama_ip=lambda: "192.168.49.1")
+    args = SimpleNamespace(values=[], release="local-review", namespace="test")
+    with pytest.raises(ValueError, match="Existing NetworkPolicy.*not owned"):
+        helm_deploy.install(target, args)
+
+
 def test_snapshot_rejects_digest_drift_and_extra_source(source, tmp_path):
     released(source, tmp_path)
     root = tmp_path / "release"
     resources = validate_helm.validate_resources(
-        validate_helm.render(root, [root / "release-values.yaml"])
+        validate_helm.render(
+            root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
+        )
     )
     changed = copy.deepcopy(resources)
     changed["Deployment", "review-backend"]["spec"]["template"]["spec"]["containers"][0][
@@ -664,7 +768,9 @@ def test_snapshot_rejects_invalid_version_provenance(source, tmp_path, field, va
     released(source, tmp_path)
     root = tmp_path / "release"
     resources = validate_helm.validate_resources(
-        validate_helm.render(root, [root / "release-values.yaml"])
+        validate_helm.render(
+            root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
+        )
     )
     path = root / "release.json"
     manifest = json.loads(path.read_text())
