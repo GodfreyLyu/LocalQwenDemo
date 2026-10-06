@@ -190,11 +190,13 @@ except Exception:
 
 
 @contextlib.contextmanager
-def idle_guard(pod):
+def idle_guard(pod, *, command=None, env=None):
     d = api()
     proc = subprocess.Popen(
-        d.kargs("exec", "-i", pod, "-c", "review-backend", "--", "python", "-c", IDLE_GUARD),
-        env=d.clean_env(),
+        (command or d.kargs)(
+            "exec", "-i", pod, "-c", "review-backend", "--", "python", "-c", IDLE_GUARD
+        ),
+        env=env if env is not None else d.clean_env(),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,

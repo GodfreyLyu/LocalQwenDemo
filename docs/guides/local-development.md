@@ -1,7 +1,10 @@
 # Local development
 
+For current local deployment, use the [Helm workflow](minikube-demo.md).
+The Kustomize commands below remain available under `legacy`.
+
 Use this guide to develop and test locally. For deployment to an existing cluster,
-follow the [minikube guide](minikube-demo.md).
+follow the [minikube guide](minikube-legacy.md).
 
 [Documentation index](../README.md) · Run commands from the repository root unless shown otherwise. Check each section's side effects before running it.
 

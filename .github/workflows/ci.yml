@@ -31,10 +31,15 @@ jobs:
         run: |
           .venv/bin/ruff check --config pyproject.toml app tests ../scripts
           .venv/bin/ruff format --check --config pyproject.toml app tests ../scripts
+          .venv/bin/ruff check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
+          .venv/bin/ruff format --check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
           .venv/bin/pytest
       - uses: azure/setup-kubectl@v4
         with:
           version: 'v1.35.0'
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.17.3
       - name: Offline script regressions (no cluster writes)
         run: scripts/check_scripts.sh
       - name: Frontend lint, tests, and build
@@ -78,8 +83,24 @@ jobs:
       - name: Validate Helm and release automation
         run: |
           python scripts/validate_helm.py
-          python -m pytest scripts/tests/test_helm_release.py -q
+          python -m pytest scripts/tests/test_helm_release.py scripts/tests/test_gitops.py -q
+          helm lint deploy/helm/local-ollama
+          python -m pytest scripts/tests/test_ollama_chart.py -q
       - name: Validate Kubernetes resource schemas
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/check_helm_schema.sh
+
+  main-ci:
+    name: main-ci
+    if: always()
+    needs: [application, configuration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every quality job to succeed
+        env:
+          APPLICATION_RESULT: ${{ needs.application.result }}
+          CONFIGURATION_RESULT: ${{ needs.configuration.result }}
+        run: |
+          test "$APPLICATION_RESULT" = success
+          test "$CONFIGURATION_RESULT" = success

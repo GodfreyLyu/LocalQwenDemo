@@ -11,6 +11,19 @@ args=()
 if [ -f "$repo_root/release-values.yaml" ]; then args+=(-f "$repo_root/release-values.yaml"); fi
 for mode in ollama transformers; do
   helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
-    --set "model.backend=$mode" --set networkPolicy.ollamaHostCidr=192.168.49.1/32 \
+    --set "model.backend=$mode" \
     | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
 done
+helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
+  -f "$repo_root/deploy/helm/local-review/values-minikube.yaml" \
+  | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
+if [ -d "$repo_root/deploy/helm/local-ollama" ]; then
+  ollama_args=()
+  if [ -f "$repo_root/deploy/helm/local-ollama/values-release.yaml" ]; then
+    ollama_args+=(-f "$repo_root/deploy/helm/local-ollama/values-release.yaml")
+  fi
+  helm template review-ollama "$repo_root/deploy/helm/local-ollama" \
+    --namespace local-inference "${ollama_args[@]}" \
+    -f "$repo_root/deploy/helm/local-ollama/values-argocd.yaml" \
+    | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
+fi

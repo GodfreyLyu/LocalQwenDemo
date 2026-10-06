@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +39,9 @@ def source(tmp_path):
     ):
         (root / directory).mkdir(parents=True, exist_ok=True)
     shutil.copytree(ROOT / snapshot.CHART, root / snapshot.CHART)
+    shutil.copytree(ROOT / snapshot.OLLAMA_CHART, root / snapshot.OLLAMA_CHART)
+    shutil.copytree(ROOT / snapshot.ARGOCD, root / snapshot.ARGOCD)
+    shutil.copytree(ROOT / "deploy/images", root / "deploy/images")
     for name in snapshot.DEPLOY_FILES:
         shutil.copyfile(ROOT / name, root / name)
     (root / "backend/app/main.py").write_text("print('backend')\n")
@@ -75,7 +79,7 @@ def committed(root, name, content):
 
 def versioned_plan(root, previous=None, number=1):
     result = snapshot.plan(root, previous or {}, "Owner/Repo")
-    result["schemaVersion"] = 2
+    result["schemaVersion"] = snapshot.FORMAT
     result["candidate"] = snapshot.candidate_metadata(root, "a" * 40, str(number), "123")
     return result
 
@@ -89,6 +93,7 @@ def released(root, tmp_path):
         {
             "backend": "sha256:" + "a" * 64,
             "frontend": "sha256:" + "b" * 64,
+            "ollama": "sha256:" + "d" * 64,
         },
     )
 
@@ -97,7 +102,9 @@ def test_first_release_builds_both_and_matches_provenance(source, tmp_path):
     manifest = released(source, tmp_path)
     root = tmp_path / "release"
     validate_helm.validate_tree(root)
-    resources = validate_helm.render(root, [root / "release-values.yaml"])
+    resources = validate_helm.render(
+        root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
+    )
     validate_helm.validate_snapshot(root, validate_helm.validate_resources(resources))
     assert manifest["images"]["backend"]["repository"] == "ghcr.io/owner/repo-backend"
     assert not (root / "backend").exists()
@@ -128,6 +135,7 @@ def test_failed_or_cancelled_intermediate_commit_cannot_hide_changes(source, tmp
     assert snapshot.plan(source, previous, "Owner/Repo")["build"] == {
         "backend": True,
         "frontend": True,
+        "ollama": False,
     }
 
 
@@ -135,7 +143,7 @@ def test_open_candidate_reuses_unchanged_component_source(source, tmp_path):
     previous = released(source, tmp_path)
     committed(source, "frontend/main.js", "frontend changed")
     plan = snapshot.plan(source, previous, "Owner/Repo")
-    assert plan["build"] == {"backend": False, "frontend": True}
+    assert plan["build"] == {"backend": False, "frontend": True, "ollama": False}
     assert plan["images"]["backend"]["sourceSha"] == previous["sourceSha"]
     manifest = snapshot.materialize(
         source,
@@ -177,17 +185,29 @@ def test_schema_rejects_multiple_workers_and_invalid_configuration():
         "model.backend=invalid",
     ):
         result = subprocess.run(
-            ["helm", "template", "test", str(ROOT / snapshot.CHART), "--set", setting],
+            [
+                "helm",
+                "template",
+                "test",
+                str(ROOT / snapshot.CHART),
+                "-f",
+                str(ROOT / validate_helm.MINIKUBE_VALUES),
+                "--set",
+                setting,
+            ],
             capture_output=True,
         )
         assert result.returncode != 0
 
 
 def test_config_rollout_and_volume_retention():
-    before = validate_helm.validate_resources(validate_helm.render(ROOT))
+    before = validate_helm.validate_resources(
+        validate_helm.render(ROOT, [ROOT / validate_helm.MINIKUBE_VALUES])
+    )
     after = validate_helm.validate_resources(
         validate_helm.render(
             ROOT,
+            [ROOT / validate_helm.MINIKUBE_VALUES],
             settings=[
                 "config.queueCapacity=6",
                 "volumePermissions.enabled=false",
@@ -212,7 +232,14 @@ def test_config_rollout_and_volume_retention():
 
 def test_ollama_rule_is_an_egress_rule():
     resources = validate_helm.validate_resources(
-        validate_helm.render(ROOT, settings=["networkPolicy.ollamaHostCidr=192.168.49.1/32"])
+        validate_helm.render(
+            ROOT,
+            settings=[
+                "networkPolicy.ollamaNamespace=",
+                "model.ollamaBaseUrl=http://host.minikube.internal:11434",
+                "networkPolicy.ollamaHostCidr=192.168.49.1/32",
+            ],
+        )
     )
     policy = resources["NetworkPolicy", "review-backend"]["spec"]
     assert policy["policyTypes"] == ["Ingress", "Egress"]
@@ -220,6 +247,62 @@ def test_ollama_rule_is_an_egress_rule():
         rule.get("to") == [{"ipBlock": {"cidr": "192.168.49.1/32"}}]
         and rule["ports"] == [{"protocol": "TCP", "port": 11434}]
         for rule in policy["egress"]
+    )
+
+
+@pytest.mark.parametrize(
+    "cidr", ["", "0.0.0.0/0", "192.168.1.0/24", "192.168.999.1/32", "8.8.8.8/32"]
+)
+def test_enabled_ollama_policy_rejects_missing_or_invalid_host(cidr):
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "test",
+            str(ROOT / snapshot.CHART),
+            "--set-string",
+            "networkPolicy.ollamaHostCidr=" + cidr,
+            "--set-string",
+            "networkPolicy.ollamaNamespace=",
+            "--set-string",
+            "model.ollamaBaseUrl=http://host.minikube.internal:11434",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "ollamaHostCidr" in result.stderr
+
+
+def test_standard_helm_snapshot_is_deterministic_and_preserves_image_pins(source, tmp_path):
+    released(source, tmp_path)
+    root = tmp_path / "release"
+    site_values = tmp_path / "site.yaml"
+    site_values.write_text(
+        "signingSecret:\n  existingSecret: site-signing\n"
+        "imagePullSecrets:\n  - name: ghcr-pull\n"
+        "config:\n  allowedOrigin: http://localhost:8081\n"
+    )
+    values = [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES, site_values]
+    resources = validate_helm.render(root, values)
+    assert resources == validate_helm.render(root, values)
+    keyed = validate_helm.validate_resources(resources)
+    validate_helm.validate_snapshot(root, keyed)
+    assert not any(r["kind"] in {"Secret", "NetworkPolicy"} for r in resources)
+    assert not any("helm.sh/hook" in r["metadata"].get("annotations", {}) for r in resources)
+    pod = keyed["Deployment", "review-backend"]["spec"]["template"]["spec"]
+    assert {"secretRef": {"name": "site-signing"}} in pod["containers"][0]["envFrom"]
+    assert pod["imagePullSecrets"] == [{"name": "ghcr-pull"}]
+    assert keyed["ConfigMap", "review-config"]["data"]["ALLOWED_ORIGIN"] == "http://localhost:8081"
+    # The same release is still valid with the explicitly configured policy profile.
+    validate_helm.validate_resources(
+        validate_helm.render(
+            root,
+            values,
+            [
+                "networkPolicy.enabled=true",
+            ],
+        )
     )
 
 
@@ -361,7 +444,11 @@ def make_candidate(source, workspace, force=False):
             source,
             workspace / "candidate",
             plan,
-            {"backend": "sha256:" + "a" * 64, "frontend": "sha256:" + "b" * 64},
+            {
+                "backend": "sha256:" + "a" * 64,
+                "frontend": "sha256:" + "b" * 64,
+                "ollama": "sha256:" + "d" * 64,
+            },
         )
     return plan
 
@@ -389,11 +476,14 @@ def test_publishing_creates_distinct_immutable_versions_and_supersedes_after_val
     next_run(monkeypatch)
     workspace = tmp_path / "second"
     plan = make_candidate(source, workspace)
-    assert plan["build"] == {"backend": False, "frontend": True}
+    assert plan["build"] == {"backend": False, "frontend": True, "ollama": False}
     publish.publish(source, workspace, "Owner/Repo")
     new = state["prs"][1]
-    assert new["headRefName"] == "release-candidate/0.1.0-rc.2"
-    assert old["headRefName"] == "release-candidate/0.1.0-rc.1"
+    chart_version = snapshot.yaml.safe_load((source / snapshot.CHART / "Chart.yaml").read_text())[
+        "version"
+    ]
+    assert new["headRefName"] == f"release-candidate/{chart_version}-rc.2"
+    assert old["headRefName"] == f"release-candidate/{chart_version}-rc.1"
     assert old["state"] == "OPEN"
     with pytest.raises(ValueError, match="validated"):
         publish.supersede(source, "Owner/Repo", new["headRefOid"])
@@ -576,11 +666,59 @@ def test_context_is_always_explicit_and_legacy_ownership_is_not_adopted(tmp_path
         )
 
 
+@pytest.mark.parametrize("host_ollama", [False, True])
+def test_legacy_wrapper_checks_policy_ownership_for_both_endpoints(
+    monkeypatch, tmp_path, host_ollama
+):
+    def kubectl(*args):
+        if args[1] == "nodes":
+            items = [
+                {
+                    "status": {
+                        "allocatable": {"cpu": "8", "memory": "16Gi"},
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                    }
+                }
+            ]
+        else:
+            assert args[1] == "pods"
+            items = []
+        return SimpleNamespace(stdout=json.dumps({"items": items}))
+
+    def resource(kind, name):
+        if kind == "storageclass":
+            return {"provisioner": "k8s.io/minikube-hostpath"}
+        if kind == "NetworkPolicy":
+            return {"kind": kind, "metadata": {"name": name}}
+        return None
+
+    monkeypatch.setattr(helm_deploy, "ROOT", ROOT)
+    monkeypatch.setattr(helm_deploy, "CHART", ROOT / snapshot.CHART)
+    discoveries = []
+
+    def ollama_ip():
+        discoveries.append(True)
+        return "192.168.49.1"
+
+    target = SimpleNamespace(kubectl=kubectl, object=resource, ollama_ip=ollama_ip)
+    values = []
+    if host_ollama:
+        path = tmp_path / "host.yaml"
+        path.write_text("model:\n  ollamaBaseUrl: http://host.minikube.internal:11434\n")
+        values.append(str(path))
+    args = SimpleNamespace(values=values, release="local-review", namespace="test")
+    with pytest.raises(ValueError, match="Existing NetworkPolicy.*not owned"):
+        helm_deploy.install(target, args)
+    assert bool(discoveries) is host_ollama
+
+
 def test_snapshot_rejects_digest_drift_and_extra_source(source, tmp_path):
     released(source, tmp_path)
     root = tmp_path / "release"
     resources = validate_helm.validate_resources(
-        validate_helm.render(root, [root / "release-values.yaml"])
+        validate_helm.render(
+            root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
+        )
     )
     changed = copy.deepcopy(resources)
     changed["Deployment", "review-backend"]["spec"]["template"]["spec"]["containers"][0][
@@ -664,7 +802,9 @@ def test_snapshot_rejects_invalid_version_provenance(source, tmp_path, field, va
     released(source, tmp_path)
     root = tmp_path / "release"
     resources = validate_helm.validate_resources(
-        validate_helm.render(root, [root / "release-values.yaml"])
+        validate_helm.render(
+            root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
+        )
     )
     path = root / "release.json"
     manifest = json.loads(path.read_text())
@@ -692,3 +832,46 @@ def test_snapshot_verification_needs_no_pull_request_api_access(
     manifest, base = publish.verify_snapshot(source, old["headRefOid"])
     assert manifest["candidate"]["branch"] == old["headRefName"]
     assert manifest["candidate"]["baseSha"] == base
+
+
+def test_workflow_migration_requires_exact_deletion_and_current_base(source, tmp_path, publishing):
+    base = publish.remote(source, publish.BASE)
+    checkout = tmp_path / "migration"
+    publish.fetch_branch(source, publish.BASE)
+    git(source, "worktree", "add", "--detach", str(checkout), base)
+    workflow = checkout / ".github/workflows/deployment-validation.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: legacy\n")
+    git(checkout, "add", ".")
+    git(
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        "legacy entrypoint",
+    )
+    git(checkout, "push", "-q", "origin", "HEAD:refs/heads/" + publish.BASE)
+    with pytest.raises(ValueError, match="workflow-removal"):
+        publish.prepare(source, tmp_path / "blocked", "Owner/Repo")
+    workflow.unlink()
+    git(checkout, "add", "--all")
+    git(
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        "remove workflow",
+    )
+    git(checkout, "push", "-q", "origin", "HEAD:refs/heads/" + publish.MIGRATION)
+    sha = git(checkout, "rev-parse", "HEAD")
+    publish.verify_snapshot(source, sha)
+    committed(checkout, "README.md", "unrelated change")
+    git(checkout, "push", "-q", "origin", "HEAD:refs/heads/" + publish.MIGRATION)
+    with pytest.raises(ValueError, match="Migration may only"):
+        publish.verify_snapshot(source, git(checkout, "rev-parse", "HEAD"))

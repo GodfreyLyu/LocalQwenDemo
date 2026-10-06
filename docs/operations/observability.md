@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md) · [Safe log contract](../reference/observability.md)
 
-Start with `scripts/minikube_demo.sh logs --profile minikube` and `status` using trusted
+Start with `scripts/minikube_demo.sh legacy logs --profile minikube` and `status` using trusted
 shared state. If identity evidence is missing, use the [recovery inspection path](minikube-lost-state-recovery.md)
 without authorizing deletion. Do not use raw logs/environment dumps as a debugging shortcut.
 No external monitoring service or automated repair is installed by this project.

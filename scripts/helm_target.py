@@ -133,7 +133,13 @@ def connect(profile, namespace, minikube_home=None):
     )
     if home.name != ".minikube":
         home /= ".minikube"
-    env = os.environ | {"MINIKUBE_HOME": str(home)}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("AWS_", "HF_", "HELM_KUBE"))}
+    env.update(
+        MINIKUBE_HOME=str(home),
+        AWS_CONFIG_FILE="/dev/null",
+        AWS_SHARED_CREDENTIALS_FILE="/dev/null",
+        AWS_EC2_METADATA_DISABLED="true",
+    )
     docker = json.loads(run("docker", "context", "inspect").stdout)[0]
     require(
         docker["Endpoints"]["docker"]["Host"].startswith("unix://"),
@@ -228,3 +234,15 @@ def connect(profile, namespace, minikube_home=None):
         target.cluster_uid = target.object("namespace", "kube-system")["metadata"]["uid"]
         print(f"Target: profile={profile}, namespace={namespace}, cluster UID={target.cluster_uid}")
         yield target
+
+
+def check_ownership(resource, release, namespace):
+    metadata = resource["metadata"]
+    annotations = metadata.get("annotations", {})
+    require(
+        annotations.get("meta.helm.sh/release-name") == release
+        and annotations.get("meta.helm.sh/release-namespace") == namespace
+        and metadata.get("labels", {}).get("app.kubernetes.io/managed-by") == "Helm",
+        f"Existing {resource['kind']}/{metadata['name']} is not owned by this Helm release. "
+        "Follow the Kustomize migration guide; automatic takeover is disabled.",
+    )

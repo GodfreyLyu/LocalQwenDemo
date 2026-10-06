@@ -1,0 +1,7 @@
+apiVersion: v2
+name: local-ollama
+description: Independent Ollama Vulkan service for Apple Silicon krunkit Minikube
+type: application
+version: 0.1.1
+appVersion: "0.24.0"
+kubeVersion: ">=1.30.0-0"

@@ -1,0 +1,6 @@
+[mesa-krunkit]
+name=krunkit Venus alignment fix (Fedora 44 ARM64 packages)
+baseurl=https://download.copr.fedorainfracloud.org/results/slp/mesa-libkrun-vulkan/fedora-44-aarch64/
+enabled=1
+gpgcheck=1
+gpgkey=https://download.copr.fedorainfracloud.org/results/slp/mesa-libkrun-vulkan/pubkey.gpg

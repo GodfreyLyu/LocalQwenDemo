@@ -7,11 +7,12 @@ import re
 import subprocess
 from pathlib import Path
 
-from snapshot import candidate_metadata, plan
+from snapshot import COMPONENTS, FORMAT, candidate_metadata, plan
 
 BASE = "deployment-release"
 PREFIX = "release-candidate/"
 LEGACY_HEAD = "automation/deployment-release"
+MIGRATION = "migration/remove-release-workflow"
 
 
 def command(*args, cwd=None, check=True, data=None):
@@ -92,6 +93,12 @@ def prepare(root, workspace, repository, force=False):
     if not base:
         raise ValueError("Bootstrap deployment-release first")
     fetch_branch(root, BASE)
+    workflows = command("git", "ls-tree", "-r", "--name-only", base, ".github/workflows", cwd=root)
+    if workflows:
+        raise ValueError(
+            "Merge the one-time release workflow-removal PR first; "
+            "GITHUB_TOKEN cannot remove workflow files. See docs/guides/gitops.md"
+        )
     metadata = candidate_metadata(
         root, base, os.environ["GITHUB_RUN_NUMBER"], os.environ["GITHUB_RUN_ID"]
     )
@@ -143,13 +150,13 @@ def prepare(root, workspace, repository, force=False):
                 candidate["build"][component] = True
         if not candidate["changed"]:
             # Legacy candidates are explicitly promoted once into the new versioned format.
-            if selected and previous.get("schemaVersion") == 2:
+            if selected and previous.get("schemaVersion") == FORMAT:
                 mode = "reuse"
                 branch, existing = selected[1]["headRefName"], selected[1]["headRefOid"]
                 metadata = previous["candidate"]
             elif not selected:
                 mode = "noop"
-    candidate["schemaVersion"] = 2
+    candidate["schemaVersion"] = FORMAT
     candidate["candidate"] = metadata
     workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "plan.json").write_text(json.dumps(candidate, indent=2) + "\n")
@@ -169,7 +176,7 @@ def prepare(root, workspace, repository, force=False):
     output("materialize", str(mode in {"new", "retry"}).lower())
     output("candidate_sha", existing if mode == "reuse" else "")
     output("version", metadata["version"])
-    for component in ("backend", "frontend"):
+    for component in COMPONENTS:
         output(component + "_build", str(candidate["build"][component] and mode == "new").lower())
         output(component + "_repository", candidate["images"][component]["repository"])
         output(component + "_digest", candidate["images"][component].get("digest", ""))
@@ -206,7 +213,7 @@ def ensure_pr(root, workspace, repository, manifest, branch, sha, base):
         "This branch is not updated or force-pushed. Changes require a new candidate.",
         "Review the Chart/configuration diff and require `deployment/snapshot` before merging.",
         "Older PRs remain open until this candidate passes validation. "
-        "Merging does not deploy a cluster.",
+        "Merging updates the desired state consumed by Argo CD.",
         "",
         f"[Source workflow](https://github.com/{repository}/actions/runs/{manifest['candidate']['runId']})",
     ]
@@ -313,6 +320,15 @@ def verify_snapshot(root, sha):
         raise ValueError("Invalid candidate SHA")
     command("git", "fetch", "origin", sha, cwd=root)
     manifest = manifest_at(root, sha)
+    if remote(root, MIGRATION) == sha:
+        base = remote(root, BASE)
+        fetch_branch(root, BASE)
+        changes = command("git", "diff", "--name-status", base, sha, cwd=root)
+        if parents(root, sha) != [base] or changes != (
+            "D\t.github/workflows/deployment-validation.yml"
+        ):
+            raise ValueError("Migration may only remove the legacy workflow from current release")
+        return manifest, base
     branch = manifest.get("candidate", {}).get("branch", LEGACY_HEAD)
     if not branch.startswith(PREFIX) and branch != LEGACY_HEAD:
         raise ValueError("Unexpected candidate branch")
@@ -321,7 +337,7 @@ def verify_snapshot(root, sha):
     fetch_branch(root, BASE)
     if remote(root, branch) != sha or parents(root, sha) != [base]:
         raise ValueError("Candidate or release base changed; generate a new candidate")
-    if manifest.get("schemaVersion") == 2:
+    if manifest.get("schemaVersion") in {2, FORMAT}:
         metadata = manifest["candidate"]
         if not branch.startswith(PREFIX) or metadata["baseSha"] != base:
             raise ValueError("Candidate branch/base provenance mismatch")
@@ -343,7 +359,7 @@ def verify_candidate(root, repository, sha):
 
 def supersede(root, repository, sha):
     pr, manifest, base = verify_candidate(root, repository, sha)
-    if manifest.get("schemaVersion") != 2 or not validation_passed(repository, sha):
+    if manifest.get("schemaVersion") != FORMAT or not validation_passed(repository, sha):
         raise ValueError("Only a validated versioned candidate can supersede older PRs")
     if remote(root, "main") != command("git", "rev-parse", "HEAD", cwd=root):
         raise ValueError("Main changed before retirement; rerun the latest workflow")
@@ -397,6 +413,8 @@ def main():
         publish(root, args.workspace.resolve(), args.repository)
     elif args.action == "verify":
         verify_snapshot(root, args.candidate_sha)
+        if os.environ.get("GITHUB_OUTPUT"):
+            output("migration", str(remote(root, MIGRATION) == args.candidate_sha).lower())
     else:
         supersede(root, args.repository, args.candidate_sha)
 

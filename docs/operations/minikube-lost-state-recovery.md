@@ -2,7 +2,7 @@
 
 Use this destructive recovery path only when the old deployment state is unavailable and
 **all application data may be discarded**. If a trusted state copy exists, prefer
-[import-state and normal undeploy](../guides/minikube-demo.md#undeploy-and-recovery).
+[import-state and normal undeploy](../guides/minikube-legacy.md#undeploy-and-recovery).
 Normal `undeploy` requires trusted ownership records, preserves data by default, and
 retains the namespace even with its confirmed purge option. Recovery independently
 validates the target and can delete the namespace only when every listed resource can
@@ -22,7 +22,7 @@ overrides on every command if your installation uses them.
 
 ```bash
 PROFILE=minikube
-scripts/minikube_demo.sh inspect-target --profile "$PROFILE"
+scripts/minikube_demo.sh legacy inspect-target --profile "$PROFILE"
 ```
 
 `inspect-target` uses the existing target selection checks and a temporary private
@@ -41,7 +41,7 @@ NAMESPACE_UID='<confirmed-namespace-uid>'
 OWNER='<confirmed-original-48-character-owner-marker>'
 TARGET_ARGS=(--profile "$PROFILE" --expect-cluster-uid "$CLUSTER_UID" \
   --expect-namespace-uid "$NAMESPACE_UID" --expect-owner "$OWNER")
-scripts/minikube_demo.sh recover-cleanup "${TARGET_ARGS[@]}"
+scripts/minikube_demo.sh legacy recover-cleanup "${TARGET_ARGS[@]}"
 ```
 
 This is a **read-only preview**, not deletion authorization. Apart from the shared local
@@ -74,7 +74,7 @@ Only proceed when every listed object is understood, all application data may be
 and nobody else is changing this namespace. Execution requires **all three** flags:
 
 ```bash
-scripts/minikube_demo.sh recover-cleanup "${TARGET_ARGS[@]}" \
+scripts/minikube_demo.sh legacy recover-cleanup "${TARGET_ARGS[@]}" \
   --execute --purge-data --confirm-data-loss local-review-demo
 ```
 
@@ -142,7 +142,7 @@ frontend paused or already deleted. Inspect `frontend.status` in the journal. To
 **only an existing frontend paused by this recovery**, use:
 
 ```bash
-scripts/minikube_demo.sh recover-cleanup "${TARGET_ARGS[@]}" --restore-frontend
+scripts/minikube_demo.sh legacy recover-cleanup "${TARGET_ARGS[@]}" --restore-frontend
 ```
 
 This separate action verifies namespace/owner/frontend identity and patches replicas
@@ -162,7 +162,7 @@ launch a model or discard potentially queued work to resolve this uncertainty.
 Only after `cleaned` and observed namespace absence:
 
 ```bash
-scripts/minikube_demo.sh up --profile "$PROFILE"
+scripts/minikube_demo.sh legacy up --profile "$PROFILE"
 ```
 
 The explicit `up` rechecks namespace absence and matching recovery identity, archives the

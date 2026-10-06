@@ -185,7 +185,7 @@ storage and CNI are inspected, never installed or reconfigured by the scripts.
 The minikube helpers verify profile/home/cluster identity, use a private kubeconfig and
 shared operation lock, and enforce namespace UID and random ownership markers. Source
 fingerprints, unique local image tags and image IDs bind deployment/verification to the
-actual checkout. [State import and cleanup](../guides/minikube-demo.md#state-and-ownership-protection)
+actual checkout. [State import and cleanup](../guides/minikube-legacy.md#state-and-ownership-protection)
 work across checkout moves. Readiness and acceptance have independent reports.
 
 ## Observability flow

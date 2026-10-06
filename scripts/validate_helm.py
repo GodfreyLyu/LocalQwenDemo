@@ -10,9 +10,12 @@ from pathlib import Path
 import yaml
 
 CHART = Path("deploy/helm/local-review")
+MINIKUBE_VALUES = CHART / "values-minikube.yaml"
 
 
 def validate_tree(root):
+    manifest = json.loads((root / "release.json").read_text())
+    modern = manifest.get("schemaVersion") == 3
     allowed = {
         "README.md",
         "release.json",
@@ -23,6 +26,18 @@ def validate_tree(root):
         "docs/guides/helm-release.md",
         ".github/workflows/deployment-validation.yml",
     }
+    if modern:
+        allowed = {"README.md", "release.json", "release-values.yaml"}
+        allowed.update(
+            {
+                "deploy/argocd/" + name
+                for name in (
+                    "project.yaml",
+                    "review-ollama-application.yaml",
+                    "local-review-application.yaml",
+                )
+            }
+        )
     for path in root.rglob("*"):
         relative = path.relative_to(root).as_posix()
         if relative == ".git" or relative.startswith(".git/"):
@@ -30,7 +45,9 @@ def validate_tree(root):
         require(not path.is_symlink(), "Release snapshots must not contain symlinks")
         if path.is_file():
             require(
-                relative in allowed or relative.startswith(CHART.as_posix() + "/"),
+                relative in allowed
+                or relative.startswith(CHART.as_posix() + "/")
+                or (modern and relative.startswith("deploy/helm/local-ollama/")),
                 f"Unexpected release file: {relative}",
             )
 
@@ -141,6 +158,25 @@ def validate_resources(resources):
             for rule in resource["spec"].get("egress", []):
                 if any(p.get("port") == 11434 for p in rule.get("ports", [])):
                     for target in rule["to"]:
+                        if "namespaceSelector" in target:
+                            require(
+                                bool(
+                                    target["namespaceSelector"]
+                                    .get("matchLabels", {})
+                                    .get("kubernetes.io/metadata.name")
+                                )
+                                and target.get("podSelector", {})
+                                .get("matchLabels", {})
+                                .get("app.kubernetes.io/name")
+                                == "local-ollama"
+                                and bool(
+                                    target["podSelector"]["matchLabels"].get(
+                                        "app.kubernetes.io/instance"
+                                    )
+                                ),
+                                "Cluster Ollama egress must select one namespace and release",
+                            )
+                            continue
                         network = ipaddress.ip_network(target["ipBlock"]["cidr"])
                         private = any(
                             network.subnet_of(ipaddress.ip_network(n))
@@ -155,8 +191,8 @@ def validate_resources(resources):
 
 def validate_snapshot(root, keyed):
     manifest = json.loads((root / "release.json").read_text())
-    require(manifest["schemaVersion"] in {1, 2}, "Unknown release manifest format")
-    if manifest["schemaVersion"] == 2:
+    require(manifest["schemaVersion"] in {1, 2, 3}, "Unknown release manifest format")
+    if manifest["schemaVersion"] in {2, 3}:
         candidate = manifest.get("candidate", {})
         number = candidate.get("runNumber")
         version = candidate.get("version", "")
@@ -206,6 +242,10 @@ def validate_snapshot(root, keyed):
             image == entry["repository"] + "@" + entry["digest"],
             "Deployment image does not match provenance",
         )
+    if manifest["schemaVersion"] == 3:
+        from validate_gitops import validate_snapshot as validate_gitops_snapshot
+
+        validate_gitops_snapshot(root, manifest)
     for directory in ("backend", "frontend"):
         require(
             not (root / directory).exists(),
@@ -222,32 +262,39 @@ def main():
     if args.snapshot:
         validate_tree(root)
     values = [root / "release-values.yaml"] if args.snapshot else []
+    values.append(root / MINIKUBE_VALUES)
     subprocess.run(
         ["helm", "lint", str(root / CHART), *sum((["-f", str(v)] for v in values), [])],
         check=True,
     )
     keyed = validate_resources(render(root, values))
+    require(
+        not any(kind == "NetworkPolicy" for kind, _ in keyed),
+        "The Minikube profile must explicitly disable network policies",
+    )
     if args.snapshot:
         validate_snapshot(root, keyed)
-    else:
-        validate_resources(
-            render(
-                root,
-                settings=[
-                    "model.backend=transformers",
-                    "volumePermissions.enabled=false",
-                ],
-            )
+    validate_resources(
+        render(
+            root,
+            values,
+            settings=[
+                "model.backend=transformers",
+                "networkPolicy.enabled=true",
+                "volumePermissions.enabled=false",
+            ],
         )
-        validate_resources(
-            render(
-                root,
-                settings=[
-                    "networkPolicy.ollamaHostCidr=192.168.49.1/32",
-                    "persistence.history.existingClaim=retained-history",
-                ],
-            )
+    )
+    validate_resources(
+        render(
+            root,
+            values,
+            settings=[
+                "networkPolicy.enabled=true",
+                "persistence.history.existingClaim=retained-history",
+            ],
         )
+    )
     print("Helm configuration and deployment invariants validated.")
 
 

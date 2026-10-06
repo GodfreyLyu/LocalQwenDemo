@@ -1,15 +1,22 @@
 # LocalQwenDemo
 
-Helm release automation and deployment: [guide](docs/guides/helm-release.md).
+PR-gated image builds and Argo CD: [GitOps guide](docs/guides/gitops.md).
+Standard Helm deployment: [guide](docs/guides/helm-release.md).
 
-**A local LLM code-review service with native Ollama inference with automated deployment to an existing minikube cluster.**
+GPU inference inside krunkit Minikube is available as an
+[independent Ollama Helm release](deploy/helm/local-ollama/README.md), with a retained
+model PVC and readiness gated on verified GPU inference. The application defaults
+to this release at `http://review-ollama.local-inference.svc.cluster.local:11434`.
+
+**A local LLM code-review service with in-cluster Ollama inference and standard Helm deployment to an existing Minikube cluster.**
 
 Paste a code snippet, receive a structured review, and revisit it in your private history.
-The React UI and FastAPI backend run in minikube; native host Ollama runs `qwen3:1.7b`
+The React UI, FastAPI backend and independent Ollama service run in Minikube. Ollama runs `qwen3:1.7b`
 Q4_K_M at a pinned digest. An explicit Transformers CPU backend remains available.
 Submitted code is treated as text: it is never executed or sent to a cloud inference API.
-The maintained deployment uses a user-managed, native, single-node minikube with the Docker
-driver. Local development tools are also available.
+Standard Helm deployment supports the existing krunkit GPU cluster. The optional
+local image-build script requires a Docker-driver Minikube. Local development tools
+are also available.
 
 [Ollama acceptance](docs/reports/ollama-integration-2026-10-03.md) · [Quick start](#quick-start) · [Architecture](#architecture) · [Documentation](#documentation) · [Development](#development-and-contributing)
 
@@ -24,9 +31,9 @@ driver. Local development tools are also available.
   CSRF checks protect access. History is scoped to the authenticated account.
 - **Verified model identity:** Ollama startup verifies its digest, template and tokenizer;
   saved reviews retain the actual model digest. The CPU backend validates cached weight shards.
-- **Owned deployment and recovery:** minikube automation checks target identity and resource
-  ownership, builds/loads local images, and reuses data. Shared state and locks support
-  multiple checkouts; explicit import and cleanup paths handle recovery.
+- **Reviewed Helm releases:** CI builds images and proposes immutable deployment
+  snapshots; approved releases install with standard Helm commands and explicit
+  environment values. Existing Secrets and persistent volumes survive upgrades.
 
 Generated findings still need human review. Structural quality checks do not establish
 semantic correctness, and CPU performance depends on the host. This is a local single-node
@@ -42,8 +49,8 @@ service, not a validated highly available or publicly exposed production platfor
 [Edit the diagram in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO/LocalQwenDemo-%E2%80%94-Application-Architecture?node-id=0-1)
 
 The diagram describes the retained Transformers CPU path. In the default Ollama
-path, the executor calls host Ollama through `host.minikube.internal:11434`; the model
-weights and GPU computation are outside the cluster.
+path, the executor calls `review-ollama.local-inference.svc.cluster.local:11434`;
+Ollama owns a separate model PVC and performs GPU inference inside the cluster.
 
 The outer boundary is the minikube namespace `local-review-demo`; the inner boundary
 is one FastAPI backend process. Re-export the FigJam board after editing it to update
@@ -59,129 +66,72 @@ stored status. The coordinator, executor and SQLite access layer run within the 
 The API and coordinator use that layer to access the same history PVC.
 
 The three cylinders are separate PVCs. The backend uses the history and model-cache PVCs;
-DynamoDB Local uses the accounts PVC. Ollama uses host-managed weights and a pinned
-tokenizer cached in the backend PVC. The CPU adapter downloads/reuses its pinned HF
+DynamoDB Local uses the accounts PVC. Ollama stores weights in its own model PVC; its pinned
+tokenizer is cached in the backend PVC. The CPU adapter downloads/reuses its pinned HF
 weights there. Model weights are not baked into application images.
 
 ### Deployment management
 
-[![Deployment management: the local CLI builds images, maintains private shared state, and deploys to the existing minikube cluster.](docs/assets/deployment-management.png)](docs/assets/deployment-management.png)
+GitHub Actions builds application images and proposes a reviewed snapshot on
+`deployment-release`. The snapshot contains the Chart, image digests and a
+Minikube environment example. Deploy it with Helm; prepare the cluster, independent
+Ollama release and namespace Secrets separately. No Python deployment wrapper is required.
 
-[Open full-size image](docs/assets/deployment-management.png) ·
-[Edit the diagrams in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO)
+The [deployment guide](docs/guides/helm-release.md) documents configuration,
+installation, upgrades, status, rollback and data retention. Argo CD renders the same Charts from the approved release branch, with one manager
+per deployment.
 
-Re-export the FigJam board after editing it to update this image.
-
-- **Deployment script:** checks the selected cluster and resource ownership before changing
-  application resources. It connects with a private kubeconfig and explicit context/namespace.
-- **Local Docker images:** built for the host's architecture, then loaded into the selected
-  minikube cluster by the script. No remote registry push is required.
-- **Private state directory:** stores target identities, build/deployment/acceptance records,
-  kubeconfig and acceptance credentials. A shared target lock prevents concurrent operations
-  from different checkouts. The default is
-  `${XDG_STATE_HOME:-$HOME/.local/state}/local-qwen-demo/`.
-- **Running minikube cluster:** supplied and managed by you. The script manages only this
-  application's verified resources; it never creates, starts, resizes, stops or deletes
-  the cluster, or reconfigures Docker, CNI or storage.
-
-Checkout paths describe where source came from; they are not ownership proof. See
-[architecture](docs/reference/architecture.md) for lifecycle and storage details and
-[state management](docs/guides/minikube-demo.md#state-and-ownership-protection) for moves,
-imports and identity checks.
+The previous [deployment diagram](docs/assets/deployment-management.png) and
+[legacy Minikube guide](docs/guides/minikube-legacy.md) describe the retained
+legacy scripts. Those scripts must not manage a Helm-owned deployment.
 
 ## Quick start
 
-### 1. Prepare the tools and cluster
-
-Use macOS or Linux with Python 3.12, Docker, minikube and a kubectl compatible with the
-cluster. Docker and the node must match the host architecture; no silent emulation is used.
-Node 24 is needed for frontend development/tests, not the image-based deployment path.
-Installation and the first image/model download need network access. Start native Ollama,
-run `ollama pull qwen3:1.7b`, and expose port 11434 to the minikube host gateway as described
-in the [deployment guide](docs/guides/minikube-demo.md#host-ollama-network-rule).
-`up` selects Ollama by default; `up --model-backend transformers` explicitly selects CPU.
-
-The backend alone requests **2 CPUs / 4 GiB RAM** and is limited to **2 CPUs / 6 GiB**.
-Leave capacity for Kubernetes, the frontend, DynamoDB Local and other workloads. The three
-PVCs request **10 GiB for history, 12 GiB for model cache and 1 GiB for accounts**;
-hostpath sizes do not reserve physical disk.
-`doctor` checks actual host, Docker and node budgets; unavailable measurements are not passes.
-
-Run from your checkout; `/path/to/LocalQwenDemo` is a placeholder:
+For local source development, the optional script builds/loads images and calls
+standard Helm. Prepare an existing Docker-driver Minikube and a reachable Ollama
+Service using the default namespace/release, then run:
 
 ```bash
-cd /path/to/LocalQwenDemo
-python3.12 -m venv backend/.venv
-backend/.venv/bin/python -m pip install -r backend/requirements-dev.lock
-backend/.venv/bin/python -m pip install --no-deps -e backend
-minikube profile list
-```
-
-If no suitable cluster is running, start one **yourself**. This example creates a new
-Docker-driver profile. Do not use it to resize an existing cluster; the resources shown
-may be insufficient:
-
-```bash
-minikube start --profile minikube --driver=docker --cpus=4 --memory=8192
-```
-
-Use your selected running profile in place of `minikube` below. The existing cluster must
-provide supported minikube-hostpath storage (default class `standard`). See the
-[deployment guide](docs/guides/minikube-demo.md) for full prerequisites and resource budgets.
-
-### 2. Diagnose, deploy and open
-
-Run diagnostics first:
-
-```bash
-scripts/minikube_demo.sh doctor --profile minikube
-```
-
-`doctor` returns nonzero for failed or incomplete diagnostics. If you choose to attempt
-deployment, run `up` separately: resource/version findings become warnings, while target,
-ownership, architecture and storage requirements still block unsafe deployment. Actual
-build/load/apply/readiness failures remain failures; no `--force` is needed.
-
-```bash
+scripts/minikube_demo.sh init --profile minikube
 scripts/minikube_demo.sh up --profile minikube
+scripts/minikube_demo.sh verify --profile minikube
 scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
-Keep the forwarding terminal open and visit **http://localhost:8080**. Use `localhost` exactly
-for Origin matching. Register or log in and submit a snippet. First startup downloads the
-pinned model; subsequent deployments reuse complete weights, accounts, signing Secret and
-history. Slow or failed startup should be investigated with the
-[troubleshooting runbook](docs/operations/recovery-and-cleanup.md), not by clearing data.
+See the [local Helm guide](docs/guides/minikube-demo.md) for configuration,
+rollback and data-preserving/full cleanup. Stop foreground port-forward before
+running verify. Helm commands remain usable independently of this script.
 
-### 3. Validate or clean up deliberately
+For published release snapshots:
 
-A successful `up` establishes application readiness, not a completed user review.
-`verify` creates acceptance accounts/reviews and performs controlled persistence checks,
-including workload recreation. Read the [acceptance procedure](docs/guides/minikube-demo.md#acceptance-procedure)
-and close your own foreground port-forward with Ctrl-C before using the same saved port:
+1. Prepare an existing Minikube cluster (start with 4 CPUs / 8 GiB), its `standard`
+   StorageClass, and the [independent Ollama release](deploy/helm/local-ollama/README.md)
+   with the pinned model. The GPU image requires krunkit.
+2. Check out an approved `deployment-release` snapshot. Follow the
+   [one-time setup](docs/guides/helm-release.md#one-time-namespace-and-secret-preparation)
+   to create a fresh namespace and stable signing Secret. Private GHCR images
+   also require an image pull Secret.
+3. Copy the provided Minikube values outside the checkout, adjust the environment,
+   and follow the [standard Helm installation](docs/guides/helm-release.md#configure-inspect-and-install).
+   Pass `release-values.yaml` before your environment file on every upgrade.
+4. Port-forward `service/review-frontend`, open `http://localhost:8080`, and complete
+   a real review. Kubernetes readiness alone is not model acceptance.
 
-```bash
-scripts/minikube_demo.sh verify --profile minikube
-```
-
-A real completed review, persistence acceptance, full API `verify`, and deployed-browser
-acceptance are separate results. Historical passes do not validate a new checkout.
-
-[Normal undeploy](docs/guides/minikube-demo.md#undeploy-and-recovery) preserves the three
-PVCs, signing Secret and ownership information by default. Full purge needs explicit
-confirmation. [Lost-state recovery](docs/operations/minikube-lost-state-recovery.md) is a
-separate, read-only-by-default preview for deliberate data abandonment; neither path
-adopts unknown resources. Never delete state files to bypass ownership errors.
+The local example disables NetworkPolicy isolation. The guide explains how to
+enable policies with a capable CNI and select the in-cluster Ollama Pods. Source users
+can run `helm lint` and `helm template` with
+`deploy/helm/local-review/values-minikube.yaml` without a cluster; deploying source
+also requires actual application images.
 
 ## Documentation
 
 | Reader task                  | Start here                                                                                                                                 | What you will find                                                                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Getting started              | [Minikube guide](docs/guides/minikube-demo.md)                                                                                             | Prerequisites, deployment, access and acceptance                                      |
+| Getting started              | [Helm deployment](docs/guides/helm-release.md)                                                                                             | Prerequisites, deployment, access and acceptance                                      |
 | Architecture and design      | [Architecture](docs/reference/architecture.md), [security](docs/reference/security.md)                                                     | Request flow, queue lifecycle, storage and trust boundaries                           |
 | Development and testing      | [Local development](docs/guides/local-development.md), [testing](docs/testing/README.md)                                                   | Setup, fake-model/Compose tools, offline gates and real acceptance boundaries         |
-| Deployment and operations    | [State management](docs/guides/minikube-demo.md#state-and-ownership-protection), [observability runbook](docs/operations/observability.md) | Cross-checkout management, trusted imports and safe diagnostics                       |
-| Troubleshooting and recovery | [Startup and cleanup](docs/operations/recovery-and-cleanup.md), [lost-state recovery](docs/operations/minikube-lost-state-recovery.md)     | Failure investigation and distinct data-preserving/destructive cleanup paths          |
+| Deployment and operations    | [Helm lifecycle](docs/guides/helm-release.md#status-uninstall-and-rollback), [observability runbook](docs/operations/observability.md) | Helm status, rollback, retained storage and diagnostics                       |
+| Legacy script recovery       | [Startup and cleanup](docs/operations/recovery-and-cleanup.md), [lost-state recovery](docs/operations/minikube-lost-state-recovery.md)     | Failure investigation and distinct data-preserving/destructive cleanup paths          |
 | Reference                    | [Documentation index](docs/README.md#reference)                                                                                            | API, model, CLI, logging and resource contracts                                       |
 | Historical validation        | [Dated reports](docs/reports/README.md)                                                                                                    | Original environments, measured results and limitations; no current acceptance claims |
 
@@ -191,7 +141,8 @@ output retain their original language.
 
 ## Development and contributing
 
-After the Python setup above, install Node 24 dependencies and run the offline gate:
+Follow the Python setup in [local development](docs/guides/local-development.md),
+then install Node 24 dependencies and run the offline gate:
 
 ```bash
 npm --prefix frontend ci

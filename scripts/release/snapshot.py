@@ -13,12 +13,12 @@ from pathlib import Path
 import yaml
 
 CHART = "deploy/helm/local-review"
-DEPLOY_FILES = (
-    "scripts/helm_deploy.py",
-    "scripts/helm_target.py",
-    "scripts/validate_helm.py",
-    "docs/guides/helm-release.md",
-)
+OLLAMA_CHART = "deploy/helm/local-ollama"
+CHARTS = (CHART, OLLAMA_CHART)
+COMPONENTS = ("backend", "frontend", "ollama")
+DEPLOY_FILES = ()
+ARGOCD = "deploy/argocd"
+FORMAT = 3
 SHA = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -53,12 +53,18 @@ def inputs(root):
         }
     ]
     frontend = [p for p in tracked if p.startswith("frontend/")]
-    deployment = [p for p in tracked if p.startswith(CHART + "/") or p in DEPLOY_FILES]
+    ollama = [p for p in tracked if p.startswith("deploy/images/ollama-vulkan/")]
+    deployment = [
+        p
+        for p in tracked
+        if any(p.startswith(c + "/") for c in CHARTS) or p.startswith(ARGOCD + "/")
+    ]
     return {
         k: fingerprint(root, paths)
         for k, paths in {
             "backend": backend,
             "frontend": frontend,
+            "ollama": ollama,
             "deployment": deployment,
         }.items()
     }
@@ -69,7 +75,7 @@ def plan(root, previous, repository):
     assert SHA.fullmatch(source)
     current = inputs(root)
     images = {}
-    for component in ("backend", "frontend"):
+    for component in COMPONENTS:
         old = previous.get("images", {}).get(component, {})
         name = f"ghcr.io/{repository.lower()}-{component}"
         reuse = (
@@ -82,11 +88,16 @@ def plan(root, previous, repository):
             copy.deepcopy(old) if reuse else {"repository": name, "sourceSha": source}
         )
     return {
-        "schemaVersion": 1,
+        "schemaVersion": FORMAT,
         "sourceSha": source,
+        "repository": repository,
         "inputs": current,
         "images": images,
-        "changed": current != previous.get("inputs") or images != previous.get("images"),
+        "changed": (
+            previous.get("schemaVersion") != FORMAT
+            or current != previous.get("inputs")
+            or images != previous.get("images")
+        ),
         "build": {k: "digest" not in v for k, v in images.items()},
     }
 
@@ -120,21 +131,36 @@ def materialize(root, destination, candidate, digests):
         if not DIGEST.fullmatch(entry["digest"]):
             raise ValueError("Image digest is missing or invalid")
     destination.mkdir(parents=True, exist_ok=True)
-    target_chart = destination / CHART
-    if target_chart.exists():
-        shutil.rmtree(target_chart)
-    shutil.copytree(root / CHART, target_chart)
-    for name in DEPLOY_FILES:
+    # A dedicated worktree: remove legacy deployment scripts and workflow entrypoints.
+    # The one-time workflow-removal PR must be merged before the bot can publish.
+    for path in destination.iterdir():
+        if path.name == ".git":
+            continue
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    if manifest.get("schemaVersion") != FORMAT or "candidate" not in manifest:
+        raise ValueError("New snapshots require format 3 versioned candidate metadata")
+    manifest["chartVersions"] = {}
+    for name in CHARTS:
         target = destination / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(root / name, target)
-    chart = yaml.safe_load((target_chart / "Chart.yaml").read_text())
-    if manifest.get("schemaVersion") != 2 or "candidate" not in manifest:
-        raise ValueError("New snapshots require versioned candidate metadata")
-    chart["version"] = manifest["candidate"]["version"]
-    chart["appVersion"] = manifest["sourceSha"]
-    (target_chart / "Chart.yaml").write_text(yaml.safe_dump(chart, sort_keys=False))
-    manifest["chartVersion"] = chart["version"]
+        shutil.copytree(root / name, target)
+        chart = yaml.safe_load((target / "Chart.yaml").read_text())
+        # Preserve Ollama's runtime appVersion and independent Chart version: a
+        # backend-only change must not restart the Ollama workload.
+        if name == CHART:
+            chart["version"] = manifest["candidate"]["version"]
+            chart["appVersion"] = manifest["sourceSha"]
+        manifest["chartVersions"][chart["name"]] = chart["version"]
+        (target / "Chart.yaml").write_text(yaml.safe_dump(chart, sort_keys=False))
+    manifest["chartVersion"] = manifest["candidate"]["version"]
+    shutil.copytree(root / ARGOCD, destination / ARGOCD)
+    repo_url = "https://github.com/" + manifest["repository"] + ".git"
+    for path in (destination / ARGOCD).glob("*.yaml"):
+        path.write_text(
+            path.read_text().replace("https://github.com/GodfreyLyu/LocalQwenDemo.git", repo_url)
+        )
     values = {
         c: {
             "image": {
@@ -145,14 +171,32 @@ def materialize(root, destination, candidate, digests):
             }
         }
         for c, v in manifest["images"].items()
+        if c != "ollama"
     }
     values["config"] = {"releaseSha": manifest["sourceSha"]}
     (destination / "release-values.yaml").write_text(yaml.safe_dump(values, sort_keys=False))
+    (destination / CHART / "values-release.yaml").write_text(
+        yaml.safe_dump(values, sort_keys=False)
+    )
+    ollama = manifest["images"]["ollama"]
+    (destination / OLLAMA_CHART / "values-release.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "image": {
+                    "repository": ollama["repository"],
+                    "digest": ollama["digest"],
+                    "tag": "sha-" + ollama["sourceSha"],
+                    "pullPolicy": "IfNotPresent",
+                },
+            },
+            sort_keys=False,
+        )
+    )
     (destination / "release.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (destination / "README.md").write_text(
         "# Local Qwen deployment release\n\n"
         "Generated from main; edit Chart and configuration in main and review the generated PR.\n\n"
-        "See [deployment instructions](docs/guides/helm-release.md). "
+        "Argo CD watches deploy/argocd and the two deploy/helm Charts. "
         "Image provenance is recorded in [release.json](release.json).\n"
     )
     return manifest
@@ -171,6 +215,7 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--backend-digest", default="")
     parser.add_argument("--frontend-digest", default="")
+    parser.add_argument("--ollama-digest", default="")
     args = parser.parse_args()
     if args.command == "plan":
         previous = (
@@ -179,7 +224,7 @@ def main():
             else {}
         )
         candidate = plan(args.root, previous, args.repository)
-        candidate["schemaVersion"] = 2
+        candidate["schemaVersion"] = FORMAT
         candidate["candidate"] = candidate_metadata(
             args.root, args.base_sha or "", args.run_number, args.run_id
         )
@@ -192,6 +237,7 @@ def main():
             {
                 "backend": args.backend_digest,
                 "frontend": args.frontend_digest,
+                "ollama": args.ollama_digest,
             },
         )
 

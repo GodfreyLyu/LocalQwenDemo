@@ -1,0 +1,18 @@
+{{- if lt (int .Values.startupTimeoutSeconds) (int (add .Values.model.waitSeconds 240)) }}
+{{- fail "startupTimeoutSeconds must allow model.waitSeconds plus 240 seconds for GPU loading" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ollama.labels" . | nindent 4 }}
+data:
+  MODEL_NAME: {{ .Values.model.name | quote }}
+  MODEL_DIGEST: {{ .Values.model.digest | quote }}
+  MODEL_CONTEXT: {{ .Values.model.context | toString | quote }}
+  MODEL_THREADS: {{ .Values.model.cpuThreads | toString | quote }}
+  MODEL_PULL_IF_MISSING: {{ .Values.model.pullIfMissing | toString | quote }}
+  MODEL_WAIT_SECONDS: {{ .Values.model.waitSeconds | toString | quote }}
+  OLLAMA_CONTEXT_LENGTH: {{ .Values.model.context | toString | quote }}

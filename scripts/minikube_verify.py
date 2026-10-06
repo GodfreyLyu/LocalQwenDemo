@@ -121,8 +121,8 @@ def memory_sample():
     }
 
 
-def cache_inventory():
-    result = backend_python(
+def cache_inventory(executor=None):
+    result = (executor or backend_python)(
         "import json; from pathlib import Path; from app.config import Settings\n"
         "s=Settings()\n"
         "p=s.hf_home/'hub'/'models--Qwen--Qwen3-1.7B'/'snapshots'/s.model_revision\n"

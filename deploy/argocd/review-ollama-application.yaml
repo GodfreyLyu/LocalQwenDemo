@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: review-ollama
+  namespace: argocd
+spec:
+  project: local-review
+  source:
+    repoURL: https://github.com/GodfreyLyu/LocalQwenDemo.git
+    targetRevision: deployment-release
+    path: deploy/helm/local-ollama
+    helm:
+      releaseName: review-ollama
+      skipTests: true
+      valueFiles:
+        - values-release.yaml
+        - values-argocd.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: local-inference
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - FailOnSharedResource=true

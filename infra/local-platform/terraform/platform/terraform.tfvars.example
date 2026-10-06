@@ -1,0 +1,11 @@
+kubeconfig_path      = "~/.kube/config"
+kube_context         = "minikube"
+namespaces           = ["gpu-system", "gpu-tests", "argocd", "monitoring"]
+gpu_plugin_namespace = "gpu-system"
+gpu_slots            = 1
+
+# The default plugin image is pinned in variables.tf.
+# If namespaces change, update verify-gpu.sh arguments and the smoke-test namespace.
+
+# Enable after reviewing the Argo CD installation plan.
+argocd_enabled = false

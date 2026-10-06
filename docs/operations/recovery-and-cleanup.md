@@ -10,9 +10,9 @@ reports, including failed and incomplete results.
 ## Health and startup
 
 ```bash
-scripts/minikube_demo.sh status --profile minikube
-scripts/minikube_demo.sh logs --profile minikube
-scripts/minikube_demo.sh doctor --profile minikube
+scripts/minikube_demo.sh legacy status --profile minikube
+scripts/minikube_demo.sh legacy logs --profile minikube
+scripts/minikube_demo.sh legacy doctor --profile minikube
 ```
 
 These commands check ownership and use the selected target's private kubeconfig
@@ -104,11 +104,11 @@ survived; persistence acceptance is separate.
 
 ## Shared state and cleanup
 
-Use the maintained [state import and normal undeploy procedure](../guides/minikube-demo.md#undeploy-and-recovery).
+Use the maintained [state import and normal undeploy procedure](../guides/minikube-legacy.md#undeploy-and-recovery).
 
 ```bash
-scripts/minikube_demo.sh import-state --profile minikube --from-state /path/to/old/checkout
-scripts/minikube_demo.sh undeploy --profile minikube
+scripts/minikube_demo.sh legacy import-state --profile minikube --from-state /path/to/old/checkout
+scripts/minikube_demo.sh legacy undeploy --profile minikube
 ```
 
 Import is appropriate only when a trusted old copy exists. Default undeploy removes
@@ -120,7 +120,7 @@ running, draining or unmeasurable inference prevents cleanup.
 For deliberate full data removal under trusted state:
 
 ```bash
-scripts/minikube_demo.sh undeploy --profile minikube \
+scripts/minikube_demo.sh legacy undeploy --profile minikube \
   --purge-data --confirm-data-loss local-review-demo
 ```
 
