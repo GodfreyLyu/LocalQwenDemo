@@ -1,0 +1,35 @@
+image:
+  repository: review-ollama
+  tag: 0.24.0-krunkit1
+  digest: ''
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+model:
+  name: qwen3:1.7b
+  digest: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
+  context: 4096
+  cpuThreads: 2
+  # Normal Helm installs download once, then reuse the PVC. False permits offline seeding.
+  pullIfMissing: true
+  waitSeconds: 1200
+persistence:
+  storageClass: standard
+  size: 4Gi
+  existingClaim: ''
+volumePermissions:
+  enabled: true
+gpu:
+  resourceName: devic.es/dri
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+    ephemeral-storage: 256Mi
+  limits:
+    cpu: '2'
+    memory: 3Gi
+    ephemeral-storage: 1Gi
+startupTimeoutSeconds: 1800
+
+verification:
+  argoPostSync: false

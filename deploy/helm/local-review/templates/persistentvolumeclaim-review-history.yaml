@@ -10,6 +10,7 @@ metadata:
   namespace: {{ .Release.Namespace | quote }}
   annotations:
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
   - ReadWriteOnce

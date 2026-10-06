@@ -1,0 +1,18 @@
+# Optional smaller backend resource profile; cluster Ollama is already the default.
+# Apply AFTER values-minikube.yaml. Install the independent local-ollama chart first.
+model:
+  backend: ollama
+  ollamaBaseUrl: http://review-ollama.local-inference.svc.cluster.local:11434
+backend:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 768Mi
+networkPolicy:
+  enabled: false
+  ollamaHostCidr: ''
+  ollamaNamespace: local-inference
+  ollamaRelease: review-ollama

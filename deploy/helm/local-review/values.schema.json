@@ -539,14 +539,26 @@
       "additionalProperties": false,
       "required": [
         "enabled",
-        "ollamaHostCidr"
+        "ollamaHostCidr",
+        "ollamaNamespace",
+        "ollamaRelease"
       ],
       "properties": {
         "enabled": {
           "type": "boolean"
         },
         "ollamaHostCidr": {
-          "type": "string"
+          "type": "string",
+          "description": "One private IPv4 host /32; required for host Ollama with enabled policies and an empty ollamaNamespace.",
+          "pattern": "^$|^(10\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|172\\.(1[6-9]|2[0-9]|3[01])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|192\\.168\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))/32$"
+        },
+        "ollamaNamespace": {
+          "type": "string",
+          "pattern": "^$|^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+        },
+        "ollamaRelease": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,51}[a-z0-9])?$"
         }
       }
     }
