@@ -101,4 +101,4 @@ def test_pr_quality_is_required_before_main_image_publication():
         {"context": "main-ci", "app_id": 15368}
     ]
     assert protection["enforce_admins"]
-    assert protection["required_pull_request_reviews"]["required_approving_review_count"] == 1
+    assert protection["required_pull_request_reviews"]["required_approving_review_count"] == 0

@@ -7,7 +7,7 @@ the source Chart in main and review the generated release PR.
 
 ## Automated release flow
 
-PRs to main must pass `main-ci` and review before merge. Only then does the release
+PRs to main must pass `main-ci` before merge; no separate approval is required. Only then does the release
 workflow recheck main, build changed backend/frontend/Ollama images, publish GHCR
 digests and propose an immutable deployment snapshot. A reviewed deployment PR
 updates Argo CD's desired state. See [the GitOps guide](gitops.md) for migration,

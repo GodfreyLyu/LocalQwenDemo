@@ -1,10 +1,12 @@
 # PR-gated images and Argo CD
 
-Source changes enter `main` only through reviewed PRs. `Quality checks` runs on
-PRs and the required `main-ci` gate succeeds only if both application and
-configuration jobs succeed. Main protection requires an up-to-date branch, one
-approval, resolved conversations, and checks; administrators cannot bypass it.
-A PR author cannot approve their own PR: arrange another reviewer.
+Source changes enter `main` only through PRs. `Quality checks` runs on PRs and the
+required `main-ci` gate succeeds only if both application and configuration jobs
+succeed. Main protection requires an up-to-date branch and resolved conversations;
+administrators cannot bypass these checks. Required approvals are zero for this
+personal project: the author can merge their own PR after CI succeeds, without a
+self-approval (which GitHub does not support). The deployment-release branch has
+its own approval policy, unchanged by this main-only setting.
 
 After merge, `Release candidate` rechecks the exact main commit, builds changed
 backend/frontend images for amd64+arm64 and Ollama for arm64, and pushes to GHCR.
@@ -26,7 +28,7 @@ build is not evidence of working GPU inference.
 
 ## One-time repository migration
 
-1. Merge the implementation PR to main after `main-ci` and reviewer approval.
+1. Merge the implementation PR to main after `main-ci` succeeds.
 2. Using a maintainer's GitHub CLI identity with workflow permissions, run:
 
    ```bash
