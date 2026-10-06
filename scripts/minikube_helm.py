@@ -445,8 +445,12 @@ class Session:
             }
             if needed + other > amount:
                 warnings.append(f"Insufficient {key} capacity for configured requests")
-        if values["model"]["backend"] == "ollama":
-            # Probe from the selected Docker node, without resolving or changing Chart values.
+        if (
+            values["model"]["backend"] == "ollama"
+            and ".svc.cluster.local:" not in values["model"]["ollamaBaseUrl"]
+        ):
+            # Cluster DNS is resolved in Pods; their readiness verifies Service access.
+            # Probe host endpoints from the selected Docker node only.
             try:
                 run(
                     "docker",

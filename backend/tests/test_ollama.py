@@ -242,11 +242,19 @@ def test_coordinator_persists_digest_and_recovers_after_failed_request(
         "http://user:pass@localhost:11434",
         "http://localhost:11434/api",
         "http://localhost:11434?secret=value",
+        "http://review-ollama.local-inference.svc.cluster.local.evil.com:11434",
+        "http://review-ollama.local-inference.svc.cluster.local:11434/api",
+        "http://review-ollama.local-inference.svc.cluster.local:8000",
     ],
 )
 def test_only_explicit_local_ollama_endpoints(url):
     with pytest.raises(ValidationError):
         settings(ollama_base_url=url)
+
+
+def test_cluster_ollama_service_endpoint():
+    url = "http://review-ollama.local-inference.svc.cluster.local:11434"
+    assert settings(ollama_base_url=url).ollama_base_url == url
 
 
 def test_factory_preserves_explicit_transformers_fallback():
@@ -356,3 +364,11 @@ def test_startup_recovers_from_one_connection_failure(adapter, monkeypatch):
     monkeypatch.setattr("app.inference.ollama.time.sleep", lambda _: None)
     assert model._startup_metadata(None) == {"model_info": {}}
     assert len(calls) == 2
+
+
+def test_default_backend_calls_cluster_ollama():
+    config = settings()
+    assert config.model_backend == "ollama"
+    assert config.ollama_base_url == "http://review-ollama.local-inference.svc.cluster.local:11434"
+    app = create_app(config, users=object())
+    assert isinstance(app.state.model, OllamaModel)

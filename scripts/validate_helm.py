@@ -142,6 +142,25 @@ def validate_resources(resources):
             for rule in resource["spec"].get("egress", []):
                 if any(p.get("port") == 11434 for p in rule.get("ports", [])):
                     for target in rule["to"]:
+                        if "namespaceSelector" in target:
+                            require(
+                                bool(
+                                    target["namespaceSelector"]
+                                    .get("matchLabels", {})
+                                    .get("kubernetes.io/metadata.name")
+                                )
+                                and target.get("podSelector", {})
+                                .get("matchLabels", {})
+                                .get("app.kubernetes.io/name")
+                                == "local-ollama"
+                                and bool(
+                                    target["podSelector"]["matchLabels"].get(
+                                        "app.kubernetes.io/instance"
+                                    )
+                                ),
+                                "Cluster Ollama egress must select one namespace and release",
+                            )
+                            continue
                         network = ipaddress.ip_network(target["ipBlock"]["cidr"])
                         private = any(
                             network.subnet_of(ipaddress.ip_network(n))
@@ -252,7 +271,6 @@ def main():
             values,
             settings=[
                 "networkPolicy.enabled=true",
-                "networkPolicy.ollamaHostCidr=192.168.49.1/32",
                 "persistence.history.existingClaim=retained-history",
             ],
         )

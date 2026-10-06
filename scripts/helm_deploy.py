@@ -39,13 +39,17 @@ def install(target, args):
         if r["kind"] == "ConfigMap" and r["metadata"]["name"] == "review-config"
     )
     host_ip = None
-    if cfg["MODEL_BACKEND"] == "ollama":
-        require(
-            cfg["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434",
-            "Minikube wrapper expects the host Ollama endpoint",
-        )
+    if (
+        cfg["MODEL_BACKEND"] == "ollama"
+        and cfg["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434"
+    ):
         host_ip = target.ollama_ip()
-        base += ["--set-string", "networkPolicy.ollamaHostCidr=" + host_ip + "/32"]
+        base += [
+            "--set-string",
+            "networkPolicy.ollamaHostCidr=" + host_ip + "/32",
+            "--set-string",
+            "networkPolicy.ollamaNamespace=",
+        ]
     # Include policies in ownership checks once the actual host address is known.
     rendered = list(yaml.safe_load_all(run(*base).stdout))
     backend = next(
@@ -115,7 +119,10 @@ def install(target, args):
                         )
     overrides = {"config": {"allowedOrigin": f"http://localhost:{args.port}"}}
     if host_ip:
-        overrides["networkPolicy"] = {"ollamaHostCidr": host_ip + "/32"}
+        overrides["networkPolicy"] = {
+            "ollamaHostCidr": host_ip + "/32",
+            "ollamaNamespace": "",
+        }
     # Secret values are neither command-line arguments nor output. Never rotate an existing key.
     if target.object("namespace", args.namespace) is None:
         target.kubectl("create", "namespace", args.namespace)

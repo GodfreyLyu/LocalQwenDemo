@@ -65,7 +65,7 @@ volumePermissions:
   enabled: true
 model:
   backend: ollama
-  ollamaBaseUrl: http://host.minikube.internal:11434
+  ollamaBaseUrl: http://review-ollama.local-inference.svc.cluster.local:11434
   ollamaModel: qwen3:1.7b
   ollamaModelDigest: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
   id: Qwen/Qwen3-1.7B
@@ -89,5 +89,8 @@ startupTimeoutSeconds: 3600
 networkPolicy:
   # Use values-minikube.yaml for the local profile without network isolation.
   enabled: true
-  # Required with Ollama and enabled policies; one private host IPv4 address /32.
+  # For explicit host Ollama: clear ollamaNamespace and set one private IPv4 /32.
   ollamaHostCidr: ''
+  # Independent local-ollama release used by the default endpoint.
+  ollamaNamespace: local-inference
+  ollamaRelease: review-ollama

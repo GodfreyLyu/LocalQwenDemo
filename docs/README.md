@@ -1,9 +1,12 @@
 # Documentation
 
-LocalQwenDemo runs real CPU code review on an existing local minikube cluster. The
+LocalQwenDemo runs code review using Ollama or an explicit Transformers CPU backend. The
 [project homepage](../README.md) provides an overview, diagrams and a quick start.
 The operator manages cluster lifecycle and external services; standard Helm
 commands manage application resources using reviewed release and environment values.
+
+For GPU inference inside an existing krunkit cluster, see the
+[independent Ollama Helm deployment](../deploy/helm/local-ollama/README.md).
 
 ## Choose a reading path
 

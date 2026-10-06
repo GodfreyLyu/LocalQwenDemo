@@ -227,7 +227,14 @@ def test_config_rollout_and_volume_retention():
 
 def test_ollama_rule_is_an_egress_rule():
     resources = validate_helm.validate_resources(
-        validate_helm.render(ROOT, settings=["networkPolicy.ollamaHostCidr=192.168.49.1/32"])
+        validate_helm.render(
+            ROOT,
+            settings=[
+                "networkPolicy.ollamaNamespace=",
+                "model.ollamaBaseUrl=http://host.minikube.internal:11434",
+                "networkPolicy.ollamaHostCidr=192.168.49.1/32",
+            ],
+        )
     )
     policy = resources["NetworkPolicy", "review-backend"]["spec"]
     assert policy["policyTypes"] == ["Ingress", "Egress"]
@@ -250,6 +257,10 @@ def test_enabled_ollama_policy_rejects_missing_or_invalid_host(cidr):
             str(ROOT / snapshot.CHART),
             "--set-string",
             "networkPolicy.ollamaHostCidr=" + cidr,
+            "--set-string",
+            "networkPolicy.ollamaNamespace=",
+            "--set-string",
+            "model.ollamaBaseUrl=http://host.minikube.internal:11434",
         ],
         capture_output=True,
         text=True,
@@ -285,7 +296,6 @@ def test_standard_helm_snapshot_is_deterministic_and_preserves_image_pins(source
             values,
             [
                 "networkPolicy.enabled=true",
-                "networkPolicy.ollamaHostCidr=192.168.49.1/32",
             ],
         )
     )
@@ -647,7 +657,10 @@ def test_context_is_always_explicit_and_legacy_ownership_is_not_adopted(tmp_path
         )
 
 
-def test_legacy_wrapper_still_checks_policy_ownership_after_host_discovery(monkeypatch):
+@pytest.mark.parametrize("host_ollama", [False, True])
+def test_legacy_wrapper_checks_policy_ownership_for_both_endpoints(
+    monkeypatch, tmp_path, host_ollama
+):
     def kubectl(*args):
         if args[1] == "nodes":
             items = [
@@ -672,10 +685,22 @@ def test_legacy_wrapper_still_checks_policy_ownership_after_host_discovery(monke
 
     monkeypatch.setattr(helm_deploy, "ROOT", ROOT)
     monkeypatch.setattr(helm_deploy, "CHART", ROOT / snapshot.CHART)
-    target = SimpleNamespace(kubectl=kubectl, object=resource, ollama_ip=lambda: "192.168.49.1")
-    args = SimpleNamespace(values=[], release="local-review", namespace="test")
+    discoveries = []
+
+    def ollama_ip():
+        discoveries.append(True)
+        return "192.168.49.1"
+
+    target = SimpleNamespace(kubectl=kubectl, object=resource, ollama_ip=ollama_ip)
+    values = []
+    if host_ollama:
+        path = tmp_path / "host.yaml"
+        path.write_text("model:\n  ollamaBaseUrl: http://host.minikube.internal:11434\n")
+        values.append(str(path))
+    args = SimpleNamespace(values=values, release="local-review", namespace="test")
     with pytest.raises(ValueError, match="Existing NetworkPolicy.*not owned"):
         helm_deploy.install(target, args)
+    assert bool(discoveries) is host_ollama
 
 
 def test_snapshot_rejects_digest_drift_and_extra_source(source, tmp_path):

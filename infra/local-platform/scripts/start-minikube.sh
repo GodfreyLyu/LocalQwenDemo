@@ -10,7 +10,7 @@ while [ "$#" -gt 0 ]; do
       profile="$2"; shift 2 ;;
     -h|--help)
       echo "Usage: $0 [--profile minikube]"
-      echo 'New clusters: MINIKUBE_CPUS=2 MINIKUBE_MEMORY=4096 MINIKUBE_KUBERNETES_VERSION=v1.37.0'
+      echo 'New clusters: MINIKUBE_CPUS=4 MINIKUBE_MEMORY=8192 MINIKUBE_KUBERNETES_VERSION=v1.37.0'
       echo 'KUBE_CONFIG_PATH selects one kubeconfig file (default: ~/.kube/config).'
       exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -63,7 +63,7 @@ case "$profile_state" in
   new)
     minikube start --profile "$profile" --driver krunkit --container-runtime containerd \
       --kubernetes-version "${MINIKUBE_KUBERNETES_VERSION:-v1.37.0}" \
-      --cpus "${MINIKUBE_CPUS:-2}" --memory "${MINIKUBE_MEMORY:-4096}" --keep-context ;;
+      --cpus "${MINIKUBE_CPUS:-4}" --memory "${MINIKUBE_MEMORY:-8192}" --keep-context ;;
 esac
 minikube --profile "$profile" ssh -- 'test -c /dev/dri/renderD128 && ls -l /dev/dri'
 echo 'Node render device exists. Next: terraform init/plan/apply, then verify-gpu.sh.'

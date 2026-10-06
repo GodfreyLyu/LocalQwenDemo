@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ollama.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  progressDeadlineSeconds: {{ add .Values.startupTimeoutSeconds 120 }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ollama.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ollama.selector" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: arm64
+      imagePullSecrets: {{ .Values.imagePullSecrets | toJson }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.volumePermissions.enabled }}
+      initContainers:
+        - name: model-volume-permissions
+          image: {{ include "ollama.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python3, -c]
+          args: ["import os; os.chown('/models', 10001, 10001); os.chmod('/models', 0o770)"]
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, FOWNER]
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      {{- end }}
+      containers:
+        - name: ollama
+          image: {{ include "ollama.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+          ports:
+            - name: http
+              containerPort: 11434
+            - name: health
+              containerPort: 11435
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              {{- toYaml .Values.resources.requests | nindent 14 }}
+              {{ .Values.gpu.resourceName | quote }}: 1
+            limits:
+              {{- toYaml .Values.resources.limits | nindent 14 }}
+              {{ .Values.gpu.resourceName | quote }}: 1
+          startupProbe:
+            httpGet: {path: /ready, port: health}
+            periodSeconds: 10
+            timeoutSeconds: 8
+            failureThreshold: {{ div (add .Values.startupTimeoutSeconds 9) 10 }}
+          readinessProbe:
+            httpGet: {path: /ready, port: health}
+            periodSeconds: 5
+            timeoutSeconds: 8
+            failureThreshold: 1
+          livenessProbe:
+            httpGet: {path: /live, port: health}
+            periodSeconds: 10
+            timeoutSeconds: 8
+            failureThreshold: 3
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: {{ include "ollama.claim" . | quote }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi

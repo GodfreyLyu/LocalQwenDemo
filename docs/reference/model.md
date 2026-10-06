@@ -4,10 +4,14 @@
 
 ## Active backend selection
 
-Minikube now defaults to **native host Ollama** (`MODEL_BACKEND=ollama`), using
-`qwen3:1.7b` Q4_K_M. `OLLAMA_BASE_URL` is `http://host.minikube.internal:11434` in
-minikube and `http://localhost:11434` for direct development. It accepts only local
-HTTP endpoints on port 11434, disables proxy environment variables and redirects.
+Python settings and Helm default to **in-cluster Ollama** (`MODEL_BACKEND=ollama`),
+using `qwen3:1.7b` Q4_K_M at
+`http://review-ollama.local-inference.svc.cluster.local:11434`. Install the
+[independent GPU Ollama release](../../deploy/helm/local-ollama/README.md) first.
+Direct host development explicitly overrides the URL to `http://localhost:11434`
+in `.env.example`; cluster DNS is intended for Pods. The backend accepts local and
+fully qualified cluster Service HTTP endpoints on port 11434, and disables proxy
+environment variables and redirects.
 `OLLAMA_MODEL_DIGEST` optionally pins a manifest digest; the maintained overlay pins
 `sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7`.
 The loaded digest is checked before and after each review to reject changed tags.
@@ -40,9 +44,8 @@ Device means placement **observed at startup or the last completed review** from
 `/api/ps`, not continuous GPU monitoring. Saved review `model_revision` contains the
 Ollama `sha256:` digest; old HF revisions and simulated records are preserved.
 
-Use `up --model-backend transformers` for the explicit CPU path. Backend settings
-still default to Transformers for compatibility; the minikube overlay and `.env.example`
-select Ollama. See [deployment commands](../guides/minikube-legacy.md).
+Use Helm `--set model.backend=transformers` or `MODEL_BACKEND=transformers` for the
+explicit CPU path. See [deployment commands](../guides/helm-release.md).
 
 ## Transformers CPU reference
 

@@ -13,10 +13,12 @@ Old Kustomize deployments use the explicit `legacy` entry described in
 
 Install the Python environment described in [local development](local-development.md),
 Helm 3.17+ or Helm 4, kubectl, Docker and Minikube. Use an existing single-node
-Docker-driver profile, a usable `standard` StorageClass, and reachable host Ollama
-with the Chart's pinned model. The local profile disables NetworkPolicy isolation.
-If enabling policies in your own values, supply the actual private host IPv4 `/32`
-and use an enforcing CNI. No network rule is discovered or changed implicitly.
+Docker-driver profile, a usable `standard` StorageClass, and an Ollama Service at
+`review-ollama.local-inference.svc.cluster.local:11434` with the Chart's pinned model.
+The local profile disables NetworkPolicy isolation. If enabling policies, use an
+enforcing CNI; defaults select the Ollama release's namespace and Pods. Host Ollama
+requires explicit URL and policy overrides described in the [Helm guide](helm-release.md).
+For the krunkit GPU cluster, use standard Helm commands instead of this script.
 
 Start with 4 CPUs / 8 GiB for one application, leaving host capacity for Ollama.
 `doctor` considers both node allocatable resources and the Docker container limits;

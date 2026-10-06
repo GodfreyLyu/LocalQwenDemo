@@ -2,14 +2,20 @@
 
 Standard Helm deployment and release automation: [guide](docs/guides/helm-release.md).
 
-**A local LLM code-review service with native Ollama inference and standard Helm deployment to an existing Minikube cluster.**
+GPU inference inside krunkit Minikube is available as an
+[independent Ollama Helm release](deploy/helm/local-ollama/README.md), with a retained
+model PVC and readiness gated on verified GPU inference. The application defaults
+to this release at `http://review-ollama.local-inference.svc.cluster.local:11434`.
+
+**A local LLM code-review service with in-cluster Ollama inference and standard Helm deployment to an existing Minikube cluster.**
 
 Paste a code snippet, receive a structured review, and revisit it in your private history.
-The React UI and FastAPI backend run in minikube; native host Ollama runs `qwen3:1.7b`
+The React UI, FastAPI backend and independent Ollama service run in Minikube. Ollama runs `qwen3:1.7b`
 Q4_K_M at a pinned digest. An explicit Transformers CPU backend remains available.
 Submitted code is treated as text: it is never executed or sent to a cloud inference API.
-The maintained deployment uses a user-managed, native, single-node minikube with the Docker
-driver. Local development tools are also available.
+Standard Helm deployment supports the existing krunkit GPU cluster. The optional
+local image-build script requires a Docker-driver Minikube. Local development tools
+are also available.
 
 [Ollama acceptance](docs/reports/ollama-integration-2026-10-03.md) · [Quick start](#quick-start) · [Architecture](#architecture) · [Documentation](#documentation) · [Development](#development-and-contributing)
 
@@ -42,8 +48,8 @@ service, not a validated highly available or publicly exposed production platfor
 [Edit the diagram in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO/LocalQwenDemo-%E2%80%94-Application-Architecture?node-id=0-1)
 
 The diagram describes the retained Transformers CPU path. In the default Ollama
-path, the executor calls host Ollama through `host.minikube.internal:11434`; the model
-weights and GPU computation are outside the cluster.
+path, the executor calls `review-ollama.local-inference.svc.cluster.local:11434`;
+Ollama owns a separate model PVC and performs GPU inference inside the cluster.
 
 The outer boundary is the minikube namespace `local-review-demo`; the inner boundary
 is one FastAPI backend process. Re-export the FigJam board after editing it to update
@@ -59,16 +65,16 @@ stored status. The coordinator, executor and SQLite access layer run within the 
 The API and coordinator use that layer to access the same history PVC.
 
 The three cylinders are separate PVCs. The backend uses the history and model-cache PVCs;
-DynamoDB Local uses the accounts PVC. Ollama uses host-managed weights and a pinned
-tokenizer cached in the backend PVC. The CPU adapter downloads/reuses its pinned HF
+DynamoDB Local uses the accounts PVC. Ollama stores weights in its own model PVC; its pinned
+tokenizer is cached in the backend PVC. The CPU adapter downloads/reuses its pinned HF
 weights there. Model weights are not baked into application images.
 
 ### Deployment management
 
 GitHub Actions builds application images and proposes a reviewed snapshot on
 `deployment-release`. The snapshot contains the Chart, image digests and a
-Minikube environment example. Deploy it with Helm; prepare the cluster, host
-Ollama and namespace Secrets separately. No Python deployment wrapper is required.
+Minikube environment example. Deploy it with Helm; prepare the cluster, independent
+Ollama release and namespace Secrets separately. No Python deployment wrapper is required.
 
 The [deployment guide](docs/guides/helm-release.md) documents configuration,
 installation, upgrades, status, rollback and data retention. Argo CD can later
@@ -81,7 +87,8 @@ legacy scripts. Those scripts must not manage a Helm-owned deployment.
 ## Quick start
 
 For local source development, the optional script builds/loads images and calls
-standard Helm. Prepare an existing Minikube and host Ollama, then run:
+standard Helm. Prepare an existing Docker-driver Minikube and a reachable Ollama
+Service using the default namespace/release, then run:
 
 ```bash
 scripts/minikube_demo.sh init --profile minikube
@@ -97,7 +104,8 @@ running verify. Helm commands remain usable independently of this script.
 For published release snapshots:
 
 1. Prepare an existing Minikube cluster (start with 4 CPUs / 8 GiB), its `standard`
-   StorageClass, and reachable host Ollama with the pinned model.
+   StorageClass, and the [independent Ollama release](deploy/helm/local-ollama/README.md)
+   with the pinned model. The GPU image requires krunkit.
 2. Check out an approved `deployment-release` snapshot. Follow the
    [one-time setup](docs/guides/helm-release.md#one-time-namespace-and-secret-preparation)
    to create a fresh namespace and stable signing Secret. Private GHCR images
@@ -109,7 +117,7 @@ For published release snapshots:
    a real review. Kubernetes readiness alone is not model acceptance.
 
 The local example disables NetworkPolicy isolation. The guide explains how to
-supply an explicit host CIDR and enable policies with a capable CNI. Source users
+enable policies with a capable CNI and select the in-cluster Ollama Pods. Source users
 can run `helm lint` and `helm template` with
 `deploy/helm/local-review/values-minikube.yaml` without a cluster; deploying source
 also requires actual application images.

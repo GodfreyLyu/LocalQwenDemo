@@ -1,4 +1,5 @@
 import ipaddress
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -26,8 +27,8 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-1"
     dynamodb_table: str = "llm-review-users"
     dynamodb_endpoint_url: str
-    model_backend: Literal["transformers", "ollama"] = "transformers"
-    ollama_base_url: str = "http://host.minikube.internal:11434"
+    model_backend: Literal["transformers", "ollama"] = "ollama"
+    ollama_base_url: str = "http://review-ollama.local-inference.svc.cluster.local:11434"
     ollama_model: str = Field(default="qwen3:1.7b", pattern=r"^[a-zA-Z0-9._:/-]{1,128}$")
     ollama_model_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     model_id: Literal["Qwen/Qwen3-1.7B"] = "Qwen/Qwen3-1.7B"
@@ -59,6 +60,12 @@ class Settings(BaseSettings):
             "host.minikube.internal",
             "host.docker.internal",
         }
+        # Fully qualified Kubernetes Service DNS; retain the fixed HTTP port and
+        # reject arbitrary external DNS names and suffix lookalikes.
+        dns_label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+        allowed_host = allowed_host or bool(
+            re.fullmatch(rf"{dns_label}\.{dns_label}\.svc\.cluster\.local", url.hostname or "")
+        )
         try:
             address = ipaddress.ip_address(url.hostname or "")
             allowed_host = address.is_loopback or any(

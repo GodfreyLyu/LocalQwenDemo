@@ -113,7 +113,7 @@ Use Helm 3.17+ or Helm 4, kubectl and an already running Kubernetes cluster
 (Kubernetes >=1.30). The provided environment profile targets a single-node
 Minikube with the Docker driver and the `standard` StorageClass. Start with
 4 CPUs and 8 GiB of cluster memory, leaving additional host capacity for Docker
-and native Ollama. The old 2 CPU / 4 GiB cluster setting cannot fit the current
+and the independent Ollama release. The old 2 CPU / 4 GiB cluster setting cannot fit the current
 application requests plus Kubernetes. Three PVCs request 23 GiB in total; also
 allow disk space for images and model downloads.
 
@@ -133,14 +133,12 @@ below specifies the target; none switches the global context. Add an explicit
 `--kubeconfig /path/to/config` to Helm and kubectl if needed. Do not reuse a
 namespace containing resources managed by the old deployment scripts.
 
-Host Ollama must already serve the pinned `qwen3:1.7b` model at an address reachable
-from the cluster. The default is `http://host.minikube.internal:11434`; a server
-bound only to host loopback may be unreachable. Configure its listening interface
-and host firewall for local cluster access. See the official
-[Minikube host-access guide](https://minikube.sigs.k8s.io/docs/handbook/host-access/).
-The application validates the model digest and tokenizer at startup. Helm does
-not install Ollama or download its host model. Both inference modes may need
-outbound HTTPS for tokenizer/model initialization.
+Install the [independent Ollama release](../../deploy/helm/local-ollama/README.md)
+first, as `review-ollama` in `local-inference`, serving the pinned `qwen3:1.7b` model.
+The default endpoint is `http://review-ollama.local-inference.svc.cluster.local:11434`.
+The application Chart connects to this Service; it does not install Ollama itself.
+The application validates the model digest and tokenizer at startup. Both inference
+modes may need outbound HTTPS for tokenizer/model initialization.
 
 ### One-time namespace and Secret preparation
 
@@ -214,17 +212,19 @@ Do not override release image digests in the environment file.
 
 The Minikube example explicitly sets `networkPolicy.enabled: false`. It provides
 **no NetworkPolicy isolation**, and is intended for local learning. To enable
-policies, use an enforcing CNI and set both:
+policies, use an enforcing CNI and enable the default cluster selectors:
 
 ```yaml
 networkPolicy:
   enabled: true
-  ollamaHostCidr: 192.168.49.1/32 # Example only: use the actual host address.
+  ollamaNamespace: local-inference
+  ollamaRelease: review-ollama
 ```
 
-The address must be a single private IPv4 `/32` reachable by the backend and must
-be updated if the local network changes. Helm does not discover it. An enabled
-Ollama policy with an empty or invalid CIDR is rejected during rendering.
+If changing release or namespace, update `model.ollamaBaseUrl` to match. For host
+Ollama instead, explicitly set the URL to `http://host.minikube.internal:11434`,
+clear `networkPolicy.ollamaNamespace`, and supply `networkPolicy.ollamaHostCidr`
+as the actual private host IPv4 `/32`. Helm does not discover host addresses.
 
 Inspect the approved configuration without contacting the cluster:
 

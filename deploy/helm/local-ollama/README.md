@@ -1,0 +1,141 @@
+# Independent Ollama GPU service
+
+This Chart deploys Ollama independently of the code-review application on an
+existing ARM64 krunkit Minikube cluster. It uses the Vulkan runtime built from
+[`deploy/images/ollama-vulkan`](../../images/ollama-vulkan), with Ollama
+`0.24.0-4.fc45` and the downstream Mesa Venus alignment fix
+`25.3.6-102.fc44`. The Fedora 45 / Fedora 44 package combination was tested on an
+Apple M2 Pro; it is a local experimental platform, not a portable NVIDIA image.
+See the [driver issue](https://github.com/libkrun/krunkit/issues/114).
+
+## Build and install
+
+Run from the repository root. The existing device plugin must advertise
+`devic.es/dri: 1`, and the node must have `/dev/dri/renderD128`. The tested cluster
+has 2 CPUs and 4 GiB RAM; budget additional memory for other applications.
+Terraform manages the device plugin; this Helm release manages only Ollama.
+
+```bash
+docker build --platform linux/arm64 \
+  -t review-ollama:0.24.0-krunkit1 deploy/images/ollama-vulkan
+minikube --profile minikube image load review-ollama:0.24.0-krunkit1 --daemon=true
+
+helm lint deploy/helm/local-ollama
+helm upgrade --install review-ollama deploy/helm/local-ollama \
+  --kube-context minikube --namespace local-inference --create-namespace \
+  --wait --timeout 35m
+helm test review-ollama --kube-context minikube --namespace local-inference \
+  --logs --timeout 5m
+```
+
+No project deployment wrapper or host Ollama service is required. The first start
+downloads the configured model through Ollama into the 4 GiB PVC. Subsequent starts
+reuse it. A different digest under the same model tag fails validation instead of
+silently replacing the expected model. Network access to the model registry is
+needed only when downloading missing models.
+
+The image pins the base digest and the Ollama/Mesa package versions; other OS
+dependencies still resolve from Fedora repositories. The complete installed RPM
+list is embedded at `/etc/ollama-image-packages.txt`. For registry-based delivery,
+publish a tested image and set `image.repository` plus `image.digest`; do not
+reuse a mutable tag for changed runtime code. Image publishing is separate from
+this Chart and the application's existing release pipeline.
+
+For an offline install, set `model.pullIfMissing=false` in a local values file
+and use that file on every upgrade. Install without `--wait`, then copy a complete
+Ollama model store into `/models` in the `ollama` container, with blobs copied
+before the `manifests/` tree. The store must include the pinned model and all its
+referenced blobs. The process waits up to `model.waitSeconds` for the model;
+readiness remains false until GPU validation completes. Alternatively prepare
+a PVC first and set `persistence.existingClaim`.
+
+## Readiness and GPU verification
+
+The runtime runs as UID/GID 10001 with a read-only root filesystem, dropped
+capabilities, and only PVC and `/tmp` writes. A small root init container changes
+ownership of the PVC root; no privileged workload or hostPath is used. Imported
+files must also be readable by UID 10001. Set `volumePermissions.enabled=false`
+when the storage system already supplies the correct permissions.
+
+- Startup: wait for the API, verify the installed model digest, perform an actual
+  short generation, and check `/api/ps` for the matching model with
+  `size_vram >= size > 0` (Ollama's full GPU placement report).
+- Readiness: repeat the resident model digest/GPU check. CPU fallback, partial
+  offload and unloaded models are not admitted to the Service.
+- Liveness: check the Ollama process and API, without performing inference.
+- Recovery: retain the model in memory; if a client's `keep_alive` causes idle
+  unloading, reload and reverify it. A failed GPU check causes the supervisor to
+  exit, allowing Kubernetes to restart it.
+- `helm test`: generate text through the Service and independently check model
+  identity and GPU residency. The test Pod does not request a GPU itself.
+
+`100% GPU` describes layer placement, not zero CPU use. CPU work and host memory
+remain necessary. The readiness check is not an accuracy evaluation or load test.
+
+```bash
+kubectl --context minikube -n local-inference get deployment,pods,svc,pvc
+kubectl --context minikube -n local-inference logs deployment/review-ollama -c ollama
+kubectl --context minikube -n local-inference exec deployment/review-ollama \
+  -c ollama -- ollama ps
+kubectl --context minikube -n local-inference port-forward \
+  service/review-ollama 11434:11434 --address 127.0.0.1
+```
+
+Use another local port if host Ollama is listening on 11434. The Service exposes
+only the Ollama API; probe port 11435 is not a Service port. There is no API
+authentication or Chart-provided network isolation. Use only a trusted local
+cluster; introducing NetworkPolicy requires a CNI that enforces it.
+
+## Connect the application
+
+The recommended release/namespace above gives:
+
+```text
+http://review-ollama.local-inference.svc.cluster.local:11434
+```
+
+Build a backend image from this checkout so it accepts Kubernetes Service DNS.
+Keep the application's normal namespace, stable signing Secret and image values.
+Add this environment overlay after `values-minikube.yaml`:
+
+```bash
+helm upgrade --install local-review deploy/helm/local-review \
+  --kube-context minikube --namespace local-review-demo --create-namespace \
+  -f /path/to/application-image-values.yaml \
+  -f deploy/helm/local-review/values-minikube.yaml \
+  -f deploy/helm/local-review/values-minikube-ollama.yaml \
+  --wait --timeout 65m
+```
+
+The application already defaults to this Service; the optional overlay above
+reduces backend resources because the model runs in its own Pod. The Minikube
+profile disables NetworkPolicy for the local CNI. With an enforcing CNI, enable
+policies: default namespace/release selectors allow access to this Ollama Pod.
+The model name and digest must agree between the two Charts. Use standard Helm
+commands for krunkit; the optional local build script requires the Docker driver.
+
+## Upgrade, rollback and storage
+
+Single replica with `Recreate` releases the one GPU slot before scheduling its
+replacement. This causes downtime during upgrades; there is no HA claim.
+
+```bash
+helm history review-ollama --kube-context minikube -n local-inference
+helm rollback review-ollama REVISION --kube-context minikube -n local-inference \
+  --wait --timeout 35m
+helm uninstall review-ollama --kube-context minikube -n local-inference
+```
+
+The model PVC `review-ollama-models` is retained on Helm uninstall. To reinstall
+using it, set `persistence.existingClaim=review-ollama-models`. Never delete the
+namespace when you intend to preserve its PVC. Rollback restores workload
+configuration, not a snapshot of model storage. Keep old model blobs when testing
+model upgrades, and size the PVC for both versions.
+
+For deliberate full removal, first uninstall the release, then delete its PVC:
+
+```bash
+kubectl --context minikube -n local-inference delete pvc review-ollama-models
+```
+
+With Minikube's `standard` StorageClass, this also deletes the stored model data.

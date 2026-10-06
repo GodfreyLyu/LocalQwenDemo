@@ -2,7 +2,7 @@
 # Copy to an ignored/local file before adding machine-specific overrides.
 model:
   backend: ollama
-  ollamaBaseUrl: http://host.minikube.internal:11434
+  ollamaBaseUrl: http://review-ollama.local-inference.svc.cluster.local:11434
 persistence:
   storageClass: standard
 signingSecret:
@@ -13,7 +13,7 @@ config:
   cookieSecure: false
   deploymentEnvironment: minikube
 # This profile intentionally provides no NetworkPolicy isolation.
-# To enable it, use an enforcing CNI and supply the actual host IPv4 /32.
+# To enable it, use an enforcing CNI; cluster Ollama selectors come from values.yaml.
 networkPolicy:
   enabled: false
   ollamaHostCidr: ''

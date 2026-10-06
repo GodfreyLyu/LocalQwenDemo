@@ -1,6 +1,16 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- if eq .Values.model.backend "ollama" }}
+{{- if .Values.networkPolicy.ollamaNamespace }}
+{{- if .Values.networkPolicy.ollamaHostCidr }}
+{{- fail "Choose either networkPolicy.ollamaNamespace or ollamaHostCidr, not both" }}
+{{- end }}
+{{- $endpoint := printf "http://%s.%s.svc.cluster.local:11434" .Values.networkPolicy.ollamaRelease .Values.networkPolicy.ollamaNamespace }}
+{{- if ne .Values.model.ollamaBaseUrl $endpoint }}
+{{- fail "model.ollamaBaseUrl must match the configured Ollama release and namespace" }}
+{{- end }}
+{{- else }}
 {{- $_ := required "networkPolicy.ollamaHostCidr is required with Ollama and enabled NetworkPolicy; supply the host IPv4 /32 or use values-minikube.yaml for local deployment without isolation" .Values.networkPolicy.ollamaHostCidr }}
+{{- end }}
 {{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -44,7 +54,19 @@ spec:
         matchLabels:
           app: review-dynamodb
           app.kubernetes.io/instance: {{ .Release.Name | quote }}
-{{- if and (eq .Values.model.backend "ollama") .Values.networkPolicy.ollamaHostCidr }}
+{{- if and (eq .Values.model.backend "ollama") .Values.networkPolicy.ollamaNamespace }}
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: {{ .Values.networkPolicy.ollamaNamespace | quote }}
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: local-ollama
+          app.kubernetes.io/instance: {{ .Values.networkPolicy.ollamaRelease | quote }}
+    ports:
+    - protocol: TCP
+      port: 11434
+{{- else if and (eq .Values.model.backend "ollama") .Values.networkPolicy.ollamaHostCidr }}
   - to:
     - ipBlock:
         cidr: {{ .Values.networkPolicy.ollamaHostCidr | quote }}

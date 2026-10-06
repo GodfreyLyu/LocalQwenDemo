@@ -9,7 +9,10 @@ for namespace/Secret preparation and the complete installation procedure.
 
 - An existing Kubernetes >=1.30 cluster and usable StorageClass; the local example
   uses Minikube's `standard` class. Start with 4 CPUs / 8 GiB for the cluster.
-- Host Ollama reachable on port 11434 with the pinned model already installed.
+- The [independent GPU Ollama release](../local-ollama/README.md), installed as
+  `review-ollama` in namespace `local-inference`, with the pinned model. Both default
+  values and `values-minikube.yaml` use its Service on port 11434. The optional
+  `values-minikube-ollama.yaml` overlay reduces backend resource requests.
 - An existing Secret in the release namespace, named by
   `signingSecret.existingSecret`, containing `SIGNING_SECRET` (at least 32 characters).
   Preserve it across upgrades and reinstallation.
@@ -39,9 +42,14 @@ settings. Helm does not automatically load either file. Main's default image
 names require local image loading or explicit image overrides before installation.
 
 The Minikube example **disables NetworkPolicy isolation**. To enable policies,
-use an enforcing CNI, set `networkPolicy.enabled: true`, and supply the actual host
-address in `networkPolicy.ollamaHostCidr` as a private IPv4 `/32`. Chart defaults
-keep policies enabled and reject missing Ollama egress configuration.
+use an enforcing CNI and set `networkPolicy.enabled: true`. Defaults select the
+`review-ollama` Pods in `local-inference` for egress on port 11434. When changing
+release/namespace, update both `model.ollamaBaseUrl` and the policy selectors.
+
+For explicit host Ollama, set `model.ollamaBaseUrl` to
+`http://host.minikube.internal:11434`, clear `networkPolicy.ollamaNamespace`, and
+set `networkPolicy.ollamaHostCidr` to the actual private host IPv4 `/32` if policies
+are enabled. Host discovery is not part of standard Helm deployment.
 
 Render and lint from main without credentials or cluster access:
 
