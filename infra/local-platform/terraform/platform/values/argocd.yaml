@@ -4,7 +4,7 @@ dex:
 notifications:
   enabled: false
 applicationSet:
-  enabled: false
+  replicas: 0
 configs:
   cm:
     application.resourceTrackingMethod: annotation
