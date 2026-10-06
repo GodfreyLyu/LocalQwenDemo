@@ -1,10 +1,19 @@
 # Historical evaluation material audit — 2026-09-25
 
-Audience: model maintainers investigating reproducibility. Purpose: separate recovered material from missing evidence before introducing a new baseline. Prerequisite: [current evaluator guide](../testing/model-evaluation.md). This audit is read-only with respect to all historical scripts/reports/cache. **No new real-model evaluation was executed.**
+This audit helps model maintainers assess reproducibility by separating recovered
+material from missing evidence before introducing a new baseline. Start with the
+[current evaluator guide](../testing/model-evaluation.md). Historical scripts, reports
+and caches were inspected without modification. **No new real-model evaluation was
+executed.**
 
 ## Search scope and provenance
 
-On 2026-09-25 (Asia/Tokyo), inspect the current production model/config/cache validator, real-model smoke test, model/testing references, preserved verification report, project-local evaluation-like Python/JSON/log/Markdown artifacts and all 17 reachable Git commits. No branch/worktree was switched or reset. Existing documentation maintenance edits were preserved. No applicable AGENTS.md was found.
+On 2026-09-25 (Asia/Tokyo), the audit covered the production model, configuration and
+cache validator; the real-model smoke test; model and testing references; and the
+preserved verification report. It also covered project-local Python, JSON, log and
+Markdown artifacts related to evaluation, plus all 17 reachable Git commits. No
+branch/worktree was switched or reset. Existing documentation maintenance edits were
+preserved. No applicable AGENTS.md was found.
 
 Fixture-name searches in reachable tracked history found the verification document, but no tracked six-case runner, fixture definition or executable semantic evaluator. No additional six-case evaluation program/results fixture was found in project-local material. Third-party package examples are not project experimental evidence. Private runtime accounts/state and model tensor contents were not treated as fixture sources.
 
@@ -28,7 +37,13 @@ No exact original input is confirmed for the historical six-case runs. Do not si
 | `sql_injection` | **Missing** | Prose expects string-interpolation injection detection; executable rule **missing** | **Missing** | Related commits only; exact runtime checkout **unproven** | Shared report settings only; complete manifest **missing** |
 | `prompt_injection` | **Missing**, including the exact attack text | Prose expects ignored instruction and division-by-zero finding; executable rule **missing** | **Missing** | Related commits only; exact runtime checkout **unproven** | Shared report settings only; complete manifest **missing** |
 
-The [historical verification report](verification-2026-09-10-to-13.md) retains per-case timing/tokens/results and limitations. Early Qwen3 selection used 384 total tokens split 64/192/128; the later capped-tail follow-up used 72/176/136, both with a 300-second deadline. Qwen2.5 candidate results refer to that model's own pin and parameters, not current Qwen3. The retained Qwen results and counts are unchanged. The report states output was inspected in memory and discarded; no saved output body or human adjudication artifact was found that would allow an independent semantic recheck today.
+The [historical verification report](verification-2026-09-10-to-13.md) retains per-case
+timing/tokens/results and limitations. Early Qwen3 selection used 384 total tokens split
+64/192/128; the later capped-tail follow-up used 72/176/136, both with a 300-second
+deadline. Qwen2.5 candidate results refer to that model's own pin and parameters, not
+current Qwen3. The retained Qwen results and counts are unchanged. The report states
+that output was inspected in memory and then discarded. No saved output or record of
+human judgments was found that would allow an independent semantic review today.
 
 ## New baseline and bounded validation
 

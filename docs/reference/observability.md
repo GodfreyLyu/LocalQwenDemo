@@ -24,7 +24,12 @@ The formatter may add only these fields:
 | `validation_reason` | One of the fixed validation enums; an unknown value is omitted |
 | generation detail maps | Integer/boolean values under the three fixed section names only |
 
-HTTP duration and model generation duration use monotonic clocks. Queue wait and review end-to-end duration cross persistence/restart boundaries, so they are computed from the stored UTC epoch and clamped at zero. `X-Request-ID` remains on responses. Lifecycle events are `review_submitted`, `review_started`, `review_finished`, and `queue_rejected`; queue depth uses local read-only SQLite counts and never copies source data.
+HTTP duration and model generation duration use monotonic clocks. Queue wait and total
+review duration can span process restarts. They are calculated from stored UTC
+timestamps, with negative values clamped to zero. `X-Request-ID` remains on responses.
+Lifecycle events are `review_submitted`, `review_started`, `review_finished`, and
+`queue_rejected`; queue depth uses local read-only SQLite counts and never copies source
+data.
 
 Never log source, prompt, generated/rejected model text, token IDs, seed, source hash, raw path/URL/query, request or response body, login/user identity, password, cookie, session/CSRF token, secret value, environment dump, or raw exception string. Uvicorn and frontend access logging remain disabled.
 
@@ -40,11 +45,12 @@ time is included in generation duration; do not add it again. Missing sections r
 unmeasured. Configuration or a successful BF16 operation does not prove hardware acceleration.
 
 For a separately authorized single review, bind cgroup measurements to the same Pod UID,
-container ID/start time and image. CPU usage delta divided by wall time is average cores;
-usage seconds divided by generated tokens describes that particular request. Cumulative
-throttling ratios and `throttled_usec` are not wall-clock time lost. Compare host swap,
-Docker/node contention and memory events over the same interval. Missing metrics stay
-`not_measured`. Do not run new inference, change parameters or restart merely to inspect logs.
+container ID/start time and image. Divide the change in CPU usage by elapsed wall time
+to obtain average cores used. Divide CPU seconds by generated tokens to measure CPU cost
+per token for that request. Cumulative throttling ratios and `throttled_usec` are not
+wall-clock time lost. Compare host swap, Docker/node contention and memory events over
+the same interval. Missing metrics stay `not_measured`. Do not run new inference, change
+parameters or restart merely to inspect logs.
 
 ## Evidence and retention
 

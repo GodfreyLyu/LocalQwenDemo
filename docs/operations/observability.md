@@ -7,11 +7,11 @@ shared state. If identity evidence is missing, use the [recovery inspection path
 without authorizing deletion. Do not use raw logs/environment dumps as a debugging shortcut.
 No external monitoring service or automated repair is installed by this project.
 
-The CLI's `logs` output includes fewer fields than the backend's structured logs:
-it omits per-section timing maps and worker thread counts. Investigations that need
-those fields require a separately scoped, allowlisted projection of the backend
-`model_generation_finished` event; absence from the CLI output is not proof that the
-backend did not measure them. Never export entire raw logs to obtain additional fields.
+The CLI's `logs` output includes fewer fields than the backend's structured logs: it
+omits per-section timing maps and worker thread counts. To inspect those fields, extract
+only the needed allowlisted fields from the backend's `model_generation_finished` event.
+A field missing from the CLI output may still have been measured by the backend. Never
+export entire raw logs to obtain additional fields.
 
 ## Correlate before drawing conclusions
 
@@ -21,11 +21,12 @@ have unrelated cumulative counters. Check startup stages and fixed errors, queue
 section preparation/generation/first-token durations, token counts, and actual threads.
 First-token time is part of generation time, not an extra phase to add again.
 
-Read available host pressure/swap, Docker limits, node allocatable/workload reservations,
-metrics-server usage and container cpu.stat/memory.events. Unavailable measurements must
-stay `not_measured`; do not install collectors or change infrastructure to produce a pass.
-Memory below a limit and zero sampled OOM events do not prove the whole node was healthy.
-A configured BF16 dtype or architecture name does not establish acceleration.
+Check available measurements of host memory pressure and swap, Docker limits, node
+allocatable resources and workload reservations. Also inspect metrics-server usage and
+the container's `cpu.stat` and `memory.events` counters. Unavailable measurements must
+stay `not_measured`; do not install collectors or change infrastructure to produce a
+pass. Memory below a limit and zero sampled OOM events do not prove the whole node was
+healthy. A configured BF16 dtype or architecture name does not establish acceleration.
 
 ## Controlled measurements are separate work
 

@@ -3,7 +3,13 @@
 > Historical snapshot: cloud commands and deployment navigation below are retired.
 > Recorded results and limitations are unchanged; use current local documentation.
 
-Audience: reviewers and incoming maintainers. Purpose: record this bounded maintenance round, migrations and actual validation. Prerequisite: [documentation index](../README.md). Date/timezone: 2026-09-25, Asia/Tokyo. Starting revision: `d21869076ca365773ad415413f136356b445e23b`; validation includes the uncommitted maintenance changes described here. No applicable AGENTS.md was found in the project or ancestor directories. Initial Git status was clean; ignored operator files/data were retained.
+This report records the maintenance work, document migrations and validation results for
+reviewers and new maintainers. Start with the [documentation index](../README.md). The
+work was performed on 2026-09-25 in Asia/Tokyo, starting from revision
+`d21869076ca365773ad415413f136356b445e23b`. Validation included the uncommitted
+maintenance changes described here. No applicable AGENTS.md was found in the project or
+its ancestor directories. The worktree was initially clean, and ignored operator files
+and data were retained.
 
 ## Structure and reading order
 
@@ -37,7 +43,12 @@ README, internal links, CLI help and Terraform alarm/dashboard runbook reference
 
 ## Script and test-entry changes
 
-Existing public script names/options/defaults and safety checks remain intact. `scripts/check_scripts.sh` is a new thin regression entry: syntax-check Shell entries/fixtures, invoke `check_minikube_demo.sh`, then run Secret, deployment and Terraform lifecycle fixture suites. `check.sh` and the CI application job now call it; CI installs kubectl for offline rendering. `check.sh` also runs the existing dev/platform Terraform mock suites, already present in CI.
+Existing public script names, options, defaults and safety checks remain unchanged.
+`scripts/check_scripts.sh` is a new thin regression entry: syntax-check Shell
+entries/fixtures, invoke `check_minikube_demo.sh`, then run Secret, deployment and
+Terraform lifecycle fixture suites. `check.sh` and the CI application job now call it;
+CI installs kubectl for offline rendering. `check.sh` also runs the existing
+dev/platform Terraform mock suites, already present in CI.
 
 Backend pytest discovers only backend tests; it never implicitly covered `scripts/tests`. The three current Python script test files remain explicitly listed by the focused minikube gate. Frontend/browser and infrastructure tests remain with their components. Browser tests stay separate locally and retain their existing CI step; real-model and live acceptance remain opt-in.
 
@@ -63,7 +74,14 @@ Environment: macOS arm64; Python 3.12.14, Node 24.18.0, Terraform 1.15.8, kubect
 | Syntax/help/reference checks | Python compilation, Canary JavaScript syntax, reviewed Shell helper help, Markdown paths/heading anchors and diff whitespace passed |
 | Preservation checks | Original evidence bytes and public executable modes retained; model/application implementation/configuration unchanged |
 
-The first script run in the sandbox reported 196 passed, 8 failed and 3 errors because loopback binds were prohibited (`EPERM`). The same unmodified tests passed after approved execution outside that restriction. Terraform provider schema startup also failed within the sandbox; it passed outside that restriction using installed locked providers in a temporary source copy, AWS credential/config variables disabled, `init -backend=false -lockfile=readonly`, `validate`, and only mocked plan tests. No assertion was skipped or weakened to obtain those passes.
+The first script run in the sandbox reported 196 passed, 8 failed and 3 errors because
+loopback binds were prohibited (`EPERM`). The same unmodified tests passed after
+approved execution outside that restriction. Terraform also failed to start the provider
+schema process inside the sandbox. It passed outside that restriction using the
+installed, locked providers in a temporary source copy. AWS credential and configuration
+variables were disabled. The checks used `init -backend=false -lockfile=readonly`,
+`validate` and only mocked plan tests. No assertion was skipped or weakened to obtain
+those passes.
 
 The full `check.sh` aggregate is **not claimed green in the original checkout**: its recursive formatter encounters the ignored operator tfvars above. Relevant stages were verified separately; infrastructure ran in isolation to preserve live backend metadata. These results are local, not a GitHub Actions run.
 

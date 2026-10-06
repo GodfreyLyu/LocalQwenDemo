@@ -1,12 +1,14 @@
 # B measurement: OMP_NUM_THREADS=2
 
-Historical report: results apply only to the dates, models and environments stated below. This document is not evidence that the current checkout was revalidated. Audience: maintainers investigating prior work; prerequisite: [current documentation index](../README.md).
+This historical report is for maintainers reviewing earlier work. Its results apply only
+to the dates, models and environments stated below and do not validate the current
+checkout. For current guidance, start with the [documentation index](../README.md).
 
 Result: **improved in this single comparison**. The B review completed in 191.941
 seconds and passed the unchanged product and sample-specific acceptance checks.
 Recommendation: **retain `OMP_NUM_THREADS=2` for now**. No rollback or configuration
-change was performed by this task. One successful sample is not a repeatability,
-load, persistence-restart, or browser acceptance result.
+change was performed by this task. One successful sample does not establish
+repeatability, behavior under load, persistence across restarts or browser acceptance.
 
 Baseline A: `e6d35cc3-eda1-4832-91a3-5ddeb78867b0`.
 Candidate B: `acbba2e3-2c9c-40f6-8fe8-6af9e2ea8fc9`.
@@ -160,12 +162,12 @@ normalized by elapsed time, B had less host memory activity, so the runs were no
 under identical host conditions. They occurred hours apart in different Pods.
 A additionally had two sampling gaps; B did not.
 
-The unchanged model/image/resource configuration, much lower CPU-s/token,
-near-elimination of observed thread turnover, and successful unchanged quality
-gate support retaining the OpenMP setting. They do **not** identify a particular
-BF16 kernel, prove the exact library creating A's threads, or establish how much
-of the latency reduction came from OpenMP versus host pressure. Actual accelerated
-BF16 dispatch remains `not_measured`; no profiler or additional inference was run.
+The evidence supports retaining the OpenMP setting: the model, image and resources were
+unchanged, CPU cost per token fell substantially, observed thread turnover nearly
+disappeared, and the same quality gate passed. They do **not** identify a particular
+BF16 kernel, prove the exact library creating A's threads, or establish how much of the
+latency reduction came from OpenMP versus host pressure. Actual accelerated BF16
+dispatch remains `not_measured`; no profiler or additional inference was run.
 
 ## Decision and validation
 
@@ -181,10 +183,10 @@ Application code, configuration, deployment records, existing accounts, signing
 Secret, prior reviews, model cache and PVCs were preserved. The only inference
 mutation was the one new review through the normal authenticated API.
 
-Offline evidence checks passed for: distinct A/B identities with stable identity
-within each run, one submission/review start, unchanged source/image/resource
-checks, cgroup identity, counter arithmetic, summed section timings/token counts,
-and exclusion of credential/source/result fields. Temporary observer scripts
-passed syntax checks. No application code changed, so application regression tests
-were not rerun for this measurement-only task. No browser or persistence-restart
+Offline evidence checks confirmed distinct A/B identities that remained stable within
+each run, one submission and review start, and unchanged source, image and resources.
+They also verified cgroup identity, counter arithmetic, summed section timings and token
+counts, and the exclusion of credentials, source and result fields. Temporary observer
+scripts passed syntax checks. No application code changed, so application regression
+tests were not rerun for this measurement-only task. No browser or persistence-restart
 acceptance is claimed.

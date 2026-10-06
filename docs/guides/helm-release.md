@@ -7,11 +7,12 @@ the source Chart in main and review the generated release PR.
 
 ## Automated release flow
 
-PRs to main must pass `main-ci` before merge; no separate approval is required. Only then does the release
-workflow recheck main, build changed backend/frontend/Ollama images, publish GHCR
-digests and propose an immutable deployment snapshot. A reviewed deployment PR
-updates Argo CD's desired state. See [the GitOps guide](gitops.md) for migration,
-branch protection, Argo bootstrap, GPU acceptance and storage/ownership rules.
+PRs to main must pass `main-ci` before merging; no separate approval is required. After
+the merge, the release workflow rechecks main and builds images for any changed backend,
+frontend or Ollama components. It publishes those images to GHCR and proposes an
+immutable deployment snapshot with their digests. A reviewed deployment PR updates Argo
+CD's desired state. See [the GitOps guide](gitops.md) for migration, branch protection,
+Argo bootstrap, GPU acceptance and storage/ownership rules.
 
 Format-3 snapshots contain two Charts and their pinned values, Argo Applications,
 release metadata and a short README. They contain no source, build workflows or
@@ -27,13 +28,13 @@ cluster separately; this Chart does not create a cluster or install Argo CD.
 
 ### Prerequisites and target selection
 
-Use Helm 3.17+ or Helm 4, kubectl and an already running Kubernetes cluster
-(Kubernetes >=1.30). The provided environment profile targets a single-node
-Minikube with the Docker driver and the `standard` StorageClass. Start with
-4 CPUs and 8 GiB of cluster memory, leaving additional host capacity for Docker
-and the independent Ollama release. The old 2 CPU / 4 GiB cluster setting cannot fit the current
-application requests plus Kubernetes. Three PVCs request 23 GiB in total; also
-allow disk space for images and model downloads.
+Use Helm 3.17+ or Helm 4, kubectl and an already running Kubernetes cluster (Kubernetes
+>=1.30). The provided environment profile targets a single-node Minikube with the Docker
+driver and the `standard` StorageClass. Start with 4 CPUs and 8 GiB of cluster memory,
+leaving additional host capacity for Docker and the independent Ollama release. The old
+2 CPU / 4 GiB cluster setting is too small for the current application requests and
+Kubernetes components. Three PVCs request 23 GiB in total; also allow disk space for
+images and model downloads.
 
 Run from a separate checkout of the **approved `deployment-release` branch**,
 using a new namespace for the first Helm installation:
@@ -54,9 +55,9 @@ namespace containing resources managed by the old deployment scripts.
 Install the [independent Ollama release](../../deploy/helm/local-ollama/README.md)
 first, as `review-ollama` in `local-inference`, serving the pinned `qwen3:1.7b` model.
 The default endpoint is `http://review-ollama.local-inference.svc.cluster.local:11434`.
-The application Chart connects to this Service; it does not install Ollama itself.
-The application validates the model digest and tokenizer at startup. Both inference
-modes may need outbound HTTPS for tokenizer/model initialization.
+The application Chart connects to this Service; it does not install Ollama itself. The
+application validates the model digest and tokenizer at startup. Both inference modes
+may need outbound HTTPS to initialize tokenizer or model files.
 
 ### One-time namespace and Secret preparation
 
@@ -88,10 +89,9 @@ Secret; normal upgrades reuse the existing key. Existing deployments must retain
 their original key. The Chart references this Secret and never generates or
 rotates signing material. Do not commit secret files or credentials.
 
-For private GHCR images, also prepare an image pull Secret in the same namespace.
-For example, use a private Docker configuration file containing usable GHCR
-`auths` credentials (a file containing only a local credential-helper reference
-is insufficient):
+For private GHCR images, prepare an image pull Secret in the same namespace. Use a
+private Docker configuration file with valid GHCR credentials in its `auths` field. A
+file that only references a local credential helper is insufficient:
 
 ```bash
 kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" \
@@ -166,11 +166,11 @@ helm upgrade --install local-review ./deploy/helm/local-review \
   --wait --timeout 65m
 ```
 
-Always pass both values files when upgrading to another approved snapshot.
-Helm does not automatically load `release-values.yaml`. Without it, Chart defaults
-reference local development images, not the published release. On main, use the
-provided Minikube file for offline lint/render; installing from main additionally
-requires explicitly supplying or loading actual application images.
+Always pass both values files when upgrading to another approved snapshot. Helm does not
+automatically load `release-values.yaml`. Without it, Chart defaults reference local
+development images, not the published release. On main, use the provided Minikube file
+for offline linting and rendering. To install from main, you must also supply or load
+the application images.
 
 The startup budget defaults to 3600 seconds; the 65-minute Helm timeout allows
 additional scheduling and initialization time. A timeout leaves resources for
@@ -262,12 +262,12 @@ A Helm rollback restores the saved release configuration, not external Secret co
 or database data. Reconcile the approved release afterward so the next upgrade
 does not unintentionally reintroduce the reverted change.
 
-For an audited rollback, revert the intended application/Chart/configuration
-changes through a PR to main. CI then produces a new versioned candidate against
-the current approved release; review, merge and explicitly deploy that snapshot.
-Do not restore an old release.json verbatim: its version and release base belong
-to an earlier candidate. Reuse retained PVCs/Secret. A rollback does not undo
-database changes; verify compatibility before deploying earlier application code.
+For an audited rollback, open a PR to main that reverts the relevant application code,
+Chart or configuration changes. CI then produces a new versioned candidate against the
+current approved release; review, merge and explicitly deploy that snapshot. Do not
+restore an old release.json verbatim: its version and release base belong to an earlier
+candidate. Reuse the retained PVCs and signing Secret. A rollback does not undo database
+changes; verify compatibility before deploying earlier application code.
 
 ## Verification
 

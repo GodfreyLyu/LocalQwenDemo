@@ -3,10 +3,10 @@
 PR-gated image builds and Argo CD: [GitOps guide](docs/guides/gitops.md).
 Standard Helm deployment: [guide](docs/guides/helm-release.md).
 
-GPU inference inside krunkit Minikube is available as an
-[independent Ollama Helm release](deploy/helm/local-ollama/README.md), with a retained
-model PVC and readiness gated on verified GPU inference. The application defaults
-to this release at `http://review-ollama.local-inference.svc.cluster.local:11434`.
+GPU inference inside krunkit Minikube is available as an [independent Ollama Helm
+release](deploy/helm/local-ollama/README.md), with a retained model PVC. The service
+becomes ready only after GPU inference has been verified. The application defaults to
+this release at `http://review-ollama.local-inference.svc.cluster.local:11434`.
 
 **A local LLM code-review service with in-cluster Ollama inference and standard Helm deployment to an existing Minikube cluster.**
 
@@ -22,15 +22,17 @@ are also available.
 
 ## Key capabilities
 
-- **Durable submissions:** SQLite atomically records jobs, enforces queue capacity and
-  deduplicates matching request IDs per account. Queued work survives restart; interrupted running
-  work has a bounded retry policy.
+- **Durable submissions:** SQLite records jobs and enforces queue capacity in one
+  transaction. It deduplicates matching request IDs for each account. Queued jobs
+  survive restarts, and interrupted jobs have a limited number of retries.
 - **One inference at a time:** a background coordinator uses one inference executor.
-  Timed-out generation drains before another review can run; readiness reflects this state.
+  After a timeout, the service waits for generation to stop before starting another
+  review. It reports that it is not ready during this wait.
 - **Private accounts and history:** password hashing, signed sessions, exact Origin and
   CSRF checks protect access. History is scoped to the authenticated account.
-- **Verified model identity:** Ollama startup verifies its digest, template and tokenizer;
-  saved reviews retain the actual model digest. The CPU backend validates cached weight shards.
+- **Verified model identity:** Ollama startup verifies its digest, template and
+  tokenizer; saved reviews retain the actual model digest. The CPU backend validates
+  cached weight shards.
 - **Reviewed Helm releases:** CI builds images and proposes immutable deployment
   snapshots; approved releases install with standard Helm commands and explicit
   environment values. Existing Secrets and persistent volumes survive upgrades.
@@ -65,10 +67,11 @@ back to SQLite. The submission request returns before inference; the browser pol
 stored status. The coordinator, executor and SQLite access layer run within the backend.
 The API and coordinator use that layer to access the same history PVC.
 
-The three cylinders are separate PVCs. The backend uses the history and model-cache PVCs;
-DynamoDB Local uses the accounts PVC. Ollama stores weights in its own model PVC; its pinned
-tokenizer is cached in the backend PVC. The CPU adapter downloads/reuses its pinned HF
-weights there. Model weights are not baked into application images.
+The three cylinders are separate PVCs. The backend uses the history and model-cache
+PVCs; DynamoDB Local uses the accounts PVC. Ollama stores weights in its own model PVC;
+its pinned tokenizer is cached in the backend PVC. The CPU adapter downloads its pinned
+Hugging Face weights to the same backend PVC and reuses them on later starts. Model
+weights are not baked into application images.
 
 ### Deployment management
 
@@ -78,8 +81,8 @@ Minikube environment example. Deploy it with Helm; prepare the cluster, independ
 Ollama release and namespace Secrets separately. No Python deployment wrapper is required.
 
 The [deployment guide](docs/guides/helm-release.md) documents configuration,
-installation, upgrades, status, rollback and data retention. Argo CD renders the same Charts from the approved release branch, with one manager
-per deployment.
+installation, upgrades, status, rollback and data retention. Argo CD renders the same
+Charts from the approved release branch. Each deployment must have only one manager.
 
 The previous [deployment diagram](docs/assets/deployment-management.png) and
 [legacy Minikube guide](docs/guides/minikube-legacy.md) describe the retained
@@ -98,9 +101,9 @@ scripts/minikube_demo.sh verify --profile minikube
 scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
-See the [local Helm guide](docs/guides/minikube-demo.md) for configuration,
-rollback and data-preserving/full cleanup. Stop foreground port-forward before
-running verify. Helm commands remain usable independently of this script.
+See the [local Helm guide](docs/guides/minikube-demo.md) for configuration, rollback and
+cleanup, with options to retain or delete data. Stop the foreground port-forward before
+running `verify`. Helm commands remain usable independently of this script.
 
 For published release snapshots:
 
@@ -149,10 +152,11 @@ npm --prefix frontend ci
 bash scripts/check.sh
 ```
 
-The gate uses model/cluster doubles, temporary loopback fixtures and offline Kustomize
-rendering. It does not download weights, build container images or deploy. Browser tests
-use a separate fake-model harness; real inference and environment acceptance are opt-in
-operations. See [testing](docs/testing/README.md) for prerequisites and coverage limits.
+The checks use test doubles for the model and cluster, temporary loopback fixtures, and
+offline Kustomize rendering. They do not download weights, build container images or
+deploy. Browser tests use a separate fake-model harness; real inference and environment
+acceptance are opt-in operations. See [testing](docs/testing/README.md) for
+prerequisites and coverage limits.
 
 For a change, follow [local development](docs/guides/local-development.md), add focused
 regressions, and update the owning reference or guide. Keep private state, credentials,

@@ -1,4 +1,4 @@
-# Legacy Deploy the real-model demo to a user-started minikube cluster
+# Legacy deployment to a user-started Minikube cluster
 
 This guide is for retained Kustomize deployments. New deployments use the
 [Helm local workflow](minikube-demo.md). Invoke old commands with the explicit
@@ -26,7 +26,13 @@ A successful `up` establishes application readiness only. Run `verify` separatel
 
 `up` collects the same diagnostics but does not call `doctor` or use its exit status as a deployment gate. Host memory pressure, insufficient Docker/node CPU or memory, host/VM disk budget shortfalls, unavailable metrics, node readiness/taint risks, and client version skew produce English warnings and deployment continues. No confirmation, `--force`, or skip-check option is needed. Unknown inputs invalidate their dependent calculations; they are never treated as zero usage or sufficient capacity. Independent measurements continue even when one read fails.
 
-Mandatory checks run separately and still stop deployment: a selected running local Docker-driver single-node minikube with a verified loopback API; consistent target/state/namespace/resource ownership; matching native host/Docker/node architecture; and an existing supported minikube-hostpath StorageClass with compatible existing PVCs. Existing local endpoint/credential restrictions, signing Secret validation, idle-queue protection, and resource ownership checks during apply remain in force.
+Separate mandatory checks still stop deployment if prerequisites are missing. The target
+must be a running, local, single-node Minikube cluster using the Docker driver, with a
+verified loopback API. Target identity, saved state and namespace/resource ownership
+must agree. The host, Docker and node must use the same native architecture. A supported
+minikube-hostpath StorageClass and compatible existing PVCs must also be available.
+Existing local endpoint/credential restrictions, signing Secret validation, idle-queue
+protection, and resource ownership checks during apply remain in force.
 
 Failures in image build/load, local dependency initialization, Kubernetes apply, scheduling/readiness waits, or state writes return nonzero. The script records and re-raises the error with the failed deployment stage; an incomplete deployment is never marked ready. The script does not change quotas or application resources to make a diagnostic pass.
 
@@ -52,15 +58,36 @@ scripts/minikube_demo.sh legacy port-forward --profile minikube
 
 Open `http://localhost:8080` in a browser. Register or log in, submit the sample, wait for a real result, and reopen it from history. Do not substitute `127.0.0.1`: Origin matching is exact.
 
-- `doctor`, `up`, `verify`, `port-forward`, `status`, and `logs` use the same read-only profile discovery and Host/API/kubelet status checks. Omit `--profile` only when exactly one Host is Running; multiple running profiles require an explicit choice. The script never guesses from the global current-context.
-- A missing or stopped profile, mismatched Docker node, or unavailable API/TLS/readyz check causes failure. The script does not fall back to another cluster.
-- The supported target is an **existing native, single-node minikube cluster using the Docker driver**. Its API must have a loopback port verified against Docker metadata. Other drivers, multiple nodes, or unknown ports are rejected without changing configuration.
-- `--minikube-home /path/to/.minikube` selects another existing minikube state directory. The default is the existing `MINIKUBE_HOME` or `~/.minikube`. The script does not initialize this directory.
-- `up --port 8090` also updates ALLOWED_ORIGIN; subsequent commands read the port saved for that target. Port forwarding listens only on `127.0.0.1`, with no tunnel, LoadBalancer, NodePort, or LAN endpoint.
-- `verify` uses the same localhost port and cannot run alongside foreground `port-forward`. Stop your own forwarding process with Ctrl-C first, then restart it after acceptance. The script does not terminate unknown processes holding the port.
-- Repeated `up` runs reuse accounts, the signing Secret, history, and the model cache. If source/build inputs match the recorded fingerprint and the host image's native architecture and image ID also match, image layers are reused and reloaded under a new unique tag. Otherwise, images are built normally. Images are not pushed to a remote registry.
-- `--cold-timeout` defaults to 3600 seconds and adjusts the backend startup probe budget as well; `--warm-timeout` defaults to 600 seconds. The first startup includes downloading weights; warm startup reads the complete pinned revision snapshot. Application inference always has a 300-second timeout.
-- `verify --skip-restart` is diagnostic only. It exits nonzero because persistence acceptance is incomplete and must not be presented as a full pass.
+- `doctor`, `up`, `verify`, `port-forward`, `status`, and `logs` use the same read-only
+  profile discovery and Host/API/kubelet status checks. Omit `--profile` only when
+  exactly one Host is Running; multiple running profiles require an explicit choice. The
+  script never guesses from the global current-context.
+- A missing or stopped profile, mismatched Docker node, or unavailable API/TLS/readyz
+  check causes failure. The script does not fall back to another cluster.
+- The supported target is an **existing native, single-node minikube cluster using the
+  Docker driver**. Its API must have a loopback port verified against Docker metadata.
+  Other drivers, multiple nodes, or unknown ports are rejected without changing
+  configuration.
+- `--minikube-home /path/to/.minikube` selects another existing minikube state
+  directory. The default is the existing `MINIKUBE_HOME` or `~/.minikube`. The script
+  does not initialize this directory.
+- `up --port 8090` also updates ALLOWED_ORIGIN; subsequent commands read the port saved
+  for that target. Port forwarding listens only on `127.0.0.1`, with no tunnel,
+  LoadBalancer, NodePort, or LAN endpoint.
+- `verify` uses the same localhost port and cannot run alongside foreground
+  `port-forward`. Stop your own forwarding process with Ctrl-C first, then restart it
+  after acceptance. The script does not terminate unknown processes holding the port.
+- Repeated `up` runs reuse accounts, the signing Secret, history, and the model cache.
+  Image layers are reused only when the source and build inputs match the recorded
+  fingerprint, and the host image has the expected native architecture and image ID.
+  Reused images are loaded under a new unique tag. Otherwise, images are built normally.
+  Images are not pushed to a remote registry.
+- `--cold-timeout` defaults to 3600 seconds and adjusts the backend startup probe budget
+  as well; `--warm-timeout` defaults to 600 seconds. The first startup includes
+  downloading weights; warm startup reads the complete pinned revision snapshot.
+  Application inference always has a 300-second timeout.
+- `verify --skip-restart` is diagnostic only. It exits nonzero because persistence
+  acceptance is incomplete and must not be presented as a full pass.
 
 ```bash
 scripts/minikube_demo.sh legacy status --profile minikube
@@ -199,7 +226,15 @@ scripts/minikube_demo.sh legacy status --profile minikube
 scripts/minikube_demo.sh legacy up --profile minikube
 ```
 
-The script generates a temporary private kubeconfig with one context from the selected minikube profile's local client certificate/key, CA, and Docker loopback API port. It does not read AWS exec credentials from the global kubeconfig, invoke update-context, or change the global current-context. After mandatory checks pass, `up` rechecks ownership under the target operation lock and saves a private kubeconfig with mode 0600 in the target directory, even if resource diagnostics failed. All Kubernetes operations explicitly specify context and namespace. Read-only cross-namespace Pod resource checks project only resource fields such as requests/limits; they do not read other projects' environment variables, commands, or application content.
+The script creates a temporary private kubeconfig with one context. It uses the selected
+Minikube profile's local client certificate and key, CA, and Docker loopback API port.
+It does not read AWS exec credentials from the global kubeconfig, invoke update-context,
+or change the global current-context. After the mandatory checks pass, `up` acquires the
+target operation lock and rechecks ownership. It saves a private kubeconfig with mode
+0600 in the target directory, even if resource diagnostics failed. All Kubernetes
+operations explicitly specify context and namespace. Read-only cross-namespace Pod
+resource checks project only resource fields such as requests/limits; they do not read
+other projects' environment variables, commands, or application content.
 
 Commands such as `up` and `verify` use a per-target operation lock. Before recreating application Pods, the script checks that all users' queues are empty, pauses this application's frontend, and checks again to prevent new-submission races. It does not modify other projects' Deployments, PVCs, Secrets, namespaces, nodes, or components.
 
@@ -213,19 +248,52 @@ The backend requests **2 CPU / 4 GiB** and has limits of **2 CPU / 6 GiB**. Dyna
 
 Scheduling and memory safety are checked separately. These thresholds determine the diagnostic verdict; they are warnings for `up`, not permission to resize the cluster or change the application:
 
-1. Diagnostics check that the node is Ready, schedulable, and free of taints the application does not tolerate, and that kubectl and the target server differ by no more than one minor version. These findings are advisory for `up`; actual rollout waits still fail on unsuccessful scheduling/readiness. Matching native host, Docker VM, and node architectures remains mandatory.
-2. Use the smaller of node allocatable resources and actual Docker node CPU/memory quotas (including NanoCpus, Quota/Period, and CPUset for CPU), then subtract requests from other nonterminal Pods to check whether the application fits. Pending Pods, Pod overhead, and init containers are included. Init and main containers are conservatively counted as concurrent to cover native sidecars, so this exceeds the normal scheduling requirement for sequential init containers.
-3. Check capacity against other Pods' memory requests/limits, this application's memory limits, and a **512 MiB node margin**. Containers without memory limits are counted separately; their requests are only a lower bound, not a measured maximum.
-4. Also read actual memory usage for the Docker node and all running containers, Docker quotas, and Pod metrics when available. Actual node usage plus incremental application memory must fit within the smaller of node capacity and allocatable memory, minus 512 MiB.
-5. Existing application Pods are excluded from other workloads only after the Deployment→ReplicaSet→Pod ownership chain is verified. Labels alone do not qualify for a capacity deduction. Incremental memory is `max(target application memory limits - measured existing application usage, 0)`, avoiding counting the entire existing model process twice.
-6. If metrics-server is unavailable, the report says so. Verified application Pods' cgroup usage is used to calculate the redeployment deduction. If that usage is also unavailable, the script refuses to infer the incremental requirement. On an initial deployment with no application Pods, the increment is the full application budget. Missing metrics still produce a nonzero `doctor` result; `up` retains the missing-data warning and attempts deployment, including when no redeployment deduction can be calculated.
-7. Estimated host free/inactive/speculative memory (macOS) or MemAvailable (Linux), and total Docker quota minus current usage, must each cover incremental application memory plus a **1 GiB margin**. Errors distinguish host memory pressure, insufficient Docker quota, and insufficient target cluster/node capacity, with the underlying resource figures. These estimates do not guarantee performance; other workloads without memory limits may consume more resources later.
+1. Diagnostics check that the node is Ready and schedulable, with no taints the
+   application cannot tolerate. They also check that kubectl and the target server
+   differ by no more than one minor version. These findings are advisory for `up`;
+   actual rollout waits still fail on unsuccessful scheduling/readiness. Matching native
+   host, Docker VM, and node architectures remains mandatory.
+2. To check whether the application fits, use the lower of node allocatable resources
+   and the actual Docker node CPU/memory quotas. CPU calculations include NanoCpus,
+   Quota/Period and CPUset. Subtract requests from other Pods that have not terminated.
+   Pending Pods, Pod overhead, and init containers are included. Init and main
+   containers are conservatively counted as concurrent to cover native sidecars, so this
+   exceeds the normal scheduling requirement for sequential init containers.
+3. Check capacity against other Pods' memory requests/limits, this application's memory
+   limits, and a **512 MiB node margin**. Containers without memory limits are counted
+   separately; their requests are only a lower bound, not a measured maximum.
+4. Also read actual memory usage for the Docker node and all running containers, Docker
+   quotas, and Pod metrics when available. Actual node usage plus incremental
+   application memory must fit within the smaller of node capacity and allocatable
+   memory, minus 512 MiB.
+5. Existing application Pods are excluded from other workloads only after the
+   Deployment→ReplicaSet→Pod ownership chain is verified. Labels alone do not qualify
+   for a capacity deduction. Incremental memory is `max(target application memory limits
+   - measured existing application usage, 0)`, avoiding counting the entire existing
+   model process twice.
+6. If metrics-server is unavailable, the report says so. Verified application Pods'
+   cgroup usage is used to calculate the redeployment deduction. If that usage is also
+   unavailable, the script refuses to infer the incremental requirement. On an initial
+   deployment with no application Pods, the increment is the full application budget.
+   Missing metrics still produce a nonzero `doctor` result; `up` retains the
+   missing-data warning and attempts deployment, including when no redeployment
+   deduction can be calculated.
+7. Estimated host free/inactive/speculative memory (macOS) or MemAvailable (Linux), and
+   total Docker quota minus current usage, must each cover incremental application
+   memory plus a **1 GiB margin**. Errors distinguish host memory pressure, insufficient
+   Docker quota, and insufficient target cluster/node capacity, with the underlying
+   resource figures. These estimates do not guarantee performance; other workloads
+   without memory limits may consume more resources later.
 
 An existing 2 CPU / 4000 MiB minikube cluster therefore remains insufficient for the backend and its dependencies even when running. You decide how to provide the required resources. The script neither resizes nor rebuilds the cluster. It still reports the insufficient resources; `doctor` fails and `up` attempts deployment with warnings. Scheduling, OOM, disk exhaustion, and rollout timeout can still cause an actual deployment failure.
 
 ### Incremental disk budget
 
-There is no new-cluster image or control-plane overhead. The initial uncached budget is **28 GiB**: 4 GiB for layers/copies and 3 GiB for build scratch space per application image requiring a build (14 GiB for two images), 4 GiB for missing pinned weights, 4 GiB for transfer scratch space, and 6 GiB for data growth and safety.
+There is no new-cluster image or control-plane overhead. The initial budget with no
+cached images or weights is **28 GiB**. Each application image needs 4 GiB for layers
+and copies plus 3 GiB of build scratch space, or 14 GiB for both images. The budget also
+includes 4 GiB for missing pinned weights, 4 GiB for transfer scratch space, and 6 GiB
+for data growth and safety.
 
 Each confirmed reusable application image with matching source fingerprint, architecture, and image ID reduces the build budget by 7 GiB. A complete pinned snapshot verified through the owned backend reduces it by another 4 GiB. Even when both images and the model are reused, **10 GiB** remains reserved in the budget for transfers and safety. These are conservative estimates, not measured disk usage. Similar images belonging to other projects do not establish reusability.
 
@@ -277,7 +345,13 @@ Ollama migration alone does not reduce those reservations.
 
 `verify` checks the homepage and security headers through the same localhost entry point, live/ready JSON, and 401 responses for unauthenticated API requests. It registers/logs in a dedicated account, checks Cookie/CSRF behavior and rejection of an incorrect Origin, and submits the fixed `average(values)` sample. Acceptance requires a real `completed` result, the correct model/revision, valid Summary/Findings/Suggestions, the existing quality checks, and mention of the sample's empty-input/division-by-zero issue. A failed, timed-out, or invalid_model_response result, HTTP 200 alone, or a Running Pod is not success. The script does not retry blindly.
 
-It then checks history, repeat login, and isolation from a second user. With an idle queue, it performs controlled recreation of only this project's backend/DynamoDB Pods and verifies that the old Cookie, account, history body, and active adapter cache file size/mtime/inode survive (tokenizer for Ollama, weights for Transformers), and that model identity remains unchanged. It records review duration, cgroup current/peak memory, and warm recreation time. Unavailable measurements are recorded as `not_measured`.
+It then checks history, repeat login, and isolation from a second user. Once the queue
+is idle, it recreates only this project's backend and DynamoDB Pods. It checks that the
+existing Cookie, account and history still work and that model identity is unchanged. It
+also verifies the size, modification time and inode of the active adapter's cached
+files: tokenizer files for Ollama or weights for Transformers. It records review
+duration, cgroup current/peak memory, and warm recreation time. Unavailable measurements
+are recorded as `not_measured`.
 
 Network acceptance is recorded separately: allowed paths must succeed; the prohibited backend→frontend path is probed with a Python socket, and only an actual timeout counts as observed blocking. A CNI reported as policy-capable fails acceptance if it allows that path. A CNI without policy support may still allow product inference acceptance to proceed, but `network_policy.enforcement_verified=false` and network isolation must not be reported as passed.
 
@@ -287,7 +361,11 @@ Unavailable `own_usage_bytes`, `container_memory`, `cold_start`, and individual 
 
 Each `up` that passes mandatory checks starts a new `startup.json` attempt before deployment, replacing any previous attempt's readiness claim. It records `attempt_id`, `started_at`, target identity, the complete `preflight` report, and `diagnostic_warnings`.
 
-The nested `preflight.status` is `passed` or `failed`; `preflight.blockers` retains the reasons that make **doctor** fail, not mandatory deployment blockers. Per-read `measurements` use `measured` or `not_measured`, with a safe reason for unavailable data. A successful deployment after warnings still preserves `preflight.status=failed`.
+The nested `preflight.status` is `passed` or `failed`; `preflight.blockers` retains the
+reasons that make **doctor** fail, not mandatory deployment blockers. Per-read
+`measurements` use `measured` or `not_measured`, with a safe reason for unavailable
+data. If deployment succeeds despite diagnostic warnings, the report still retains
+`preflight.status=failed`.
 
 Deployment `status` is `in_progress`, `ready`, `failed`, or `interrupted`. `stage` and optional `component` identify progress or failure, for example `image_build`, `image_load`, `dependency_initialization`, `application_apply`, or `backend_readiness`. `application_ready` becomes true only after all deployment steps and readiness waits succeed; `review_completed` and `ui_verified` remain false. A failed retry replaces an earlier success report. If saving the attempt report fails, the command exits nonzero and explicitly warns that the old report may be stale. An abrupt process kill may leave `in_progress`, which is not success.
 
@@ -325,16 +403,17 @@ no listener exists; this must not be described as an occupied port. Check permis
 in the actual execution environment as well as listener state. Raw exception text
 and subprocess output are withheld.
 
-Forwarding requires an exact listener announcement from the newly created child,
-a successful loopback connection, and a live child process. Startup has a 10-second
-announcement deadline and a one-second connection timeout, with no automatic retry.
-The output reader uses bounded chunks so an unterminated output line cannot block
-the deadline. Probe/start races, process launch failure, missing announcements,
-unreachable listeners and unexpected process exits are failures. Recognized child
-bind errors have fixed classifications; unrecognized output remains withheld and
-no child errno is invented. Cleanup targets only this invocation's process, waits
-up to five seconds after termination, then up to five seconds after killing that
-same child. The interactive `port-forward` command uses the same checks and cleanup.
+Forwarding requires an exact listener announcement from the newly created child, a
+successful loopback connection, and a live child process. Startup has a 10-second
+announcement deadline and a one-second connection timeout, with no automatic retry. The
+output reader uses bounded chunks so an unterminated output line cannot block the
+deadline. Probe/start races, process launch failure, missing announcements, unreachable
+listeners and unexpected process exits are failures. Recognized child bind errors have
+fixed classifications; unrecognized output remains withheld and no child errno is
+invented. Cleanup targets only the child process started by this invocation. It sends a
+termination signal and waits up to five seconds. If the child is still running, it kills
+that same process and waits up to another five seconds. The interactive `port-forward`
+command uses the same checks and cleanup.
 
 ## Incomplete model cache and startup diagnostics
 
@@ -501,13 +580,14 @@ archived before cleanup starts. No failed cleanup records application or accepta
 success. Repeated cleanup reconciles absence; it does not delete a same-name replacement.
 
 If cleanup fails, inspect its safe error and `remaining` list, resolve the API/finalizer
-issue, then repeat the **same** command and data policy. Do not remove state or finalizers
-merely to force success. A stopped/missing backend with retained history but no valid
-idle-shutdown proof fails closed: restore the owned application using `up`, wait for
-existing jobs/draining to finish, then retry `undeploy`. A crash between stopping the
-backend and recording its completed idle shutdown also takes this conservative path.
-A new `up` invalidates any earlier cleanup's idle proof. Ownership conflicts require
-trusted state import or manual investigation; neither up nor undeploy adopts them.
+issue, then repeat the **same** command and data policy. Do not remove state or
+finalizers merely to force success. Cleanup stops if the backend is stopped or missing,
+history is retained, and there is no valid record of an idle shutdown. Restore the owned
+application with `up`, wait for existing jobs and draining inference to finish, then
+retry `undeploy`. A crash between stopping the backend and recording its completed idle
+shutdown also takes this conservative path. A new `up` invalidates any earlier cleanup's
+idle proof. Ownership conflicts require trusted state import or manual investigation;
+neither up nor undeploy adopts them.
 
 These commands are operational instructions, not evidence that deployment, cleanup,
 real inference, persistence or browser acceptance has been performed. Run a separately

@@ -9,9 +9,10 @@ real model inference, state import, deployment or data cleanup was performed.
 
 The starting worktree was clean. Existing shared-state, cross-checkout locking,
 migration, undeploy and lost-state recovery implementations were retained. Hash checks
-confirmed the model, cache validation, startup, coordinator, SQLite storage, authentication,
-target/state/store/verify/undeploy/recovery modules and original A/B JSON evidence were
-unchanged. The CLI's local table inspection now shares the restricted local transport.
+confirmed that the model, cache validation, startup, coordinator, SQLite storage and
+authentication modules were unchanged. The same checks covered the target, state, store,
+verify, undeploy and recovery modules, plus the original A/B JSON evidence. The CLI's
+local table inspection now shares the restricted local transport.
 
 ## Removed and retained dependencies
 
@@ -61,11 +62,12 @@ builds were not executed during this refactor.
 | Whitespace check | Passed |
 
 The first aggregate run exposed a retired EKS resource-count assertion (318 other
-minikube tests passed). It was replaced with the maintained minikube manifest contract,
-and both the script gate and final complete `bash scripts/check.sh` passed on rerun. Endpoint tests inspect real SDK request construction
-with an in-memory transport, including hostile host credential, endpoint and proxy settings;
-they do not call AWS. Initialization tests exercise real SDK serialization with stubbed
-responses and verify schema conflicts leave existing data intact.
+minikube tests passed). The assertion was replaced with the maintained Minikube manifest
+contract. On rerun, both the script gate and the complete `bash scripts/check.sh`
+passed. Endpoint tests inspect real SDK request construction with an in-memory
+transport, including hostile host credential, endpoint and proxy settings; they do not
+call AWS. Initialization tests exercise real SDK serialization with stubbed responses
+and verify schema conflicts leave existing data intact.
 
 Known non-failing warnings: two backend dependency deprecations (Starlette/httpx and
 AnyIO BlockingPortal), Vite's large-bundle warning, and browser test color-environment
@@ -85,7 +87,8 @@ fingerprint and image identity checks. Do not edit prior fingerprints or accepta
 Existing accounts/data must remain subject to the normal ownership and queue guards.
 
 Live application readiness, real completed review, persistence acceptance, full minikube
-`verify`, deployed-browser acceptance, and runtime cleanup remain **not_run for this change**.
-The fake-model browser results above cannot satisfy any real-model/minikube acceptance.
-Follow the current [README](../../README.md) and [minikube guide](../guides/minikube-demo.md)
-for independently authorized operations. There is no automatic follow-up deployment.
+`verify`, deployed-browser acceptance, and runtime cleanup remain **not_run for this
+change**. The fake-model browser results above do not establish real-model or Minikube
+acceptance. Follow the current [README](../../README.md) and [minikube
+guide](../guides/minikube-demo.md) for independently authorized operations. There is no
+automatic follow-up deployment.

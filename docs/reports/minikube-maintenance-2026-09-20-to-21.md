@@ -1,12 +1,26 @@
 # Minikube diagnostics and maintenance — 2026-09-20 to 2026-09-21
 
-Audience: maintainers reviewing historical evidence. Purpose: preserve the original observations and limitations extracted from the minikube guide. Prerequisite: understand [current minikube procedures](../guides/minikube-demo.md). These results apply only to their recorded environment and time; no current validation is implied. The port-forward incident excerpt had no separate date in the source and is retained as an undated follow-up to that maintenance record.
+This report preserves historical observations and limitations from the Minikube guide
+for maintainers. Read the [current Minikube procedures](../guides/minikube-demo.md) for
+operating guidance. These results apply only to the recorded environment and time; they
+do not validate the current project. The source did not give the port-forward incident a
+separate date, so it remains an undated follow-up.
 
 ## Historical environment and verification results (2026-09-20)
 
-This record predates the advisory behavior described above. The resource findings and the fact that deployment was not performed remain historical evidence; they are not a live test of the current `up`. The advisory change was verified offline only on 2026-09-21, without deployment, real inference, or browser acceptance.
+This record predates the change that made resource diagnostics advisory for `up`. The
+resource findings and the fact that deployment was not performed remain historical
+evidence; they are not a live test of the current `up`. The advisory change was verified
+offline only on 2026-09-21, without deployment, real inference, or browser acceptance.
 
-At the beginning of the deployment work, the user's home directory contained a `minikube` profile, but its container was temporarily absent. The user subsequently started the cluster. Actual runs of `doctor`, `up` with automatic target selection, and `up --profile minikube` all recognized **a Running minikube cluster with an available API**, then exited with code 1 because resource and version requirements were not met. Before/after comparisons confirmed that the existing minikube configuration, legacy deployment state, and global kubeconfig were unchanged. `stop` exited with code 0 and printed advice only.
+At the beginning of the deployment work, the user's home directory contained a
+`minikube` profile, but its container was temporarily absent. The user subsequently
+started the cluster. Actual runs of `doctor`, `up` with automatic target selection, and
+`up --profile minikube` all found **a Running Minikube cluster with an available API**.
+Each then exited with code 1 because resource and version requirements were not met.
+Before/after comparisons confirmed that the existing minikube configuration, legacy
+deployment state, and global kubeconfig were unchanged. `stop` exited with code 0 and
+printed advice only.
 
 | Measurement | Result |
 | --- | --- |
@@ -42,7 +56,12 @@ The fix changes only DynamoDB's Pod `runAsUser` to the verified image UID 1000 a
 
 Existing files created under another UID with restrictive modes require an explicit access review; this fix does not recursively repair them, recreate PVCs, or empty a database. In the inspected failing environment, the dedicated DynamoDB data directory was empty before the update. Backend/model/history volume identities and permissions are outside this change. The recorded image evidence is arm64-specific; this repair does not claim an amd64 runtime test.
 
-Offline regression tests resolve the effective container identity and startup path against the recorded image permissions, reproduce the old UID's traversal denial, and execute the rendered init program against an instrumented filesystem to verify root-only, idempotent permission changes. They also retain the existing hardening, local endpoint, ownership, diagnostic, and model-contract checks. Offline tests alone do not establish a running database.
+Offline regression tests check the effective container identity and startup path against
+the recorded image permissions. They reproduce the old UID's traversal denial and run
+the rendered init program against an instrumented filesystem. This verifies that
+permission changes are idempotent and affect only the volume root. They also retain the
+existing hardening, local endpoint, ownership, diagnostic, and model-contract checks.
+Offline tests alone do not establish a running database.
 
 The controlled runtime repair on 2026-09-21 used the already running `minikube` profile, cluster UID `87a4de40-9556-4415-bd6c-551ce09b2f92`, after verifying target, namespace, resource ownership, and the operation lock. An optimistic JSON patch changed only the owned `review-dynamodb` Deployment's UID and init argument. The existing Recreate strategy replaced its failing Pod; no PVC, Secret, image tag, or other workload was updated.
 
@@ -121,12 +140,13 @@ completion. No PVC was deleted or recreated. The temporary non-root repair Pod w
 the original backend replica count restored, with no second model loaded during repair.
 
 Only the backend image was replaced, using the native arm64 local image
-`review-backend:minikube-cache-fix-20260921-v2` in the existing `minikube` profile. Queue checks
-returned zero before changes. The owned backend Service was briefly isolated during image
-replacement to prevent new submissions, then its exact selector was restored. The first image
-update passed startup but was rolled back when the pre-existing partial deployment state lacked
-image maps. The final update preserved that target identity and merged only backend image records;
-it did not rewrite historical full-deployment or acceptance results.
+`review-backend:minikube-cache-fix-20260921-v2` in the existing `minikube` profile.
+Queue checks returned zero before changes. The owned backend Service was briefly
+isolated during image replacement to prevent new submissions, then its exact selector
+was restored. The first image update passed startup checks. It was then rolled back
+because the pre-existing partial deployment state lacked image maps. The final update
+preserved that target identity and merged only backend image records; it did not rewrite
+historical full-deployment or acceptance results.
 
 The final Pod `review-backend-546654c995-sfkqr` emitted successful tokenizer, weights, CPU placement,
 and startup-generation stage events followed by `model_ready`. Its readiness endpoint returned

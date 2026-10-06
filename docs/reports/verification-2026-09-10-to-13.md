@@ -3,11 +3,25 @@
 > Historical mixed report. Cloud-only observations and commands are archival, not maintained
 > deployment instructions. Local model results and their original limitations are retained.
 
-Selected historical records: results apply only to the dates, models and environments stated below. This document is not evidence that the current checkout was revalidated. Audience: maintainers investigating prior work; prerequisite: [current documentation index](../README.md).
+These selected historical records are for maintainers reviewing earlier work. Results
+apply only to the dates, models and environments stated below and do not validate the
+current checkout. For current guidance, start with the [documentation
+index](../README.md).
 
 ## Observability implementation — local and static evidence only
 
-On 2026-09-13, the safe-logs-to-runbook observability change was implemented locally. Backend logging gained UTC/service/environment fields, optional validated release provenance, fixed route/method/error fields, monotonic HTTP timing, lifecycle/queue events, and stricter validation-reason filtering. Fluent Bit gained explicit CRI-inner JSON parsing and a single allowlisted output route. Terraform gained the OTel Container Insights add-on configuration and dedicated Pod Identity, all five EKS control-plane log types, dimension-free application metric filters, dashboard, standard/composite alarms, two region-correct SNS topics, and a body-free CloudFront canary with seven-day logs/runs/artifacts. The original change used a five-minute schedule; the current configuration defaults to hourly and permits five minutes only as an explicit reviewed demo setting.
+On 2026-09-13, local observability work added safe logging and a runbook for
+investigating events. Backend logging gained UTC/service/environment fields, optional
+validated release provenance, fixed route/method/error fields, monotonic HTTP timing,
+lifecycle/queue events, and stricter validation-reason filtering. Fluent Bit gained
+explicit CRI-inner JSON parsing and a single allowlisted output route. Terraform gained
+configuration for the OTel Container Insights add-on and its dedicated Pod Identity,
+plus all five EKS control-plane log types. It also gained application metric filters
+without dimensions, a dashboard, standard and composite alarms, and two SNS topics in
+the appropriate regions. A CloudFront canary recorded no response bodies and retained
+logs, runs and artifacts for seven days. The original change used a five-minute
+schedule; the current configuration defaults to hourly and permits five minutes only as
+an explicit reviewed demo setting.
 
 Local evidence for this change:
 
@@ -24,7 +38,15 @@ Local evidence for this change:
 | Canary JavaScript syntax | Passed with the local Node.js parser |
 | Terraform formatting and `git diff --check` | Passed |
 
-The first sandboxed Terraform provider invocation could not contact STS/start plugin IPC; it was rerun with provider execution/network permission and only initialized providers, validated configuration, and used Terraform mock tests. No Terraform plan against real resources and no apply occurred. The canary source and Terraform were not executed by AWS; OTel metric names/labels, agent scheduling, CloudWatch ingestion, filter extraction, dashboard rendering, alarm state, SNS confirmation/delivery, Synthetics output, and actual seven-day expiry remain live post-deployment checks. Historical model and deployment evidence is recorded separately in the following sections.
+The first sandboxed Terraform provider invocation could not contact STS or start plugin
+IPC. It was rerun with permission for provider execution and network access. That run
+only initialized providers, validated configuration and ran Terraform mock tests. No
+Terraform plan against real resources and no apply occurred. The canary source and
+Terraform were not executed by AWS; OTel metric names/labels, agent scheduling,
+CloudWatch ingestion, filter extraction, dashboard rendering, alarm state, SNS
+confirmation/delivery, Synthetics output, and actual seven-day expiry remain live
+post-deployment checks. Historical model and deployment evidence is recorded separately
+in the following sections.
 
 The non-inference acceptance baseline and response-validation checks were completed locally on 2026-09-11 (Asia/Tokyo). They are recorded separately below. The owner later reported that both dev and platform Terraform applies succeeded; the follow-up in this document does not treat that report as a locally reverified result.
 
@@ -36,7 +58,12 @@ The total production budget and timeout remain 384 tokens and 300 seconds. The d
 
 After existing heading and whitespace normalization, only a section that reached its own token limit is eligible for tail cleanup. A complete ending is unchanged. Otherwise, the backend deletes only the generated suffix after the last `.`, `!`, or `?` and its limited closing characters. It does not continue, rewrite, summarize, or infer model content. If no complete boundary remains, the public and persisted failure stays `invalid_model_response` with the generic message, while the safe internal reason is `truncated_section`. Generation logs add only three fixed `section_trailing_fragments_removed` booleans.
 
-The final controlled regression loaded the existing fixed Qwen3 revision once from the offline local cache on macOS arm64 CPU with bfloat16, two CPU threads, serial inference, the unchanged stable seeds and sampling parameters, the new prompts and 72/176/136 limits, and one 300-second deadline. Model output was checked in memory for the existing structure, source binding, semantic expectations, execution claims, and complete section endings, then discarded without being printed or persisted.
+The final controlled regression loaded the fixed Qwen3 revision once from the offline
+local cache on a macOS arm64 CPU. It used bfloat16, two CPU threads, serial inference
+and the unchanged stable seeds and sampling parameters. It tested the new prompts and
+72/176/136 section limits under one 300-second deadline. Model output was checked in
+memory for the existing structure, source binding, semantic expectations, execution
+claims, and complete section endings, then discarded without being printed or persisted.
 
 | Fixture | Duration | Generated tokens | Section tokens | Limits reached | Trailing fragments removed | Result |
 | --- | ---: | ---: | --- | --- | --- | --- |
@@ -77,13 +104,31 @@ All six fixtures passed the existing structure and distinctive-source-identifier
 
 Because every candidate gate passed, the sole production model was changed to the exact Qwen3 ID and revision. The loader now recognizes complete indexed safetensors shards, production always hard-disables thinking through the tokenizer template, and the explicit sampling configuration uses min-p 0. Runtime model choice and fallback remain prohibited. The 384-token EKS override, 300-second timeout, CPU-only execution, one process/replica/inference, coordinator state machine, quality gate, safe logging, probes, Pod resources, and AWS architecture are unchanged. Completed reviews continue to persist the active model ID and revision.
 
-Targeted verification passed: Ruff lint and format checks passed for the affected Python files; 52 selected model/config/API tests passed with 18 unrelated tests deselected; all 16 rendered Kubernetes resources passed structural and security assertions including the exact Qwen3 pin; and the production `TransformersModel` opt-in real-model smoke passed offline in 39.52 seconds. The six-fixture acceptance used macOS arm64 process RSS, which does not establish Linux container or EKS peak memory. The replacement has not been built into a linux/amd64 image or run on EKS, and every generated review still requires human verification. No frontend, Playwright, Terraform, Docker, ECR, Kubernetes write, AWS, GitHub, secret, or cloud operation ran.
+Targeted verification passed Ruff lint and format checks for the affected Python files.
+The selected model, configuration and API tests passed: 52 passed and 18 unrelated tests
+were deselected. All 16 rendered Kubernetes resources passed structural and security
+assertions, including the exact Qwen3 pin. The opt-in real-model smoke test for the
+production `TransformersModel` passed offline in 39.52 seconds. The six-fixture
+acceptance used macOS arm64 process RSS, which does not establish Linux container or EKS
+peak memory. The replacement has not been built into a linux/amd64 image or run on EKS,
+and every generated review still requires human verification. No frontend, Playwright,
+Terraform, Docker, ECR, Kubernetes write, AWS, GitHub, secret, or cloud operation ran.
 
 ## Qwen2.5-Coder candidate evaluation
 
 On 2026-09-12, `Qwen/Qwen2.5-Coder-1.5B-Instruct` was evaluated as a replacement candidate. Hugging Face's official metadata resolved the candidate to commit `2e1fd397ee46e1388853d2af2c993145b0f1098a` with the Apache-2.0 license. The pinned BF16 `model.safetensors` file is 3.09 GB and its locally verified SHA-256 is `c1b9b30e907950516ba3c646bdf570d8084c25a6410a0cdca80cf04b11bc13a8`.
 
-The exact revision was downloaded to the ignored local cache and then loaded once with `trust_remote_code=False`, CPU-only bfloat16, and two CPU threads. All six fixtures ran serially with inference concurrency one, the unchanged `current-system-user` safety prompt, independent Summary/Findings/Suggestions generation, stable per-section seeds, a 384-token total budget split 64/192/128, the existing response quality gate, and one 300-second deadline per review. The candidate's pinned `generation_config.json` specifies `do_sample=true`, temperature 0.7, top-p 0.8, top-k 20, and repetition penalty 1.1; these exactly matched the explicit safe generation parameters used by the evaluation. EOS behavior remained inherited, tokenizer padding and generation caching remained enabled, and no dependency change was required with Transformers 4.57.6 and PyTorch 2.8.0.
+The exact revision was downloaded to the ignored local cache and then loaded once with
+`trust_remote_code=False`, CPU-only bfloat16, and two CPU threads. All six fixtures ran
+serially with inference concurrency one. They used the unchanged `current-system-user`
+safety prompt, independent generation of Summary, Findings and Suggestions, and stable
+per-section seeds. Each review retained the 384-token budget split 64/192/128, the
+existing response quality gate and one 300-second deadline. The candidate's pinned
+`generation_config.json` specifies `do_sample=true`, temperature 0.7, top-p 0.8, top-k
+20, and repetition penalty 1.1; these exactly matched the explicit safe generation
+parameters used by the evaluation. EOS behavior remained inherited, tokenizer padding
+and generation caching remained enabled, and no dependency change was required with
+Transformers 4.57.6 and PyTorch 2.8.0.
 
 Only content-free metrics and fixed acceptance reasons were emitted. Generated review text was evaluated in memory and immediately discarded; no model text, prompt, source, seed, source hash, or token ID was logged or persisted.
 
@@ -104,7 +149,17 @@ The later accepted Qwen3 replacement is recorded above. No production model, man
 
 On 2026-09-12, after the owner reported successful dev and platform applies, the deployment failure was traced to the intentional gap between `aws_secretsmanager_secret` resource metadata and a value-bearing secret version. Terraform creates the former but no `AWSCURRENT` version; the rendered ExternalSecret uses that resource's exact ARN and requires a JSON `SIGNING_SECRET` property. Extending the reconciliation timeout cannot make an absent version readable.
 
-The new explicit lifecycle helper validates runtime JSON, region, ARN, and current AWS account; distinguishes an absent resource, a resource with no versions, a valid single `AWSCURRENT`, malformed staging state, and denied access; and never calls `GetSecretValue`. `initialize` writes a 48-random-byte value through stdin only for a versionless resource and becomes a no-op afterward. Only `rotate` replaces it. The deploy helper and GitHub publish job now stop on the metadata-only check before Docker login, build, ECR push, EKS access, or Kubernetes apply. After apply, deployment forces ExternalSecret synchronization, waits for SecretStore and ExternalSecret in order, checks only that the Kubernetes Secret has the required key, restarts the backend, and continues rollout and HTTPS verification. The GitHub role policy adds only `DescribeSecret` and `ListSecretVersionIds` on the exact session secret ARN.
+The new lifecycle helper validates runtime JSON, region, ARN and the current AWS
+account. It distinguishes missing resources, resources with no versions, a valid single
+`AWSCURRENT`, malformed staging state and denied access. It never calls
+`GetSecretValue`. `initialize` writes a 48-random-byte value through stdin only for a
+versionless resource and becomes a no-op afterward. Only `rotate` replaces it. The
+deploy helper and GitHub publish job now stop on the metadata-only check before Docker
+login, build, ECR push, EKS access, or Kubernetes apply. After apply, deployment forces
+ExternalSecret synchronization, waits for SecretStore and ExternalSecret in order,
+checks only that the Kubernetes Secret has the required key, restarts the backend, and
+continues rollout and HTTPS verification. The GitHub role policy adds only
+`DescribeSecret` and `ListSecretVersionIds` on the exact session secret ARN.
 
 Targeted offline verification passed:
 
@@ -124,7 +179,14 @@ The first Terraform validation attempt could not start the installed provider in
 
 ## Local EKS deployment helper follow-up
 
-After the owner reported successful dev and platform Terraform applies, `scripts/deploy_eks.sh` was added for application deployment from a local workstation. It validates the active AWS account, ECR region, active cluster, namespace, and create/patch RBAC before building; uses an isolated ignored kubeconfig; builds both images for `linux/amd64`; resolves ECR digests; renders and applies the existing overlay; waits for External Secrets and both rollouts; and runs the existing target/HTTPS smoke checks. Supplying both exact digest references skips Docker and ECR publication.
+After the owner reported successful dev and platform Terraform applies,
+`scripts/deploy_eks.sh` was added for application deployment from a local workstation.
+Before building, it validates the active AWS account, ECR region, active cluster,
+namespace and create/patch RBAC permissions. It uses an isolated, ignored kubeconfig for
+cluster access. It builds both images for `linux/amd64`, resolves ECR digests, then
+renders and applies the existing overlay. It then waits for External Secrets and both
+rollouts before running the existing target and HTTPS smoke checks. Supplying both exact
+digest references skips Docker and ECR publication.
 
 Only offline verification was performed in this follow-up: shell syntax and help output passed, and a fake-AWS/fake-Docker/fake-Kubernetes test passed through two image builds, digest resolution, 16-resource rendering, apply, waits, a no-network smoke substitute, and an existing-digest redeployment that confirmed Docker was skipped. No real image was built or pushed, no kubeconfig outside the test temporary directory was changed, and no Kubernetes, AWS, GitHub, or Terraform resource was read or modified by this verification.
 
@@ -134,7 +196,16 @@ The deployment guide previously referenced `infrastructure/platform-backend.hcl`
 
 The new `scripts/terraform_stack.sh` helper keeps all Terraform commands non-interactive, displays saved plans before separate explicit apply commands, and provides reverse-order destroy plan/apply commands. Destruction has a separately reviewed prerequisite plan that disables DynamoDB deletion protection and enables ECR force deletion, while normal configuration retains the safer defaults. Retain-policy EBS cleanup is limited to the two exact PVC-derived volume IDs, requires the successful dev-destroy marker for the unchanged manifest, checks account and region, and refuses attached volumes. The remote state bucket and snapshots remain outside the helper.
 
-Targeted checks passed: recursive Terraform formatting, dev and platform validation, shell syntax/help and destructive missing-marker guards, eleven mocked dev plan tests including explicit `0.0.0.0/0` acceptance, malformed-CIDR rejection, the normal/destroy safeguard values, and the exact platform output schema, plus a fake-AWS/fake-Kubernetes helper test covering exact EBS capture/deletion and attached-volume/changed-manifest refusal. Provider-backed validation initially could not start provider subprocesses in the restricted sandbox, then passed when local provider execution was permitted. No backend initialization, remote-state read, plan against live AWS, apply, destroy, EBS deletion, or other cloud change was executed.
+Targeted checks passed for recursive Terraform formatting, dev and platform validation,
+shell syntax and help, and guards that block destructive operations when markers are
+missing. Eleven mocked dev plan tests also passed. They covered explicit `0.0.0.0/0`
+acceptance, malformed-CIDR rejection, normal and destroy safeguard values, and the exact
+platform output schema. A helper test using fake AWS and Kubernetes commands verified
+that EBS capture and deletion used exact identities and refused attached volumes or
+changed manifests. Provider-backed validation initially could not start provider
+subprocesses in the restricted sandbox, then passed when local provider execution was
+permitted. No backend initialization, remote-state read, plan against live AWS, apply,
+destroy, EBS deletion, or other cloud change was executed.
 
 ## GitHub OIDC immutable-subject follow-up
 
@@ -179,7 +250,15 @@ The first in-sandbox Terraform validation attempt could not start the existing A
 | npm dependency audit | 0 reported vulnerabilities after upgrading Vitest to patched 4.1.11 |
 | Desktop/mobile visual inspection | Completed; screenshots inspected for layout, clipping, and usable source/result panels |
 
-Backend tests cover normalized and conditionally unique registration, Argon2id hashes, secure cookies, sign-in, logout revocation, replayed/expired sessions, disabled accounts, CSRF, JSON-only writes, user isolation, idempotent retries/conflicts, atomic concurrent insertion, input/token/body limits, invalid IDs, login/submission limits, queue capacity, persistent recovery/retry bounds, cursor pagination, empty output, inference failures/timeouts, uncooperative native inference, storage failures, safe error logging, responsive probes, serialized jobs across users, exact Kubernetes environment loading, and rejection of parallel inference/model substitution.
+Backend tests cover registration normalization and conditional uniqueness, Argon2id
+hashes, secure cookies, sign-in and logout revocation. They also cover replayed or
+expired sessions, disabled accounts, CSRF, JSON-only writes and user isolation.
+Submission checks include idempotent retries and conflicts, atomic concurrent insertion,
+input/token/body limits, invalid IDs, rate limits and queue capacity. Further tests
+cover persistent recovery and retry bounds, cursor pagination, empty output, inference
+failures and timeouts, uncooperative native inference and storage failures. Logging,
+responsive probes, serial processing across users, exact Kubernetes environment loading,
+and rejection of parallel inference or model substitution are also covered.
 
 Browser tests cover registration, CodeMirror entry, review submission, control locking, result display, page reload/history recovery, logout/login, mobile layout, and unsupported-language plain text. Browser tests deliberately use a labeled deterministic inference fixture; they do not claim to measure the real model.
 

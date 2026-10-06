@@ -17,13 +17,18 @@ Request/response bodies use JSON, except that successful logout returns **204 wi
 | `GET /health/live`                         | 200/503 | Process/coordinator liveness                                                                    |
 | `GET /health/ready`                        | 200/503 | Coordinator/model readiness plus a live writable SQLite check; DynamoDB is validated at startup |
 
-Registration/login body: `{"login_id":"reviewer","password":"a-long-example-password"}`. Identifiers are trimmed and lowercased, accept ASCII letters, digits, `.`, `_`, `@`, `+`, `-`, and must be 3–100 characters long. Passwords must be 12–128 characters long and are not normalized.
+Registration/login body: `{"login_id":"reviewer","password":"a-long-example-password"}`.
+Identifiers are trimmed and converted to lowercase. They must be 3–100 characters long
+and may contain ASCII letters, digits, `.`, `_`, `@`, `+` and `-`. Passwords must be
+12–128 characters long and are not normalized.
 
 Successful authentication sets the session cookie and returns `login_id`, `csrf_token`, `expires_at` (Unix seconds), and `source_max_chars`. The browser keeps the CSRF token in memory and restores it through `/auth/me`; it never stores the session token in local storage.
 
 Every state-changing request must have an exact matching `Origin` and JSON content type. Authenticated writes additionally require `X-CSRF-Token` matching the session. Authentication writes are protected against login CSRF by exact-origin checking and JSON-only requests; cross-origin CORS is not enabled. Native clients must send the expected origin explicitly.
 
-For logout, send an empty JSON object (`{}`) with `Content-Type: application/json`, the normal Cookie, exact Origin and `X-CSRF-Token`; an empty request without the JSON content type returns 415.
+To log out, send an empty JSON object (`{}`) with `Content-Type: application/json`, the
+session Cookie, the exact Origin and `X-CSRF-Token`. An empty request without the JSON
+content type returns 415.
 
 Submission body:
 
@@ -37,7 +42,11 @@ Submission body:
 
 `language` defaults to `auto`; any valid short language hint is accepted. `client_request_id` is optional; the server generates a UUID if omitted. Browsers generate and retain it for uncertain-delivery retries. The response contains `review_id`, `status`, and `client_request_id`. An idempotent response may already be completed or failed.
 
-The default source limit is 12,000 characters. The largest of the three complete section prompts, including instructions, must fit 2,048 tokens; the character and token limits are independently enforced. Oversized HTTP bodies are rejected at 128 KiB before JSON parsing. Nothing is compiled, parsed as an executable language, or saved as a source file.
+The default source limit is 12,000 characters. Each of the three complete section
+prompts, including instructions, must fit within 2,048 tokens. The character limit and
+token limit are enforced independently. Oversized HTTP bodies are rejected at 128 KiB
+before JSON parsing. Nothing is compiled, parsed as an executable language, or saved as
+a source file.
 
 Response models in `backend/app/api/schemas.py` explicitly allowlist fields. Detail
 responses contain `review_id`, `status`, `client_request_id`, `language`, `source_code`,
@@ -99,10 +108,11 @@ The existing `/health/live` and `/health/ready` HTTP status and body contracts a
 
 This is not a cluster-health API and contains no credentials, paths, account data, pod
 inventory or host metrics. It does not query Kubernetes or inspect host configuration.
-The UI polls sequentially five seconds after each response, with an eight-second timeout
-and unmount cancellation. Failed/malformed observations disable new submissions without
-clearing input. Unknown fields/states never imply readiness; recovery restores controls.
-Service status and persisted task status are shown separately.
+The UI waits five seconds after each response before polling again. Each request has an
+eight-second timeout and is cancelled when the component unmounts. Failed or malformed
+responses disable new submissions but preserve the input. Unknown fields or states never
+imply readiness. Controls become available again when the service recovers. Service
+status and persisted task status are shown separately.
 
 Unconfirmed POST delivery is retried only through the explicit retry button, using the
 same frozen source, language and request ID. Readiness rejections are not automatically

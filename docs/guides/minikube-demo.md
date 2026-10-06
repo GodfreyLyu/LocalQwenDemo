@@ -56,8 +56,8 @@ The deployment sequence is:
 1. Validate configuration, target, ownership, external Secrets and storage.
 2. Diagnose resources, build/load images, and render the Chart.
 3. Save `values-local.json`, run Helm lint, and print an equivalent Helm command.
-4. For an existing workload, pause frontend access, establish an idle SQLite write
-   reservation, and stop the backend before changing the Helm release.
+4. For an existing workload, pause frontend access and reserve SQLite writes after
+   confirming the queue is idle. Then stop the backend before changing the Helm release.
 5. Run `helm upgrade --install --reset-values --wait` and check readiness.
 
 The Chart's `initialize-users` init container initializes DynamoDB. No separate
@@ -73,12 +73,13 @@ scripts/minikube_demo.sh init --profile minikube -f /path/to/site.yaml
 scripts/minikube_demo.sh up --profile minikube -f /path/to/site.yaml --port 8081
 ```
 
-Precedence is Chart defaults, `values-minikube.yaml`, user `-f` files in order,
-explicit CLI options, and local build image identities. User values are not
-silently imported from the previous release. Repeat your values/options on each
-upgrade. `--port` updates the browser Origin; `--model-backend` and
-`--storage-class` are optional explicit overrides. Deployment waits default to
-3900 seconds (`--timeout`, also accepting the old `--cold-timeout` spelling).
+Values are applied in this order: Chart defaults, `values-minikube.yaml`, user `-f`
+files, explicit CLI options, then local build image identities. Later values override
+earlier ones; multiple `-f` files are applied in the order supplied. User values are not
+silently imported from the previous release. Repeat your values/options on each upgrade.
+`--port` updates the browser Origin; `--model-backend` and `--storage-class` are
+optional explicit overrides. Deployment waits default to 3900 seconds (`--timeout`, also
+accepting the old `--cold-timeout` spelling).
 
 The printed `values-local.json` is a complete ordinary values file. It contains
 no generated secret material and can be passed directly to Helm:
@@ -108,11 +109,12 @@ only loopback; it never reuses or kills an unrelated listener. Visit the printed
 before running `verify`, which owns its own temporary forwarding process.
 
 `verify` creates test accounts and a real review. It checks authentication, CSRF,
-account isolation, model identity, and persisted results. By default it fences
-idle workloads, restarts the local database/backend, checks that model-cache files
-are unchanged, and verifies accounts, cookies and review history survived.
-`--skip-restart` produces a partial result and exits nonzero, not a persistence pass.
-No browser automation is implied; manual UI acceptance remains separate.
+account isolation, model identity, and persisted results. By default, it confirms that
+workloads are idle and blocks new submissions before restarting the local database and
+backend. It then checks that model-cache files are unchanged and that accounts, cookies
+and review history survived. `--skip-restart` produces a partial result and exits
+nonzero, not a persistence pass. No browser automation is implied; manual UI acceptance
+remains separate.
 
 Acceptance records bind to cluster/namespace identity, Helm revision, computed
 values and actual runtime image IDs. A manual Helm upgrade invalidates older
@@ -151,10 +153,11 @@ scripts/minikube_demo.sh undeploy --profile minikube \
   --purge-data --confirm-data-loss local-review-demo
 ```
 
-Purge removes retained PVCs owned by this release and signing Secrets created by
-`init`. User-supplied claims and Secrets remain outside purge, even when supplied
-claims carry matching Helm annotations. It does not delete images, host Ollama,
-or the Minikube cluster. Active/unmeasurable work blocks workload interruption.
+Purge removes retained PVCs owned by this release and signing Secrets created by `init`.
+User-supplied claims and Secrets remain outside purge, even when supplied claims carry
+matching Helm annotations. It does not delete images, host Ollama, or the Minikube
+cluster. The CLI refuses to interrupt workloads if work is active or its state cannot be
+measured.
 
 To additionally remove a namespace that this CLI created:
 

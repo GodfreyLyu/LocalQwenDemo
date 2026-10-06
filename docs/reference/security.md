@@ -18,7 +18,20 @@ Source and review text are private per user and stored in SQLite on a local pers
 
 Input is bounded by HTTP bytes, characters, and model prompt tokens. Output token count, queue size, retry count, and inference concurrency are bounded. The model has no tools. Prompt injection can still influence review quality; model text is always untrusted.
 
-Three independent prompts reuse only the original untrusted source, never a previously generated section. Qwen3's tokenizer receives the hard `enable_thinking=False` chat-template option; the application does not request, parse, store, or log chain-of-thought. Backend code inserts the fixed Markdown headings, but every review body remains model-generated. For a section that reaches its token limit, deterministic post-processing can only remove the unfinished suffix after the last complete terminator; it cannot add or rewrite a conclusion, and absence of any complete boundary fails closed. Sampling uses an ephemeral SHA-256-derived seed per source and section inside an isolated CPU RNG context; neither the seed nor a source hash is logged or persisted. Empty bodies, unexpected reserved headings, capped bodies without a complete terminator, and results without any recognizable source-identifier link are rejected with a fixed public error and without saving or logging the rejected content. These checks reject obvious structural or source-association failures; they do not verify semantic correctness.
+Three independent prompts reuse only the original untrusted source, never a previously
+generated section. Qwen3's tokenizer receives the hard `enable_thinking=False`
+chat-template option; the application does not request, parse, store, or log
+chain-of-thought. Backend code inserts the fixed Markdown headings, but every review
+body remains model-generated. When a section reaches its token limit, post-processing
+may remove only the unfinished text after the last complete terminator. It cannot add or
+rewrite a conclusion. If no complete boundary exists, the response is rejected. Sampling
+uses an ephemeral SHA-256-derived seed per source and section inside an isolated CPU RNG
+context; neither the seed nor a source hash is logged or persisted. The validator
+rejects empty bodies, unexpected reserved headings and capped bodies with no complete
+terminator. It also rejects results that lack a recognizable link to a source
+identifier. Each rejection returns a fixed public error without saving or logging the
+rejected content. These checks reject obvious structural or source-association failures;
+they do not verify semantic correctness.
 
 React Markdown skips raw HTML, applies `rehype-sanitize`, and does not load images from generated content. Unsafe link schemes are removed. External links use `noopener noreferrer`. Nginx adds a restrictive Content Security Policy, frame blocking, no-referrer, HSTS, and content-type protection. The style policy permits inline styles for CodeMirror; script execution remains restricted to bundled same-origin scripts.
 
@@ -44,7 +57,19 @@ Application containers run non-root, with read-only root filesystems, no added L
 
 ## Logging and secrets
 
-Structured application logs always contain UTC timestamp, level, service, environment, event, and only explicitly allowlisted optional fields. HTTP records add a fixed method, nonnegative monotonic duration, fixed error code, and only an allowlisted FastAPI route template; no unknown route falls back to the raw path. Successful health probes are suppressed, failed probes stay visible, and `X-Request-ID` remains available for correlation. Review submit/start/finish/reject events add opaque review ID and bounded queue/timing/outcome fields. A rejected model response may add only a fixed validation-reason enum; an unknown reason is omitted. Generation completion adds only summed monotonic duration, total generated-token count, the configured global limit and flag, and integer/boolean metrics under the three fixed section names, including whether an incomplete capped suffix was removed. `release_sha` is omitted unless the runtime receives a validated real SHA. See the [log contract](observability.md) for field definitions.
+Structured application logs always contain UTC timestamp, level, service, environment,
+event, and only explicitly allowlisted optional fields. HTTP records add a fixed method,
+nonnegative monotonic duration, fixed error code, and only an allowlisted FastAPI route
+template; no unknown route falls back to the raw path. Successful health probes are
+suppressed, failed probes stay visible, and `X-Request-ID` remains available for
+correlation. Review submit/start/finish/reject events add opaque review ID and bounded
+queue/timing/outcome fields. A rejected model response may add only a fixed
+validation-reason enum; an unknown reason is omitted. Generation completion adds the
+summed monotonic duration, total token count, configured global limit and limit flag. It
+also adds integer or boolean metrics for the three fixed section names, including
+whether an unfinished suffix was removed from a capped section. `release_sha` is omitted
+unless the runtime receives a validated real SHA. See the [log
+contract](observability.md) for field definitions.
 
 Removed text, removed character counts, punctuation, request/response bodies, raw path/URL/query, source code, source-derived hashes, generation seeds, prompts, token IDs or generated token content, decoded model output, passwords, cookies, tokens, usernames, and full exception messages are excluded. API validation errors never echo raw input. Uvicorn and frontend access logging are disabled, to prevent arbitrary path/query values from entering logs. Unexpected model/storage messages are translated to fixed public errors.
 
@@ -59,9 +84,10 @@ Ignored files cover `.env`, local data/model caches, state/plans, credentials-sh
 
 ## Remaining trust and retention limits
 
-Local administrators and the application can read persisted source. User history isolation
-is application authorization, not per-user disk encryption. PVCs and backing directories
-can retain data after workload deletion; no automatic expiry, secure erasure or backup
-is provided. Review retention with participants and use the explicit cleanup procedures.
-There is no claimed production SLA, audit certification, public multi-tenant hardening
-or distributed rate limiting. Host and Docker security remain operator responsibilities.
+Local administrators and the application can read persisted source. User history
+isolation is application authorization, not per-user disk encryption. PVCs and backing
+directories can retain data after workload deletion; no automatic expiry, secure erasure
+or backup is provided. Agree on data retention with participants and follow the
+documented cleanup procedures. There is no claimed production SLA, audit certification,
+public multi-tenant hardening or distributed rate limiting. Host and Docker security
+remain operator responsibilities.

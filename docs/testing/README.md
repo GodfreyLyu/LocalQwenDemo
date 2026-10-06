@@ -22,12 +22,12 @@ The existing public limiter test still exercises `app.auth.RateLimiter`, and the
 model-identity test also exercises the `app.model.TransformersModel` compatibility
 export without loading weights.
 
-Script checks cover the local harness, users initializer and evaluator after import
-migration. Remote command strings use the canonical inference package; the evaluator
-fingerprints the relocated implementation files, not the legacy facade. Browser
-regression starts the unchanged factory entry through the fake-model harness, using
-isolated accounts/history. Historical reports retain the source paths from their
-original revisions.
+Script checks cover the local harness, users initializer and evaluator after their
+imports were updated. Remote command strings use the canonical inference package. The
+evaluator fingerprints the relocated implementation files rather than the legacy facade.
+Browser regression tests use the fake-model harness to start the same application
+factory, with isolated accounts and history. Historical reports retain the source paths
+from their original revisions.
 
 ## Test matrix
 
@@ -65,9 +65,9 @@ scripts/check_scripts.sh
 
 Install the Python 3.12 virtual environment from the dev lock, the editable backend
 package and Node 24/npm dependencies. The gate also requires kubectl for offline
-rendering and permission to bind temporary loopback test sockets. No Docker daemon,
-minikube cluster, cloud account or infrastructure providers are needed for this gate. Dependency installation needs
-network access; the tests themselves do not download weights or images.
+rendering and permission to bind temporary loopback test sockets. These checks need no
+Docker daemon, Minikube cluster, cloud account or infrastructure providers. Installing
+dependencies requires network access, but the tests do not download weights or images.
 
 ```bash
 bash scripts/check.sh
@@ -92,12 +92,13 @@ not successful reviews. The default gate does not run real inference.
 
 ## Authorized environment acceptance
 
-Follow [the minikube guide](../guides/minikube-legacy.md). `up` establishes only readiness.
-`verify` requires matching deployment/build evidence, normal authentication, a real
-quality-valid completed review, isolation and persistence checks. It may create accounts,
-write reviews and restart owned workloads. Do not run a full verify just to inspect a
-performance problem. Stop your owned foreground port-forward before verify uses its port.
-Browser acceptance through the deployed same-origin entry is a separate check.
+Follow [the minikube guide](../guides/minikube-legacy.md). `up` establishes only
+readiness. `verify` requires records that match the deployed build and uses normal
+authentication. It must complete a real review that passes the quality checks, then
+verify account isolation and persistence. It may create accounts, write reviews and
+restart owned workloads. Do not run a full verify just to inspect a performance problem.
+Stop your owned foreground port-forward before verify uses its port. Browser acceptance
+through the deployed same-origin entry is a separate check.
 
 Browser tests use a fresh temporary directory for fake history and artifacts by default.
 `LOCAL_REVIEW_TEST_ROOT` can select a dedicated disposable test directory; never point it

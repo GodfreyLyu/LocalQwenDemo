@@ -22,10 +22,10 @@ content latency and support cancellation; the browser still polls saved jobs.
 `think=false` renders the stock template's `/no_think` control and empty thinking
 prefix. Unexpected thinking/tool output is rejected. No reasoning is stored or logged.
 
-Startup downloads only the pinned `tokenizer.json`, verifies the stock template
-SHA-256, vocabulary, merges, architecture and size against `/api/show`, then checks
-one-token generation. All responses must report the same exact prompt token count
-as local admission. `num_ctx` includes both the input and output budgets, preventing
+Startup downloads only the pinned `tokenizer.json`. It uses `/api/show` to verify the
+stock template's SHA-256, vocabulary, merges, architecture and size, then tests
+one-token generation. All responses must report the same exact prompt token count as
+local admission. `num_ctx` includes both the input and output budgets, preventing
 context truncation for admitted requests. A custom template requires an explicitly
 implemented and tested renderer; character-count estimates are never used.
 
@@ -77,21 +77,64 @@ The API exposes no model selector and there is no external inference fallback. T
 | MAX_RETRIES                 | 1 interruption retry                                                                  |
 | QUEUE_CAPACITY              | 8 queued jobs                                                                         |
 
-The minikube ConfigMap limits one complete review to 384 generated tokens and allows 300 seconds for the complete CPU inference job. The deployment budget is split deterministically into 72 Summary tokens, 176 Findings tokens, and 136 Suggestions tokens. Other valid budgets use the equivalent 9/22/17 weights after reserving at least one token per section; deterministic largest-remainder allocation assigns every token, so the three limits always sum to the supplied total. All three calls share one monotonic deadline and the coordinator's existing whole-job timeout. A stop signal terminates the current cooperative generation and prevents later sections from starting. The backend defaults remain 512 tokens and 180 seconds for direct-development configurations; deployment settings are supplied through environment variables.
+The minikube ConfigMap limits one complete review to 384 generated tokens and allows 300
+seconds for the complete CPU inference job. The deployment budget is split
+deterministically into 72 Summary tokens, 176 Findings tokens, and 136 Suggestions
+tokens. For other valid budgets, each section receives at least one token. The remaining
+tokens are divided using 9/22/17 weights and a deterministic largest-remainder
+allocation. This assigns every token, so the three section limits always add up to the
+supplied total. All three calls share one monotonic deadline and the coordinator's
+existing whole-job timeout. A stop signal terminates the current cooperative generation
+and prevents later sections from starting. The backend defaults remain 512 tokens and
+180 seconds for direct-development configurations; deployment settings are supplied
+through environment variables.
 
 The model loads once on CPU with `trust_remote_code=False`, `use_safetensors=True`, and `eval()`, then performs a one-token validation inside `torch.inference_mode()`.
 
-Cache validation checks a readable single `model.safetensors` file when no index exists. When an index exists, it must be valid and every referenced shard must be readable with structurally valid safetensors metadata and exactly the indexed tensor names. A broken index or missing shard cannot fall back to accepting another weight file; validation does not load full tensors or perform a complete weight-content SHA-256 audit. Startup checks the exact pinned local snapshot first and otherwise downloads only safetensors, index/config, and tokenizer assets. Readiness stays false until the model, DynamoDB initialization check, and writable SQLite storage are ready. Liveness remains available during loading.
+Cache validation checks a readable single `model.safetensors` file when no index exists.
+When an index exists, it must be valid. Every referenced shard must be readable, have
+structurally valid safetensors metadata and contain exactly the tensor names listed for
+it in the index. A broken index or missing shard cannot fall back to accepting another
+weight file; validation does not load full tensors or perform a complete weight-content
+SHA-256 audit. Startup checks the exact pinned local snapshot first and otherwise
+downloads only safetensors, index/config, and tokenizer assets. Readiness stays false
+until the model, DynamoDB initialization check, and writable SQLite storage are ready.
+Liveness remains available during loading.
 
 Token counts use the exact tokenizer and the largest of the three complete section prompts. Production uses one fixed system message containing the safety instructions and one user message containing the section request and untrusted source. Source text cannot create additional messages or roles. Qwen3's tokenizer chat template is invoked with `tokenize=False`, `add_generation_prompt=True`, and the hard `enable_thinking=False` switch. The application does not use the `/no_think` text control and does not request, parse, save, or log chain-of-thought. The safe explicit plain-text fallback remains available if a pinned tokenizer lacks a template.
 
-The single inference executor generates the `Summary`, `Findings`, and `Suggestions` bodies sequentially from three short independent prompts. Summary is limited to two short sentences; Findings and Suggestions are each limited to three concise Markdown list items. Every sentence or item is instructed to end with `.`, `!`, or `?`, avoid copying source or repeating material assigned to another section, and state the absence of a material issue explicitly instead of filling the budget. Each prompt repeats the original language hint and untrusted source and asks only for that section body. No conversation history, prior generated section, or tool result is appended. The backend inserts the three exact Markdown headings; it does not invent, copy, or synthesize a review conclusion.
+The single inference executor generates the `Summary`, `Findings`, and `Suggestions`
+bodies sequentially from three short independent prompts. Summary is limited to two
+short sentences; Findings and Suggestions are each limited to three concise Markdown
+list items. The prompts require every sentence or item to end with `.`, `!` or `?`. They
+prohibit copying source text or repeating material assigned to another section. If there
+is no material issue, the model must say so explicitly instead of filling the token
+budget. Each prompt repeats the original language hint and untrusted source and asks
+only for that section body. No conversation history, prior generated section, or tool
+result is appended. The backend inserts the three exact Markdown headings; it does not
+invent, copy, or synthesize a review conclusion.
 
 Qwen recommends `do_sample=true`, temperature 0.7, top-p 0.8, top-k 20, and min-p 0 for non-thinking mode. Review and one-token startup generation pass exactly those values. No presence penalty or substitute parameter is added. EOS behavior remains inherited from the pinned model generation config, while padding uses the tokenizer's actual `pad_token_id` and generation caching remains enabled.
 
-Each review section receives a stable nonnegative 63-bit seed derived with SHA-256 from length-encoded model revision, language, fixed section name, and source. The seed is applied only to the default CPU generator inside a fresh `torch.random.fork_rng(devices=[])` context, which restores the prior CPU RNG state afterward and never calls a CUDA RNG. Startup validation uses a separate fixed non-sensitive seed under the same isolation. Seeds and source-derived hashes are neither logged nor persisted. This supports repeatable sampling for the same input on the same fixed software and hardware stack; PyTorch does not guarantee bit-for-bit reproducibility across releases, platforms, or CPU architectures.
+Each review section receives a stable, nonnegative 63-bit seed. It is derived with
+SHA-256 from the model revision, language, fixed section name and source, with each
+value encoded alongside its length. The seed is applied only to the default CPU
+generator inside a fresh `torch.random.fork_rng(devices=[])` context, which restores the
+prior CPU RNG state afterward and never calls a CUDA RNG. Startup validation uses a
+separate fixed non-sensitive seed under the same isolation. Seeds and source-derived
+hashes are neither logged nor persisted. This supports repeatable sampling for the same
+input on the same fixed software and hardware stack; PyTorch does not guarantee
+bit-for-bit reproducibility across releases, platforms, or CPU architectures.
 
-The backend first normalizes surrounding whitespace and echoed headings in each body. Only when a section generated at least its own token limit does the backend inspect its ending. A complete `.`, `!`, or `?` ending is retained together with limited closing quote, backtick, bracket, parenthesis, or Markdown emphasis characters. Otherwise, only the suffix after the last complete terminator is deleted, preserving every earlier sentence or list item exactly. The backend never continues, rewrites, summarizes, or infers model text. A capped section with no complete boundary fails closed as `invalid_model_response` with the internal reason `truncated_section`; non-capped sections are unchanged.
+The backend first normalizes surrounding whitespace and echoed headings in each body.
+Only when a section generated at least its own token limit does the backend inspect its
+ending. An ending with `.`, `!` or `?` is retained. A limited set of closing quotes,
+backticks, brackets, parentheses and Markdown emphasis characters may follow that
+punctuation. Otherwise, only the suffix after the last complete terminator is deleted,
+preserving every earlier sentence or list item exactly. The backend never continues,
+rewrites, summarizes, or infers model text. A capped section with no complete boundary
+fails closed as `invalid_model_response` with the internal reason `truncated_section`;
+non-capped sections are unchanged.
 
 The backend then assembles the Markdown and runs the response quality gate. All sections must be nonempty and ordered, and the combined result must mention at least one distinctive ASCII identifier when the source provides one. This lightweight contract rejects obviously malformed or detached output; it does not prove that accepted findings are correct. Model ID and revision are written to every completed review; failed jobs retain a safe error instead of a fabricated result.
 
@@ -110,7 +153,12 @@ cd backend
 RUN_REAL_MODEL=1 .venv/bin/pytest tests/test_real_model.py -v
 ```
 
-The test verifies actual loading, tokenization, inference/evaluation mode, CPU placement, and either a contract-valid review or a controlled response-gate rejection under its deliberately small 64-token smoke budget. It is not a semantic acceptance suite or a minikube latency/memory benchmark. See [verification](../reports/verification-2026-09-10-to-13.md) for the controlled six-fixture result.
+The test verifies actual model loading, tokenization, inference/evaluation mode and CPU
+placement. With its deliberately small 64-token budget, it accepts either a review that
+meets the output contract or a controlled rejection by the response quality gate. It is
+not a semantic acceptance suite or a minikube latency/memory benchmark. See
+[verification](../reports/verification-2026-09-10-to-13.md) for the controlled
+six-fixture result.
 
 ## Evaluation evidence
 

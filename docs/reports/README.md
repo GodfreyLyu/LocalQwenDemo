@@ -1,6 +1,9 @@
 # Dated reports
 
-These reports preserve prior observations with their dates, models, environments and limitations. Use the [current documentation](../README.md) for operating instructions. Historical passes do not validate the current version; a single completed review does not establish full environment or browser acceptance.
+These reports preserve past observations, including their dates, models, environments
+and limitations. Use the [current documentation](../README.md) for operating
+instructions. A historical pass does not validate the current version. One completed
+review does not establish full environment or browser acceptance.
 
 | Date          | Report                                                                           | Scope / limitation                                                                                                                                             |
 | ------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |

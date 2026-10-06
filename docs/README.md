@@ -1,9 +1,9 @@
 # Documentation
 
 LocalQwenDemo runs code review using Ollama or an explicit Transformers CPU backend. The
-[project homepage](../README.md) provides an overview, diagrams and a quick start.
-The operator manages cluster lifecycle and external services; standard Helm
-commands manage application resources using reviewed release and environment values.
+[project homepage](../README.md) provides an overview, diagrams and a quick start. The
+operator manages the cluster lifecycle and external services. Standard Helm commands
+manage application resources using reviewed release values and environment settings.
 
 For GPU inference inside an existing krunkit cluster, see the
 [independent Ollama Helm deployment](../deploy/helm/local-ollama/README.md).
@@ -51,9 +51,10 @@ For GPU inference inside an existing krunkit cluster, see the
   Preserve their outcomes and limitations. Old results do not validate new code or
   replace current operating instructions.
 
-Commands use the checkout root unless stated otherwise. `doctor` reads live diagnostics;
-`up`, `verify`, cleanup and real-model evaluation have operational side effects. Offline
-tests do not establish current cluster readiness, real-model quality or successful cleanup.
+Run commands from the checkout root unless stated otherwise. `doctor` reads live
+diagnostics. Commands such as `up`, `verify`, cleanup and real-model evaluation can
+change resources or data. Offline tests do not verify the current cluster, real-model
+quality or live cleanup.
 
 Repository source, manifests, CLI help and tests define current behavior.
 Historical cloud sections are archival only. Private state, credentials, user histories,
