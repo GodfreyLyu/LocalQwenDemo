@@ -5,8 +5,9 @@ required `main-ci` gate succeeds only if both application and configuration jobs
 succeed. Main protection requires an up-to-date branch and resolved conversations;
 administrators cannot bypass these checks. Required approvals are zero for this
 personal project: the author can merge their own PR after CI succeeds, without a
-self-approval (which GitHub does not support). The deployment-release branch has
-its own approval policy, unchanged by this main-only setting.
+self-approval (which GitHub does not support). The deployment-release branch also
+requires zero approvals, while retaining its required `deployment/snapshot` check,
+up-to-date PR requirement and administrator enforcement.
 
 After merge, `Release candidate` rechecks the exact main commit, builds changed
 backend/frontend images for amd64+arm64 and Ollama for arm64, and pushes to GHCR.
