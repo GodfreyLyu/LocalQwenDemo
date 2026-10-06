@@ -3,7 +3,6 @@
 import argparse
 import json
 import subprocess
-from pathlib import Path
 
 
 def api(path, payload=None):
@@ -19,16 +18,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", default="GodfreyLyu/LocalQwenDemo")
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[2]
     branches = api(f"repos/{args.repository}/git/matching-refs/heads/deployment-release")
     if any(b["ref"] == "refs/heads/deployment-release" for b in branches):
         print("deployment-release already exists; no changes made.")
         return
-    entry = (
-        (root / "deploy/release/validation-entry.yml")
-        .read_text()
-        .replace("GodfreyLyu/LocalQwenDemo", args.repository)
-    )
     tree = api(
         f"repos/{args.repository}/git/trees",
         {
@@ -43,12 +36,6 @@ def main():
                         "Only Helm deployment artifacts belong here. "
                         "Review deployment/snapshot before merging.\n"
                     ),
-                },
-                {
-                    "path": ".github/workflows/deployment-validation.yml",
-                    "mode": "100644",
-                    "type": "blob",
-                    "content": entry,
                 },
             ]
         },

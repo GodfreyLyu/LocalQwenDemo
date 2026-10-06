@@ -30,3 +30,6 @@ resources:
     memory: 3Gi
     ephemeral-storage: 1Gi
 startupTimeoutSeconds: 1800
+
+verification:
+  argoPostSync: false

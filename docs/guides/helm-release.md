@@ -7,98 +7,16 @@ the source Chart in main and review the generated release PR.
 
 ## Automated release flow
 
-Every push to main calls the source quality workflow, fingerprints the actual
-component inputs, builds changed images for linux/amd64 and linux/arm64, pushes
-them to GHCR, and renders and validates a snapshot. It creates a versioned branch,
-for example `release-candidate/0.1.0-rc.42`, and a PR to `deployment-release`.
-Only a reviewed PR can update the approved release branch.
+PRs to main must pass `main-ci` and review before merge. Only then does the release
+workflow recheck main, build changed backend/frontend/Ollama images, publish GHCR
+digests and propose an immutable deployment snapshot. A reviewed deployment PR
+updates Argo CD's desired state. See [the GitOps guide](gitops.md) for migration,
+branch protection, Argo bootstrap, GPU acceptance and storage/ownership rules.
 
-The version combines main's stable Chart version and the Release candidate
-workflow's `GITHUB_RUN_NUMBER`. Failed or no-op runs can leave gaps; a rerun keeps
-the same number. The branch is created atomically and never updated, force-pushed,
-rebased or deleted. Another change requires another workflow run/version.
-
-The initial release builds both images. Later releases retain each unchanged
-image's digest and original source SHA. Configuration-only updates reuse images;
-documentation outside the published deployment inputs produces no empty PR.
-Fingerprints compare with the newest validated open candidate on the current
-release base, or the approved release, so failed/cancelled intermediate runs do
-not lose changes. Source quality runs even without a deployable difference.
-
-A candidate is one commit based on the current deployment-release and contains
-only the Chart, release values, provenance, deployment tools and this guide.
-Application source trees are not copied. CI validates the exact candidate branch head and its
-release base, posts `deployment/snapshot`, and only then closes older automatic
-PRs with a link to the replacement. Their branches remain available for audit.
-Until validation succeeds, the previous PR stays open; a failed candidate never
-replaces it. Existing legacy `automation/deployment-release` PRs follow this same
-migration rule. Supersession itself is a separate job and can be retried.
-
-`release.json` format 2 records the main SHA, input fingerprints, image source
-SHAs/digests, version, branch, workflow run ID/number and release base SHA. The
-Chart version matches the candidate version and appVersion identifies main's
-commit. Legacy format 1 remains readable for migration. Merging a PR approves
-a snapshot; deploying it to a selected cluster remains an explicit operation.
-
-### One-time repository setup
-
-1. Merge the implementation PR into main.
-2. A maintainer with repository and workflow access runs:
-
-   ```bash
-   python3 scripts/release/bootstrap.py --repository GodfreyLyu/LocalQwenDemo
-   ```
-
-   This creates an independent deployment-release branch with its validation
-   entrypoint. It is idempotent and never overwrites an existing branch. The
-   bootstrap entrypoint calls the trusted validation workflow on main; it is
-   preserved by the release generator, so GITHUB_TOKEN need not edit workflows.
-3. In repository Actions settings, allow Actions to create pull requests. Workflow
-   jobs explicitly request only their required contents/packages/PR/status access.
-4. Run **Release candidate** on main to produce the first candidate if the initial
-   push preceded bootstrap. No personal token or cloud account is required.
-5. Review package visibility in GHCR. Public repository visibility does not imply
-   public package visibility. For private packages, create an image pull Secret in
-   the deployment namespace and supply `imagePullSecrets: [{name: ghcr-pull}]`.
-
-Repository protection is recorded in `deploy/release/branch-protection.json`:
-require one approving review, dismiss stale approvals, require `deployment/snapshot`
-from GitHub Actions, require an up-to-date base, enforce rules for administrators,
-and block force pushes and deletion. The candidate ruleset in
-`deploy/release/candidate-ruleset.json` prevents updates and deletion of
-`release-candidate/*` with no bypass actors; creation is allowed. Keep automatic
-branch deletion disabled. Maintainers apply these settings using the repository
-administration API; the release workflow has no administration access.
-
-```bash
-gh api --method PUT repos/GodfreyLyu/LocalQwenDemo/branches/deployment-release/protection \
-  --input deploy/release/branch-protection.json
-gh api --method POST repos/GodfreyLyu/LocalQwenDemo/rulesets \
-  --input deploy/release/candidate-ruleset.json
-```
-
-Create the ruleset once; update its existing ID when changing the policy.
-The release workflow invokes validation directly, so it does not depend on a
-GITHUB_TOKEN-created PR triggering another workflow. The bootstrap PR entrypoint
-also invokes validation, using trusted main code and treating snapshots as data.
-The existing public-repository entrypoint remains unchanged during migration.
-
-Rerun a failed **Release candidate** run to recover build or PR creation failures.
-Once its version branch exists, retry verifies and reuses its exact snapshot,
-commit, digests and PR, including when `rebuild` was selected. It refuses content,
-run identity or release-base drift and never reopens a rejected/merged PR. If
-main or the approved base has changed, start a **new** workflow run on current
-main. Do not use GitHub's Update branch button on immutable candidates.
-
-To intentionally rebuild images, start a new manual run with `rebuild=true`.
-To retry validation alone, dispatch **Deployment validation** on main with the
-full candidate SHA. This only validates; rerun the release workflow's failed jobs
-to complete pending supersession. An unchanged validated open candidate is
-reused and revalidated without creating an empty PR.
-
-For building local source images with an optional convenience CLI, see the
-[local Helm workflow](minikube-demo.md). Published snapshots use the standard
-Helm commands below; they do not require the local development scripts.
+Format-3 snapshots contain two Charts and their pinned values, Argo Applications,
+release metadata and a short README. They contain no source, build workflows or
+Python deployment tools. Standard Helm commands remain supported as an alternative
+manager; do not use them to upgrade Argo-owned resources.
 
 ## Deploy with standard Helm commands
 

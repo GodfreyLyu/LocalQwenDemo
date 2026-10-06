@@ -1,6 +1,7 @@
 # LocalQwenDemo
 
-Standard Helm deployment and release automation: [guide](docs/guides/helm-release.md).
+PR-gated image builds and Argo CD: [GitOps guide](docs/guides/gitops.md).
+Standard Helm deployment: [guide](docs/guides/helm-release.md).
 
 GPU inference inside krunkit Minikube is available as an
 [independent Ollama Helm release](deploy/helm/local-ollama/README.md), with a retained
@@ -77,8 +78,8 @@ Minikube environment example. Deploy it with Helm; prepare the cluster, independ
 Ollama release and namespace Secrets separately. No Python deployment wrapper is required.
 
 The [deployment guide](docs/guides/helm-release.md) documents configuration,
-installation, upgrades, status, rollback and data retention. Argo CD can later
-render the same Chart, with one manager per deployment.
+installation, upgrades, status, rollback and data retention. Argo CD renders the same Charts from the approved release branch, with one manager
+per deployment.
 
 The previous [deployment diagram](docs/assets/deployment-management.png) and
 [legacy Minikube guide](docs/guides/minikube-legacy.md) describe the retained

@@ -1,2 +1,13 @@
-# Placeholder; no helm_release consumes this file yet.
-{}
+# Single-node local control plane. Keep the API on ClusterIP; access by port-forward.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  enabled: false
+configs:
+  cm:
+    application.resourceTrackingMethod: annotation
+server:
+  service:
+    type: ClusterIP

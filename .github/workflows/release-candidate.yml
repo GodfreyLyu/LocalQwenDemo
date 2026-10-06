@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       rebuild:
-        description: Rebuild both images even if build inputs are unchanged
+        description: Rebuild all three images even if build inputs are unchanged
         type: boolean
         default: false
 permissions:
@@ -88,17 +88,34 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+      - name: Build Ollama for krunkit
+        id: ollama
+        if: steps.plan.outputs.ollama_build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./deploy/images/ollama-vulkan
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.plan.outputs.ollama_repository }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=ollama
+          cache-to: type=gha,mode=max,scope=ollama
       - name: Materialize and validate snapshot
         if: steps.plan.outputs.materialize == 'true'
         env:
           BACKEND_DIGEST: ${{ steps.backend.outputs.digest || steps.plan.outputs.backend_digest }}
           FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest || steps.plan.outputs.frontend_digest }}
           BACKEND_REPOSITORY: ${{ steps.plan.outputs.backend_repository }}
+          OLLAMA_DIGEST: ${{ steps.ollama.outputs.digest || steps.plan.outputs.ollama_digest }}
+          OLLAMA_REPOSITORY: ${{ steps.plan.outputs.ollama_repository }}
           FRONTEND_REPOSITORY: ${{ steps.plan.outputs.frontend_repository }}
         run: |
           docker buildx imagetools inspect "$BACKEND_REPOSITORY@$BACKEND_DIGEST"
           docker buildx imagetools inspect "$FRONTEND_REPOSITORY@$FRONTEND_DIGEST"
-          python scripts/release/snapshot.py render --plan "$RUNNER_TEMP/release/plan.json" --output "$RUNNER_TEMP/release/candidate" --backend-digest "$BACKEND_DIGEST" --frontend-digest "$FRONTEND_DIGEST"
+          docker buildx imagetools inspect "$OLLAMA_REPOSITORY@$OLLAMA_DIGEST"
+          python scripts/release/snapshot.py render --plan "$RUNNER_TEMP/release/plan.json" --output "$RUNNER_TEMP/release/candidate" --backend-digest "$BACKEND_DIGEST" --frontend-digest "$FRONTEND_DIGEST" --ollama-digest "$OLLAMA_DIGEST"
           python scripts/validate_helm.py --root "$RUNNER_TEMP/release/candidate" --snapshot
       - name: Create immutable version branch and release PR
         id: publish

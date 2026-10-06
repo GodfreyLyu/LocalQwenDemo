@@ -14,6 +14,8 @@ MINIKUBE_VALUES = CHART / "values-minikube.yaml"
 
 
 def validate_tree(root):
+    manifest = json.loads((root / "release.json").read_text())
+    modern = manifest.get("schemaVersion") == 3
     allowed = {
         "README.md",
         "release.json",
@@ -24,6 +26,18 @@ def validate_tree(root):
         "docs/guides/helm-release.md",
         ".github/workflows/deployment-validation.yml",
     }
+    if modern:
+        allowed = {"README.md", "release.json", "release-values.yaml"}
+        allowed.update(
+            {
+                "deploy/argocd/" + name
+                for name in (
+                    "project.yaml",
+                    "review-ollama-application.yaml",
+                    "local-review-application.yaml",
+                )
+            }
+        )
     for path in root.rglob("*"):
         relative = path.relative_to(root).as_posix()
         if relative == ".git" or relative.startswith(".git/"):
@@ -31,7 +45,9 @@ def validate_tree(root):
         require(not path.is_symlink(), "Release snapshots must not contain symlinks")
         if path.is_file():
             require(
-                relative in allowed or relative.startswith(CHART.as_posix() + "/"),
+                relative in allowed
+                or relative.startswith(CHART.as_posix() + "/")
+                or (modern and relative.startswith("deploy/helm/local-ollama/")),
                 f"Unexpected release file: {relative}",
             )
 
@@ -175,8 +191,8 @@ def validate_resources(resources):
 
 def validate_snapshot(root, keyed):
     manifest = json.loads((root / "release.json").read_text())
-    require(manifest["schemaVersion"] in {1, 2}, "Unknown release manifest format")
-    if manifest["schemaVersion"] == 2:
+    require(manifest["schemaVersion"] in {1, 2, 3}, "Unknown release manifest format")
+    if manifest["schemaVersion"] in {2, 3}:
         candidate = manifest.get("candidate", {})
         number = candidate.get("runNumber")
         version = candidate.get("version", "")
@@ -226,6 +242,10 @@ def validate_snapshot(root, keyed):
             image == entry["repository"] + "@" + entry["digest"],
             "Deployment image does not match provenance",
         )
+    if manifest["schemaVersion"] == 3:
+        from validate_gitops import validate_snapshot as validate_gitops_snapshot
+
+        validate_gitops_snapshot(root, manifest)
     for directory in ("backend", "frontend"):
         require(
             not (root / directory).exists(),

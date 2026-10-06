@@ -39,6 +39,9 @@ def source(tmp_path):
     ):
         (root / directory).mkdir(parents=True, exist_ok=True)
     shutil.copytree(ROOT / snapshot.CHART, root / snapshot.CHART)
+    shutil.copytree(ROOT / snapshot.OLLAMA_CHART, root / snapshot.OLLAMA_CHART)
+    shutil.copytree(ROOT / snapshot.ARGOCD, root / snapshot.ARGOCD)
+    shutil.copytree(ROOT / "deploy/images", root / "deploy/images")
     for name in snapshot.DEPLOY_FILES:
         shutil.copyfile(ROOT / name, root / name)
     (root / "backend/app/main.py").write_text("print('backend')\n")
@@ -76,7 +79,7 @@ def committed(root, name, content):
 
 def versioned_plan(root, previous=None, number=1):
     result = snapshot.plan(root, previous or {}, "Owner/Repo")
-    result["schemaVersion"] = 2
+    result["schemaVersion"] = snapshot.FORMAT
     result["candidate"] = snapshot.candidate_metadata(root, "a" * 40, str(number), "123")
     return result
 
@@ -90,6 +93,7 @@ def released(root, tmp_path):
         {
             "backend": "sha256:" + "a" * 64,
             "frontend": "sha256:" + "b" * 64,
+            "ollama": "sha256:" + "d" * 64,
         },
     )
 
@@ -131,6 +135,7 @@ def test_failed_or_cancelled_intermediate_commit_cannot_hide_changes(source, tmp
     assert snapshot.plan(source, previous, "Owner/Repo")["build"] == {
         "backend": True,
         "frontend": True,
+        "ollama": False,
     }
 
 
@@ -138,7 +143,7 @@ def test_open_candidate_reuses_unchanged_component_source(source, tmp_path):
     previous = released(source, tmp_path)
     committed(source, "frontend/main.js", "frontend changed")
     plan = snapshot.plan(source, previous, "Owner/Repo")
-    assert plan["build"] == {"backend": False, "frontend": True}
+    assert plan["build"] == {"backend": False, "frontend": True, "ollama": False}
     assert plan["images"]["backend"]["sourceSha"] == previous["sourceSha"]
     manifest = snapshot.materialize(
         source,
@@ -439,7 +444,11 @@ def make_candidate(source, workspace, force=False):
             source,
             workspace / "candidate",
             plan,
-            {"backend": "sha256:" + "a" * 64, "frontend": "sha256:" + "b" * 64},
+            {
+                "backend": "sha256:" + "a" * 64,
+                "frontend": "sha256:" + "b" * 64,
+                "ollama": "sha256:" + "d" * 64,
+            },
         )
     return plan
 
@@ -467,7 +476,7 @@ def test_publishing_creates_distinct_immutable_versions_and_supersedes_after_val
     next_run(monkeypatch)
     workspace = tmp_path / "second"
     plan = make_candidate(source, workspace)
-    assert plan["build"] == {"backend": False, "frontend": True}
+    assert plan["build"] == {"backend": False, "frontend": True, "ollama": False}
     publish.publish(source, workspace, "Owner/Repo")
     new = state["prs"][1]
     chart_version = snapshot.yaml.safe_load((source / snapshot.CHART / "Chart.yaml").read_text())[
@@ -823,3 +832,46 @@ def test_snapshot_verification_needs_no_pull_request_api_access(
     manifest, base = publish.verify_snapshot(source, old["headRefOid"])
     assert manifest["candidate"]["branch"] == old["headRefName"]
     assert manifest["candidate"]["baseSha"] == base
+
+
+def test_workflow_migration_requires_exact_deletion_and_current_base(source, tmp_path, publishing):
+    base = publish.remote(source, publish.BASE)
+    checkout = tmp_path / "migration"
+    publish.fetch_branch(source, publish.BASE)
+    git(source, "worktree", "add", "--detach", str(checkout), base)
+    workflow = checkout / ".github/workflows/deployment-validation.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: legacy\n")
+    git(checkout, "add", ".")
+    git(
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        "legacy entrypoint",
+    )
+    git(checkout, "push", "-q", "origin", "HEAD:refs/heads/" + publish.BASE)
+    with pytest.raises(ValueError, match="workflow-removal"):
+        publish.prepare(source, tmp_path / "blocked", "Owner/Repo")
+    workflow.unlink()
+    git(checkout, "add", "--all")
+    git(
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        "remove workflow",
+    )
+    git(checkout, "push", "-q", "origin", "HEAD:refs/heads/" + publish.MIGRATION)
+    sha = git(checkout, "rev-parse", "HEAD")
+    publish.verify_snapshot(source, sha)
+    committed(checkout, "README.md", "unrelated change")
+    git(checkout, "push", "-q", "origin", "HEAD:refs/heads/" + publish.MIGRATION)
+    with pytest.raises(ValueError, match="Migration may only"):
+        publish.verify_snapshot(source, git(checkout, "rev-parse", "HEAD"))

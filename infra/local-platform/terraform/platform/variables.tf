@@ -62,3 +62,15 @@ variable "gpu_slots" {
     error_message = "gpu_slots must be a positive integer."
   }
 }
+
+variable "argocd_enabled" {
+  description = "Install Argo CD; application bootstrap remains an explicit step after release approval."
+  type        = bool
+  default     = false
+}
+
+variable "argocd_chart_version" {
+  description = "Pinned upstream argo-cd Helm Chart version."
+  type        = string
+  default     = "10.9.6"
+}

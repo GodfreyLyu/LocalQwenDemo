@@ -139,3 +139,12 @@ kubectl --context minikube -n local-inference delete pvc review-ollama-models
 ```
 
 With Minikube's `standard` StorageClass, this also deletes the stored model data.
+
+## GitHub Actions and Argo CD
+
+The main release workflow builds this image for linux/arm64 after PR checks and
+merge, publishes a GHCR digest, and includes this Chart in the reviewed deployment
+snapshot. Argo CD uses values-release.yaml plus values-argocd.yaml; its PostSync
+Job verifies GPU inference through the Service. The Job is disabled for normal
+Helm installs, where helm test remains available. See the
+[GitOps guide](../../../docs/guides/gitops.md) for first installation and migration.

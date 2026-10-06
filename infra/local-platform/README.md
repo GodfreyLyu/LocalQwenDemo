@@ -3,7 +3,8 @@
 此目录连接已由 Minikube CLI 启动的单节点 `krunkit/containerd` 集群。
 Terraform 唯一 root module 为 `terraform/platform`，仅管理自定义 namespace 和
 generic-device-plugin；没有 Minikube provider、`local-exec` 或集群启动操作。
-Argo CD、监控的 `.tf` 和 values 文件暂为占位，不安装组件。
+Argo CD 可通过 `argocd_enabled = true` 安装；默认关闭。监控配置仍为占位。
+GitOps 接入和首次同步顺序见 [部署指南](../../docs/guides/gitops.md)。
 
 ## 文件与状态
 

@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: local-review
+  namespace: argocd
+spec:
+  project: local-review
+  source:
+    repoURL: https://github.com/GodfreyLyu/LocalQwenDemo.git
+    targetRevision: deployment-release
+    path: deploy/helm/local-review
+    helm:
+      releaseName: local-review
+      skipTests: true
+      valueFiles:
+        - values-release.yaml
+        - values-minikube.yaml
+        - values-minikube-ollama.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: local-review-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - FailOnSharedResource=true
