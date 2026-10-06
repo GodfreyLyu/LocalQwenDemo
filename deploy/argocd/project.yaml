@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: local-review
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  description: Local application and GPU inference only
+  sourceRepos:
+    - https://github.com/GodfreyLyu/LocalQwenDemo.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: local-inference
+    - server: https://kubernetes.default.svc
+      namespace: local-review-demo
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: "", kind: Service}
+    - {group: "", kind: ConfigMap}
+    - {group: "", kind: PersistentVolumeClaim}
+    - {group: "", kind: ServiceAccount}
+    - {group: apps, kind: Deployment}
+    - {group: batch, kind: Job}
+    - {group: networking.k8s.io, kind: NetworkPolicy}
