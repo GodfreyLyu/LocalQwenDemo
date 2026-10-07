@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--fake-model", action="store_true")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--ollama-base-url", default="http://localhost:11434")
     parser.add_argument("--data-dir", type=Path, default=ROOT / ".local" / "demo")
     args = parser.parse_args()
     # This process only uses the mocked service. Never use an AWS credential profile.
@@ -63,6 +64,7 @@ def main():
         dynamodb_table="demo-users",
         dynamodb_endpoint_url="http://127.0.0.1:8001",
         hf_home=ROOT / ".local" / "models" / "huggingface",
+        ollama_base_url=args.ollama_base_url,
     )
     with mock_aws():
         boto3.resource("dynamodb", region_name="us-east-1").create_table(

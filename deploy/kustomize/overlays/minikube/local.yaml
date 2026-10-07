@@ -5,7 +5,6 @@ metadata:
 data:
   ENVIRONMENT: local
   DEPLOYMENT_ENVIRONMENT: minikube
-  MODEL_BACKEND: ollama
   OLLAMA_BASE_URL: http://host.minikube.internal:11434
   OLLAMA_MODEL: qwen3:1.7b
   OLLAMA_MODEL_DIGEST: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
@@ -54,9 +53,6 @@ spec:
         - {name: model-cache, mountPath: /models/huggingface}
       containers:
       - name: review-backend
-        env:
-        - name: OMP_NUM_THREADS
-          value: "2"
         resources:
           requests: {cpu: '2', memory: 4Gi}
           limits: {cpu: '2', memory: 6Gi}

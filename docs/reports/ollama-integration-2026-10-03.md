@@ -1,5 +1,8 @@
 # Ollama integration acceptance — 2026-10-03
 
+> Historical snapshot: the Transformers option described below has since been removed.
+> Current runtime and evaluation both use [Ollama](../reference/model.md).
+
 This is an integration acceptance record, not a controlled performance comparison.
 The application runs in the existing native arm64 minikube cluster; inference uses
 host Ollama 0.35.1. The previous Transformers CPU path remains explicitly selectable.

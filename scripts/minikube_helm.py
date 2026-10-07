@@ -275,8 +275,6 @@ class Session:
             values = merge(
                 values, {"config": {"allowedOrigin": f"http://localhost:{self.args.port}"}}
             )
-        if self.args.model_backend:
-            values = merge(values, {"model": {"backend": self.args.model_backend}})
         if self.args.storage_class:
             values = merge(values, {"persistence": {"storageClass": self.args.storage_class}})
         return values
@@ -445,10 +443,7 @@ class Session:
             }
             if needed + other > amount:
                 warnings.append(f"Insufficient {key} capacity for configured requests")
-        if (
-            values["model"]["backend"] == "ollama"
-            and ".svc.cluster.local:" not in values["model"]["ollamaBaseUrl"]
-        ):
+        if ".svc.cluster.local:" not in values["model"]["ollamaBaseUrl"]:
             # Cluster DNS is resolved in Pods; their readiness verifies Service access.
             # Probe host endpoints from the selected Docker node only.
             try:
@@ -700,7 +695,6 @@ def parser():
     p.add_argument("--state-root")
     p.add_argument("-f", "--values", action="append", default=[])
     p.add_argument("--port", type=int)
-    p.add_argument("--model-backend", choices=["ollama", "transformers"])
     p.add_argument("--storage-class")
     p.add_argument("--timeout", "--cold-timeout", dest="timeout", type=int, default=3900)
     p.add_argument("--warm-timeout", type=int, default=600)

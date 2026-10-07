@@ -9,7 +9,7 @@ Use this catalog to check command requirements and side effects. Set up the [loc
 | `bash scripts/check.sh` | No options; do not export `RUN_REAL_MODEL=1` for routine checks | Python dev lock, npm dependencies, kubectl | Lint/format, backend tests, frontend lint/tests/build, local script regressions, minikube structural checks; caches and `frontend/dist`; fail-fast nonzero; no install/build-image/deploy |
 | `scripts/check_scripts.sh` | No options; calls the focused entry below, the evaluator double-only tests, local initializer tests and actual manifest validation | Python dev lock, Bash, Python 3, kubectl | Shell syntax includes all maintained entry points; temporary test files/loopback children only; no real cloud/cluster writes |
 | `scripts/check_minikube_demo.sh` | `REVIEW_PYTHON` overrides default `backend/.venv/bin/python` | Ruff, pytest, HTTPX, PyYAML, kubectl | Lint/format and all Python minikube test files; real offline render and loopback socket/process tests; no cluster |
-| `backend/.venv/bin/python scripts/local_demo.py --fake-model` | `--fake-model` opt-in; **default uses real model**; `--port` default 8000; `--data-dir` default `.local/demo` | Dev lock; optional model lock/Torch when real | Loopback API; Moto accounts reset and random signing key changes on restart; persistent SQLite in data dir; real mode may download pinned weights to `.local/models/huggingface` |
+| `backend/.venv/bin/python scripts/local_demo.py --fake-model` | `--fake-model` opt-in; **default uses real model**; `--port` default 8000; `--data-dir` default `.local/demo` | Dev lock; model client lock and local Ollama when real | Loopback API; Moto accounts reset and random signing key changes on restart; persistent SQLite in data dir; real mode uses `--ollama-base-url` (default localhost:11434) and may download the pinned tokenizer to `.local/models/huggingface` |
 | `backend/.venv/bin/python scripts/init_local_users.py` | No CLI parser/options; required explicit `DYNAMODB_ENDPOINT_URL`; only loopback with an explicit port allowed; fixed dummy credentials | boto3, running DynamoDB Local | Describes and idempotently creates `llm-review-users`; **local database write**. Do not invoke with `--help`: it is not a help-capable script |
 | `backend/.venv/bin/python scripts/validate_manifests.py` | No CLI parser/options; minikube overlay fixed relative to script root | PyYAML, kubectl | Offline `kubectl kustomize`, assert resource/security/model contracts; console only. `--help` would still execute validation |
 
@@ -22,12 +22,12 @@ without source or model output. Choose `--dry-run` or `--run-real-model`; these 
 are mutually exclusive. Select cases with `--case
 all|hello_world|average|square|first_item|sql_injection|prompt_injection` and an
 existing cache with `--cache-dir HF_HOME`. Add `--review-in-terminal` to view synthetic
-output privately and record human judgments. There are no overrides for the model,
-parameters or source.
+output privately and record human judgments. Use `--ollama-base-url`, `--ollama-model-digest`, `--max-output-tokens` and
+`--timeout-seconds` to match the application configuration. No arbitrary source option exists.
 
-Plans require the Python dev environment; real execution also requires model packages and a complete pinned offline cache. Host `.env`/model overrides are ignored. Real-worker HF offline/telemetry/token settings and `OMP_NUM_THREADS=2` are fixed and recorded.
+Plans require the Python dev environment; real execution requires model client packages, a cached pinned tokenizer and a running Ollama service. Host `.env`/model overrides are ignored. Hugging Face downloads are disabled; HTTP inference uses the explicitly configured local service.
 
-The fixed input is `scripts/evaluation/fixtures-v1.json`; output is a new private `.local/model-evaluations/<time>-run-<random>/report.json`. Default mode creates only reports and reads local Git/dependency metadata. Real mode consumes CPU/RAM, uses one owned supervised worker and never downloads, installs, starts services or touches AWS/cluster resources. Model output is neither logged nor exported by default.
+The fixed input is `scripts/evaluation/fixtures-v1.json`; output is a new private `.local/model-evaluations/<time>-run-<random>/report.json`. Default mode creates only reports and reads local Git/dependency metadata. Real mode invokes the independent Ollama service, uses one owned supervised HTTP client worker and never downloads, installs, starts services or touches AWS/cluster resources. Model output is neither logged nor exported by default.
 
 Exit code 0 means either a valid `not_run` plan or a real `passed` result; check the
 report to distinguish them. Exit codes 1, 2 and 3 mean failure, invalid arguments and

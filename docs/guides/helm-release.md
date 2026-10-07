@@ -280,7 +280,7 @@ python scripts/validate_helm.py --snapshot
 
 On main, run `python scripts/validate_helm.py` and
 `python -m pytest scripts/tests/test_helm_release.py -q`. These render the local
-profile, explicitly enabled network policies and Transformers mode without a
+profile, explicitly enabled network policies and operation without a
 cluster. CI also validates Kubernetes schemas for these profiles.
 
 Source CI also checks source Chart variants, configuration rollouts, PVC retention,

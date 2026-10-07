@@ -61,12 +61,8 @@ def verify(session):
 
         cache_before = cache_inventory(backend_python)
         expected = {
-            "model_id": config["OLLAMA_MODEL"]
-            if config["MODEL_BACKEND"] == "ollama"
-            else config["MODEL_ID"],
-            "model_revision": config["OLLAMA_MODEL_DIGEST"]
-            if config["MODEL_BACKEND"] == "ollama"
-            else config["MODEL_REVISION"],
+            "model_id": config["OLLAMA_MODEL"],
+            "model_revision": config["OLLAMA_MODEL_DIGEST"],
         }
         require(expected["model_revision"], "Acceptance requires a pinned model identity.")
         credentials = {

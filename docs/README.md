@@ -1,6 +1,6 @@
 # Documentation
 
-LocalQwenDemo runs code review using Ollama or an explicit Transformers CPU backend. The
+LocalQwenDemo runs code review using Ollama for both production and evaluation. The
 [project homepage](../README.md) provides an overview, diagrams and a quick start. The
 operator manages the cluster lifecycle and external services. Standard Helm commands
 manage application resources using reviewed release values and environment settings.

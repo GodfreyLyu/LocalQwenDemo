@@ -28,10 +28,9 @@ inference executor run within the FastAPI process.
    `ReviewAccepted` exposes three fields and the route returns 202 without waiting
    for inference. A storage failure never produces a successful acceptance response.
 5. The coordinator claims a queued review, persists its running state and sends it to
-   its sole inference executor. `TransformersModel` prepares and generates the three
+   its sole inference executor. `OllamaModel` calls the configured local Ollama service once for each of the three
    sections. Pure prompt and output rules live in `inference/prompts.py` and `inference/review_output.py`;
-   `inference/generation.py` owns sampling/seed/budget rules and safe metrics. One small
-   `GenerationContext` shares a stop event, deadline and metrics across the sections.
+   `inference/generation.py` owns sampling/seed/budget rules and safe metrics. One stop event and deadline bound all three sections; typed metrics record each call.
 6. The coordinator persists completion or a safe failure through `Store.finish`.
    The browser polls an owner-scoped detail query. `ReviewDetail` and `HistoryPage`
    allowlist public fields; list entries omit source/result bodies. Timestamps remain
@@ -44,7 +43,7 @@ allowlists and the optional OpenAPI schema. `domain.py` uses TypedDict for sessi
 account, review and history records: they remain ordinary dictionaries and are not
 reparsed into domain models at every layer. SQLite/DynamoDB adapters annotate their
 known row shapes; these annotations are not runtime database validation.
-`CreateReviewResult` and generation metrics/context are small dataclasses because
+`CreateReviewResult` and generation metrics are small dataclasses because
 operation metadata and mutable execution observations are not HTTP payloads.
 
 `create_app` assembles settings, stores, the limiter, model, coordinator and service for
@@ -53,9 +52,9 @@ Request/app state to those typed dependencies. The service receives its Python
 dependencies explicitly and does not depend on HTTP Request or Response objects. Routes
 call `Store` directly for simple history and detail queries scoped to the authenticated
 user. An extra service layer would only forward those calls without adding policy.
-Canonical callers use `app.inference`, `app.persistence` and `app.api`. The root
-`app.model` remains an explicit compatibility facade for older evaluator and operational
-imports; implementation modules never import through it.
+Canonical callers use `app.inference`, `app.persistence` and `app.api`.
+`app.inference.model` contains the injected model protocol; `app.inference.ollama` is
+the only real adapter. The former `app.model` compatibility facade was removed.
 
 ### Shared readiness and rate limits
 
@@ -229,7 +228,7 @@ backend/app/
     routes/                   # auth, reviews, health, runtime HTTP endpoints
     auth.py, dependencies.py, schemas.py, middleware.py, http_errors.py
   inference/
-    model.py, prompts.py, generation.py, review_output.py, model_cache.py, identity.py
+    model.py, ollama.py, prompts.py, generation.py, review_output.py, identity.py
   persistence/
     storage.py, users.py, local_dynamodb.py, users_startup.py
   model.py, auth.py           # explicit legacy exports only
@@ -251,7 +250,7 @@ Use these sources when auditing or changing the design:
 | HTTP protection and error mapping | [middleware.py](../../backend/app/api/middleware.py), [http_errors.py](../../backend/app/api/http_errors.py) |
 | Durable admission, recovery and sessions             | [storage.py](../../backend/app/persistence/storage.py)                                                       |
 | Single executor, readiness and cancellation/draining | [coordinator.py](../../backend/app/coordinator.py)                                               |
-| Inference and cache checks | [model.py](../../backend/app/inference/model.py), [model_cache.py](../../backend/app/inference/model_cache.py) |
+| Inference and tokenizer verification | [ollama.py](../../backend/app/inference/ollama.py) |
 | Prompt, output and generation policy | [prompts.py](../../backend/app/inference/prompts.py), [review_output.py](../../backend/app/inference/review_output.py), [generation.py](../../backend/app/inference/generation.py) |
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |
 | Deployment composition                               | [Minikube overlay](../../deploy/kustomize/overlays/minikube/kustomization.yaml)                  |

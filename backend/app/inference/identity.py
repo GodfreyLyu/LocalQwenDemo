@@ -3,7 +3,7 @@
 from typing import Literal, NotRequired, TypedDict
 
 from app.config import Settings
-from app.inference.model import ReviewModel, TransformersModel
+from app.inference.model import ReviewModel
 from app.inference.ollama import OllamaModel
 
 
@@ -11,7 +11,7 @@ class ModelIdentity(TypedDict):
     inference_mode: Literal["real", "simulated", "unknown"]
     model_id: str | None
     model_revision: str | None
-    model_source: Literal["backend_configuration", "ollama_api", "test_fixture", "unknown"]
+    model_source: Literal["ollama_api", "test_fixture", "unknown"]
     device: Literal["cpu", "gpu", "mixed"] | None
     inference_backend: NotRequired[str]
     quantization: NotRequired[str | None]
@@ -27,14 +27,6 @@ def model_identity(model: ReviewModel, settings: Settings) -> ModelIdentity:
             "device": model.device,
             "inference_backend": "ollama",
             "quantization": model.quantization,
-        }
-    if isinstance(model, TransformersModel):
-        return {
-            "inference_mode": "real",
-            "model_id": settings.model_id,
-            "model_revision": settings.model_revision,
-            "model_source": "backend_configuration",
-            "device": "cpu",
         }
     if getattr(model, "simulated", False) is True:
         return {

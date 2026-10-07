@@ -22,7 +22,7 @@ reserve physical host disk. The optional `values-minikube-ollama.yaml` overlay r
 backend resource requests because inference runs in Ollama. See the
 [Ollama Chart](../../deploy/helm/local-ollama/README.md) for its requirements.
 
-The retained Transformers CPU path uses approximately 4.08 GB of pinned BF16 weights.
+The removed Transformers CPU path used approximately 4.08 GB of pinned BF16 weights.
 That figure is not the size of Ollama's quantized model.
 
 For the Docker-driver workflow, `doctor` separately measures host memory pressure,
@@ -48,8 +48,7 @@ the improvement or measure this checkout's performance.
 
 There is one backend replica and one inference worker. Rollout/recovery can interrupt
 availability; there is no horizontal scaling, distributed queue or high availability.
-On the Transformers path, timeouts drain cooperatively before another review starts.
-A native thread that will not drain causes `inference_stuck` and failed liveness.
+The coordinator retains its drain/stuck protection for unresponsive worker calls.
 Ollama cancellation closes the local HTTP operation; the Ollama service owns remote
 generation cleanup. See the [model reference](model.md) for adapter behavior.
 

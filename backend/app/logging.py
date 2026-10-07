@@ -41,7 +41,6 @@ SAFE_ERROR_CODES = frozenset(
         "review_not_found",
         "session_expired",
         "startup_or_storage_failure",
-        "model_cache_incomplete",
         "storage_unavailable",
         "token_limit",
         "unsupported_media_type",

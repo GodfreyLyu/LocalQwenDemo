@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.coordinator import milliseconds_since
 from app.errors import AppError, ValidationReason
-from app.inference.model import INVALID_REVIEW_MESSAGE, validate_review_output
+from app.inference.review_output import INVALID_REVIEW_MESSAGE, validate_review_output
 from app.logging import SERVICE_NAME, SafeFormatter
 
 
@@ -593,12 +593,12 @@ def test_stuck_native_inference_fails_liveness_without_starting_a_second_job(fac
     assert model.calls == 1
 
 
-def test_cache_failure_keeps_public_readiness_contract(factory):
-    from app.inference.model_cache import ModelCacheIncompleteError
+def test_ollama_load_failure_keeps_public_readiness_contract(factory):
+    from app.errors import AppError
 
     class IncompleteCacheModel:
         def load(self):
-            raise ModelCacheIncompleteError("missing_shard")
+            raise AppError("ollama_model_missing", "Configured model is missing.", 503)
 
     client = factory(model=IncompleteCacheModel(), ready=False)
     for _ in range(200):

@@ -198,7 +198,7 @@ def test_application_cluster_egress_is_scoped_to_the_inference_release(profiles)
     )
     resources = validate_helm.validate_resources(docs)
     config = resources["ConfigMap", "review-config"]["data"]
-    assert config["MODEL_BACKEND"] == "ollama"
+    assert "MODEL_BACKEND" not in config
     assert (
         config["OLLAMA_BASE_URL"] == "http://review-ollama.local-inference.svc.cluster.local:11434"
     )

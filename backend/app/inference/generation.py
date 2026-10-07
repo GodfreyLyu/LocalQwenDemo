@@ -6,10 +6,6 @@ import hashlib
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from transformers import StoppingCriteriaList
 
 from app.errors import AppError
 from app.inference.prompts import SECTION_SPECS
@@ -65,31 +61,13 @@ def check_deadline(stop: threading.Event, deadline: float, *, now: float | None 
         raise AppError("inference_timeout", "Review timed out. Try a shorter submission.", 504)
 
 
-def stopping_criteria(
-    stop: threading.Event, deadline: float, started_at: float, metrics: SectionMetrics
-) -> StoppingCriteriaList:
-    # Keep transformers optional until actual inference, just as model loading does.
-    from transformers import StoppingCriteria, StoppingCriteriaList
-
-    class Deadline(StoppingCriteria):
-        def __call__(self, input_ids, scores, **kwargs):
-            observed_at = time.monotonic()
-            if metrics.first_token_ms is None:
-                # Includes prefill, first-token sampling and callback overhead.
-                metrics.first_token_ms = max(0, round((observed_at - started_at) * 1000))
-            return stop.is_set() or observed_at >= deadline
-
-    return StoppingCriteriaList([Deadline()])
-
-
 REVIEW_GENERATION_PARAMETERS = {
-    "do_sample": True,
     "temperature": 0.7,
     "top_p": 0.8,
     "top_k": 20,
     "min_p": 0.0,
+    "repeat_penalty": 1.0,
 }
-STARTUP_GENERATION_SEED = 0
 
 
 SECTION_TOKEN_WEIGHTS = {"summary": 9, "findings": 22, "suggestions": 17}
@@ -123,10 +101,3 @@ def allocate_section_token_limits(total_limit: int) -> dict[str, int]:
     for _, _, section in sorted(remainders, reverse=True)[: total_limit - sum(limits.values())]:
         limits[section] += 1
     return limits
-
-
-@dataclass(frozen=True)
-class GenerationContext:
-    stop: threading.Event
-    deadline: float
-    metrics: GenerationMetrics

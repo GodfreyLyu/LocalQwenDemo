@@ -534,7 +534,6 @@ def test_helm_acceptance_reports_real_review_and_persistence_separately(
         session,
         "config",
         lambda: {
-            "MODEL_BACKEND": "ollama",
             "OLLAMA_MODEL": "qwen3:1.7b",
             "OLLAMA_MODEL_DIGEST": "sha256:test",
         },

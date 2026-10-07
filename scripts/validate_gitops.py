@@ -119,9 +119,7 @@ def validate_snapshot(root, manifest):
         )
     config = app["ConfigMap", "review-config"]["data"]
     require(
-        config["MODEL_BACKEND"] == "ollama"
-        and config["OLLAMA_BASE_URL"]
-        == "http://review-ollama.local-inference.svc.cluster.local:11434",
+        config["OLLAMA_BASE_URL"] == "http://review-ollama.local-inference.svc.cluster.local:11434",
         "Backend must use the cluster Ollama Service",
     )
     ollama = rendered["review-ollama"]

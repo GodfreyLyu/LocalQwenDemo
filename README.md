@@ -12,7 +12,7 @@ this release at `http://review-ollama.local-inference.svc.cluster.local:11434`.
 
 Paste a code snippet, receive a structured review, and revisit it in your private history.
 The React UI, FastAPI backend and independent Ollama service run in Minikube. Ollama runs `qwen3:1.7b`
-Q4_K_M at a pinned digest. An explicit Transformers CPU backend remains available.
+Q4_K_M at a pinned digest. The backend and evaluator use Ollama exclusively.
 Submitted code is treated as text: it is never executed or sent to a cloud inference API.
 Standard Helm deployment supports the existing krunkit GPU cluster. The optional
 local image-build script requires a Docker-driver Minikube. Local development tools
@@ -31,8 +31,7 @@ are also available.
 - **Private accounts and history:** password hashing, signed sessions, exact Origin and
   CSRF checks protect access. History is scoped to the authenticated account.
 - **Verified model identity:** Ollama startup verifies its digest, template and
-  tokenizer; saved reviews retain the actual model digest. The CPU backend validates
-  cached weight shards.
+  tokenizer; saved reviews retain the actual model digest.
 - **Reviewed Helm releases:** CI builds images and proposes immutable deployment
   snapshots; approved releases install with standard Helm commands and explicit
   environment values. Existing Secrets and persistent volumes survive upgrades.
@@ -45,18 +44,11 @@ service, not a validated highly available or publicly exposed production platfor
 
 ### Application and persistent data
 
-[![Application architecture: browser and same-origin entry, a single FastAPI process with a durable queue and CPU inference, and three persistent volumes.](docs/assets/application-architecture.png)](docs/assets/application-architecture.png)
-
-[Open full-size image](docs/assets/application-architecture.png) ·
-[Edit the diagram in FigJam](https://www.figma.com/board/d9AFwjvFYGB7qWsFZNrWCO/LocalQwenDemo-%E2%80%94-Application-Architecture?node-id=0-1)
-
-The diagram describes the retained Transformers CPU path. In the default Ollama
-path, the executor calls `review-ollama.local-inference.svc.cluster.local:11434`;
-Ollama owns a separate model PVC and performs GPU inference inside the cluster.
-
-The outer boundary is the minikube namespace `local-review-demo`; the inner boundary
-is one FastAPI backend process. Re-export the FigJam board after editing it to update
-this image.
+The backend's single executor calls
+`review-ollama.local-inference.svc.cluster.local:11434`. Ollama owns a separate model
+PVC and performs inference in the cluster. The backend caches only the pinned tokenizer.
+The [historical diagram](docs/assets/application-architecture.png) depicts the removed
+in-process CPU implementation; see the [current request flow](docs/reference/architecture.md).
 
 The browser reaches Nginx through a host loopback port-forward. Nginx serves the React
 bundle and proxies `/api/` and `/health/` to FastAPI on the same origin.
@@ -67,11 +59,10 @@ back to SQLite. The submission request returns before inference; the browser pol
 stored status. The coordinator, executor and SQLite access layer run within the backend.
 The API and coordinator use that layer to access the same history PVC.
 
-The three cylinders are separate PVCs. The backend uses the history and model-cache
+The application uses three separate PVCs. The backend uses the history and model-cache
 PVCs; DynamoDB Local uses the accounts PVC. Ollama stores weights in its own model PVC;
-its pinned tokenizer is cached in the backend PVC. The CPU adapter downloads its pinned
-Hugging Face weights to the same backend PVC and reuses them on later starts. Model
-weights are not baked into application images.
+its pinned tokenizer is cached in the backend PVC. Model weights are not baked into
+application images. Existing cached HF weights are retained but no longer used.
 
 ### Deployment management
 

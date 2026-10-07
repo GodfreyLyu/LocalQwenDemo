@@ -279,7 +279,6 @@ def main():
             root,
             values,
             settings=[
-                "model.backend=transformers",
                 "networkPolicy.enabled=true",
                 "volumePermissions.enabled=false",
             ],

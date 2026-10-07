@@ -96,7 +96,7 @@ The existing `/health/live` and `/health/ready` HTTP status and body contracts a
 - `deployment_environment`: `minikube`, `development`, or `unknown`, from explicit
   `DEPLOYMENT_ENVIRONMENT` configuration. Default is `unknown`; neither hostname nor
   the existing logging/test `ENVIRONMENT` setting implies a deployment environment.
-- `inference_mode`: `real` for the built-in Transformers adapter, `simulated` for an
+- `inference_mode`: `real` for the Ollama adapter, `simulated` for an
   explicitly marked fixture, otherwise `unknown`. Deployment environment does not select inference.
 - `model_id`, `model_revision`, `model_source`, `device`: configured pinned identity and
   `cpu` for the built-in real adapter; `Simulated model`, `fixture-v1`, `test_fixture`

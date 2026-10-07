@@ -6,8 +6,7 @@ import pytest
 
 from app.coordinator import CoordinatorState
 from app.inference.identity import model_identity
-from app.inference.model import TransformersModel
-from app.model import TransformersModel as LegacyTransformersModel
+from app.inference.ollama import OllamaModel
 
 
 @pytest.mark.parametrize("environment", ["minikube", "development", "unknown"])
@@ -59,17 +58,18 @@ def test_storage_failure_and_shutdown_never_claim_readiness(factory, monkeypatch
     assert client.get("/api/v1/runtime").json()["service_status"] == "shutting_down"
 
 
-@pytest.mark.parametrize("model_type", [TransformersModel, LegacyTransformersModel])
-def test_real_adapter_identity_uses_config_without_loading_weights(factory, model_type):
+def test_real_adapter_identity_before_loading_is_not_fabricated(factory):
     client = factory()
     settings = client.app.state.settings
-    identity = model_identity(model_type(settings), settings)
+    identity = model_identity(OllamaModel(settings), settings)
     assert identity == {
         "inference_mode": "real",
-        "model_id": settings.model_id,
-        "model_revision": settings.model_revision,
-        "model_source": "backend_configuration",
-        "device": "cpu",
+        "model_id": settings.ollama_model,
+        "model_revision": None,
+        "model_source": "ollama_api",
+        "device": None,
+        "inference_backend": "ollama",
+        "quantization": None,
     }
     # Unknown injected adapters must not be labeled real just because Qwen is configured.
     assert model_identity(object(), settings)["inference_mode"] == "unknown"

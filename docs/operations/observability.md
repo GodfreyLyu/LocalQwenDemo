@@ -18,7 +18,8 @@ export entire raw logs to obtain additional fields.
 Confirm profile, cluster/namespace UID, Pod UID, container ID/start time, restart count
 and running image before comparing logs or cgroup counters. Different container instances
 have unrelated cumulative counters. Check startup stages and fixed errors, queue wait,
-section preparation/generation/first-token durations, token counts, and actual threads.
+section generation/first-content durations and token counts. Ollama owns inference;
+backend preparation/thread metrics are null.
 First-token time is part of generation time, not an extra phase to add again.
 
 Check available measurements of host memory pressure and swap, Docker limits, node
@@ -26,7 +27,7 @@ allocatable resources and workload reservations. Also inspect metrics-server usa
 the container's `cpu.stat` and `memory.events` counters. Unavailable measurements must
 stay `not_measured`; do not install collectors or change infrastructure to produce a
 pass. Memory below a limit and zero sampled OOM events do not prove the whole node was
-healthy. A configured BF16 dtype or architecture name does not establish acceleration.
+healthy. Backend cgroup counters do not measure the independent Ollama process.
 
 ## Controlled measurements are separate work
 

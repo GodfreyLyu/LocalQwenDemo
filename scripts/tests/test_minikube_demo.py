@@ -50,7 +50,7 @@ def test_openmp_setting_is_backend_only_and_preserves_inference_contract(render_
     cfg = resource(rendered, "ConfigMap", "review-config")["data"]
     pod = resource(rendered, "Deployment", "review-backend")["spec"]["template"]["spec"]
     backend = next(c for c in pod["containers"] if c["name"] == "review-backend")
-    assert backend["env"] == [{"name": "OMP_NUM_THREADS", "value": "2"}]
+    assert not backend.get("env")
     assert backend["envFrom"] == [
         {"configMapRef": {"name": "review-config"}},
         {"secretRef": {"name": "review-secrets"}},
@@ -60,8 +60,6 @@ def test_openmp_setting_is_backend_only_and_preserves_inference_contract(render_
         >= {
             "MODEL_ID": "Qwen/Qwen3-1.7B",
             "MODEL_REVISION": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
-            "MODEL_DTYPE": "bfloat16",
-            "MODEL_CPU_THREADS": "2",
             "MODEL_MAX_INPUT_TOKENS": "2048",
             "MODEL_MAX_OUTPUT_TOKENS": "384",
             "MODEL_INFERENCE_CONCURRENCY": "1",
@@ -93,10 +91,8 @@ def test_overlay_preserves_product_contract_and_has_no_cloud_resources(resources
             "AWS_EC2_METADATA_DISABLED": "true",
             "AWS_ACCESS_KEY_ID": "local",
             "AWS_SECRET_ACCESS_KEY": "local",
-            "MODEL_ID": acceptance.MODEL,
-            "MODEL_REVISION": acceptance.REVISION,
-            "MODEL_DTYPE": "bfloat16",
-            "MODEL_CPU_THREADS": "2",
+            "OLLAMA_MODEL": acceptance.MODEL,
+            "OLLAMA_MODEL_DIGEST": acceptance.REVISION,
             "MODEL_MAX_INPUT_TOKENS": "2048",
             "MODEL_MAX_OUTPUT_TOKENS": "384",
             "INFERENCE_TIMEOUT_SECONDS": "300",
@@ -654,8 +650,7 @@ def test_deployment_records_actual_failure_stage_and_never_claims_false_success(
     assert report["diagnostic_warnings"] == plan["report"]["blockers"]
     assert not report["review_completed"] and not report["ui_verified"]
     if not failure_stage:
-        assert render_calls[0][-2] == "192.168.70.254"
-        assert render_calls[0][-1] == "ollama"
+        assert render_calls[0][-1] == "192.168.70.254"
         expected_network = {
             "hostname": "host.minikube.internal",
             "ipv4": "192.168.70.254",

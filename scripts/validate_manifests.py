@@ -33,8 +33,6 @@ def validate():
         >= {
             "MODEL_ID": "Qwen/Qwen3-1.7B",
             "MODEL_REVISION": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
-            "MODEL_DTYPE": "bfloat16",
-            "MODEL_CPU_THREADS": "2",
             "MODEL_INFERENCE_CONCURRENCY": "1",
             "MODEL_MAX_INPUT_TOKENS": "2048",
             "MODEL_MAX_OUTPUT_TOKENS": "384",
@@ -85,7 +83,7 @@ def validate():
             assert init["securityContext"]["allowPrivilegeEscalation"] is False
     backend = by_name["Deployment", "review-backend"]["spec"]["template"]["spec"]
     container = backend["containers"][0]
-    assert container["env"] == [{"name": "OMP_NUM_THREADS", "value": "2"}]
+    assert not container.get("env")
     assert container["resources"] == {
         "requests": {"cpu": "2", "memory": "4Gi", "ephemeral-storage": "256Mi"},
         "limits": {"cpu": "2", "memory": "6Gi", "ephemeral-storage": "1Gi"},

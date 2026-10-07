@@ -13,7 +13,6 @@ from pydantic import ValidationError
 from app.config import Settings
 from app.errors import AppError
 from app.inference.identity import model_identity
-from app.inference.model import TransformersModel
 from app.inference.ollama import OllamaModel, render_prompt
 from app.main import create_app
 
@@ -92,7 +91,7 @@ class Server:
 @pytest.fixture
 def adapter(monkeypatch):
     server = Server()
-    model = OllamaModel(settings(model_backend="ollama", model_max_output_tokens=384))
+    model = OllamaModel(settings(model_max_output_tokens=384))
     model.digest = "sha256:" + DIGEST
     model.tokenizer = Tokenizer()
     model.quantization = "Q4_K_M"
@@ -257,12 +256,9 @@ def test_cluster_ollama_service_endpoint():
     assert settings(ollama_base_url=url).ollama_base_url == url
 
 
-def test_factory_preserves_explicit_transformers_fallback():
-    for backend, cls in [("transformers", TransformersModel), ("ollama", OllamaModel)]:
-        app = create_app(settings(model_backend=backend), users=object())
-        assert isinstance(app.state.model, cls)
-    with pytest.raises(ValidationError):
-        settings(model_backend="automatic")
+def test_factory_always_uses_ollama():
+    app = create_app(settings(), users=object())
+    assert isinstance(app.state.model, OllamaModel)
 
 
 def test_template_rendering_includes_think_control_and_generation_prefix():
@@ -368,7 +364,65 @@ def test_startup_recovers_from_one_connection_failure(adapter, monkeypatch):
 
 def test_default_backend_calls_cluster_ollama():
     config = settings()
-    assert config.model_backend == "ollama"
     assert config.ollama_base_url == "http://review-ollama.local-inference.svc.cluster.local:11434"
     app = create_app(config, users=object())
     assert isinstance(app.state.model, OllamaModel)
+
+
+def test_review_uses_shared_sampling_and_digest_seed_for_each_section(adapter):
+    from app.inference.generation import REVIEW_GENERATION_PARAMETERS, derive_generation_seed
+    from app.inference.prompts import SECTION_SPECS
+
+    model, server = adapter
+    model.review(SOURCE, "python", threading.Event())
+    first = [p["options"] for p in server.payloads]
+    for (section, _, _), options in zip(SECTION_SPECS, first, strict=True):
+        assert options.items() >= REVIEW_GENERATION_PARAMETERS.items()
+        assert options["seed"] == derive_generation_seed(model.digest, "python", section, SOURCE)
+    model.review(SOURCE, "python", threading.Event())
+    assert first == [p["options"] for p in server.payloads[3:]]
+    assert len({p["seed"] for p in first}) == 3
+
+
+@pytest.mark.parametrize("body", ["", "## Findings\nUnexpected section."])
+def test_invalid_section_stops_later_requests(adapter, body):
+    model, server = adapter
+    server.override = {"message": {"content": body}}
+    with pytest.raises(AppError) as error:
+        model.review(SOURCE, "python", threading.Event())
+    assert error.value.code == "invalid_model_response"
+    assert len(server.payloads) == 1
+
+
+def test_capped_tail_is_trimmed_and_metrics_never_include_content(adapter, caplog):
+    model, server = adapter
+    server.override = {
+        "message": {
+            "content": "The average function needs an empty values guard. PRIVATE_FRAGMENT"
+        },
+        "done_reason": "length",
+    }
+    with caplog.at_level("INFO", logger="review"):
+        result = model.review(SOURCE, "python", threading.Event())
+    assert "PRIVATE_FRAGMENT" not in result
+    events = [r for r in caplog.records if r.msg == "model_generation_finished"]
+    assert len(events) == 1
+    assert all(events[0].section_trailing_fragments_removed.values())
+    from app.logging import SafeFormatter
+
+    assert "PRIVATE_FRAGMENT" not in SafeFormatter().format(events[0])
+
+
+@pytest.mark.parametrize(
+    "stage", ["ollama_validation", "tokenizer_load", "startup_generation", "post_model_storage"]
+)
+def test_startup_diagnostics_never_format_exception(stage, caplog):
+    from app.logging import SafeFormatter
+    from app.startup import startup_stage
+
+    with pytest.raises(ValueError), startup_stage(stage):
+        raise ValueError("PRIVATE_SOURCE_PROMPT_MODEL_TOKEN_SENTINEL")
+    payload = json.loads(SafeFormatter().format(caplog.records[-1]))
+    assert payload["stage"] == stage
+    assert payload["exception_type"] == "ValueError"
+    assert "SENTINEL" not in json.dumps(payload)

@@ -50,7 +50,7 @@ export function AboutInstance({ runtime }: { runtime: RuntimeState }) {
           {info?.inference_mode === 'real'
             ? info.inference_backend === 'ollama'
               ? `Real model via local Ollama. Device at last inference: ${info.device ?? 'unknown'}.`
-              : 'Real model on local CPU.'
+              : 'Real model; device unknown.'
             : modeLabel(info)}
         </p>
         <p>
@@ -59,11 +59,9 @@ export function AboutInstance({ runtime }: { runtime: RuntimeState }) {
           <code>{info?.model_revision ?? 'Unknown'}</code>. Source:{' '}
           {info?.model_source === 'ollama_api'
             ? `Ollama API; quantization ${info.quantization ?? 'unknown'}`
-            : info?.model_source === 'backend_configuration'
-              ? 'backend model configuration (pinned weight revision)'
-              : info?.model_source === 'test_fixture'
-                ? 'deterministic test fixture, not Qwen weights'
-                : 'unknown'}
+            : info?.model_source === 'test_fixture'
+              ? 'deterministic test fixture, not Qwen weights'
+              : 'unknown'}
           .
         </p>
         <p>
@@ -78,10 +76,10 @@ export function AboutInstance({ runtime }: { runtime: RuntimeState }) {
           reset when the harness restarts.
         </p>
         <p>
-          Real reviews use the configured local Ollama service or the in-process
-          Transformers CPU adapter. The simulated adapter returns a test
-          fixture. Submitted source code is never executed. Initial environment
-          or model preparation may download dependencies and weights.
+          Real reviews use the configured local Ollama service. The simulated
+          adapter returns a test fixture. Submitted source code is never
+          executed. Initial environment or model preparation may download
+          dependencies and weights.
         </p>
         <p>
           Environment comes from explicit backend deployment configuration,

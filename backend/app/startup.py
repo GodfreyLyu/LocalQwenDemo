@@ -5,7 +5,6 @@ import re
 from contextlib import contextmanager
 
 from app.errors import AppError
-from app.inference.model_cache import ModelCacheIncompleteError
 
 logger = logging.getLogger("review")
 STAGES = frozenset(
@@ -15,27 +14,10 @@ STAGES = frozenset(
         "queue_recovery",
         "model_load",
         "ollama_validation",
-        "model_dependencies",
-        "cache_lookup",
-        "model_download",
-        "cache_validation",
         "tokenizer_load",
-        "weights_load",
-        "cpu_placement",
         "startup_generation",
         "post_model_storage",
         "queue_processing",
-    }
-)
-CACHE_REASONS = frozenset(
-    {
-        "missing_snapshot",
-        "unreadable_index",
-        "invalid_index",
-        "missing_shard",
-        "unreadable_shard",
-        "invalid_safetensors",
-        "index_tensor_mismatch",
     }
 )
 
@@ -44,8 +26,6 @@ def safe_diagnostic_fields(fields):
     result = {}
     if fields.get("stage") in STAGES:
         result["stage"] = fields["stage"]
-    if fields.get("cache_reason") in CACHE_REASONS:
-        result["cache_reason"] = fields["cache_reason"]
     name = fields.get("exception_type")
     if isinstance(name, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name):
         result["exception_type"] = name
@@ -68,13 +48,10 @@ def failure_fields(exc):
             "exception_type": type(exc).__name__,
             "errno": getattr(exc, "errno", None),
             "http_status": getattr(getattr(exc, "response", None), "status_code", None),
-            "cache_reason": getattr(exc, "cache_reason", None),
         }
     )
     fields["error_code"] = (
-        "model_cache_incomplete"
-        if isinstance(exc, ModelCacheIncompleteError)
-        else exc.code
+        exc.code
         if isinstance(exc, AppError)
         and exc.code
         in {

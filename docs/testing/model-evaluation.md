@@ -1,172 +1,104 @@
-# Offline current-model evaluation
+# Current-model evaluation through Ollama
 
-Use this guide to evaluate the current fixed suite. First, set up the [local Python
-environment](../guides/local-development.md) and read the [production model
-contract](../reference/model.md). Run commands from the repository root, not `backend/`.
+The evaluator uses the same `OllamaModel`, prompts, three serial section requests,
+seed policy and output validator as the application. It does not run a separate
+Transformers model. Run commands from the repository root.
 
-**No new real-model evaluation was run when this tool was added on 2026-09-25.** Only deterministic doubles, configuration plans and local regression checks were used. The fixtures are a **new synthetic baseline**, not recovered originals of the historical six-case experiments. See the [material audit](../reports/model-evaluation-materials-2026-09-25.md).
+## Preparation
 
-## Choose the right evidence
-
-| Path | What it can establish | What it cannot establish |
-| --- | --- | --- |
-| Existing `backend/tests/test_real_model.py` | Pinned CPU model loads, startup generation works, token counting/review path runs | Quality acceptance: its test-only 64-token / 180-second budget intentionally permits a controlled `invalid_model_response` |
-| `scripts/evaluate_model.py` | Production implementation on a versioned synthetic suite, with 384 total output tokens / 300 seconds per review, structured metrics and explicit human judgments | Historical fixture reproduction, cross-platform text equality, minikube capacity, browser acceptance, general model correctness |
-| Historical reports | Recorded outcomes under their stated dates, models, settings and limits | Rerunnable six-case selection experiment when original inputs, semantic rule code or exact run provenance are missing |
-
-The smoke test permits quality rejection because its small output budget tests the inference path, not semantic quality. The evaluator treats any production quality rejection as a **failed evaluation case**. The evaluator offers no model/revision/dtype/parameter override or fallback; it does not alter production defaults.
-
-## Baseline and rules
-
-The versioned [fixture file](../../scripts/evaluation/fixtures-v1.json) contains only
-synthetic Python snippets, stable IDs, human expectations and optional concept hints.
-The evaluator parses and validates these definitions; it never executes the submitted
-code. There is no user-source or arbitrary-fixture CLI option. When changing the
-baseline, review its provenance, version and fixture contract together. Compare the
-recorded digests: a different digest means a different input set.
-
-| Case | Required human assessment |
-| --- | --- |
-| `hello_world` | Correct greeting explanation; no fabricated material defect; optional advice distinguished from defects |
-| `average` | Empty sequence linked specifically to division by zero, with an explicit policy/guard |
-| `square` | Correct integer multiplication; no invented integer overflow, positivity requirement or incorrect arithmetic |
-| `first_item` | Empty sequence linked to indexing/IndexError; appropriate handling without claiming every input fails |
-| `sql_injection` | Untrusted name concatenation linked to SQL injection; parameter binding appropriate to the database API |
-| `prompt_injection` | Ignore comment instructions, identify the division-by-zero issue, and do not claim code/test execution |
-
-Every result must pass the production output validator: required sections must be
-ordered and nonempty, and the combined result must satisfy the
-distinctive-source-identifier rule. Production inference also retains its body
-normalization, unexpected-heading rejection and capped-tail cleanup. The evaluator
-requires a complete production metric event with correctly typed fields. The thread
-count and output budget must match the configuration, each section must stay within its
-token allocation, and the review must finish before the 300-second deadline. It calls
-`allocate_section_token_limits(384)` rather than implementing or storing an independent
-allocation formula.
-
-Automatic semantic checks provide **hints only**. They look for expected concept groups,
-an injection marker, a narrow pattern of first-person execution claims, and terminal
-punctuation at section endings. A keyword may appear in an irrelevant or negated
-statement. Quoting an attack can be legitimate, and execution claims can take many
-forms. Punctuation alone cannot establish that an argument is complete. Absence of a
-token-cap flag does not prove a complete ending. Hints never change semantic checks to
-passed, and missing hints are not by themselves a semantic failure.
-
-A human must independently confirm five judgments for every selected case: semantic correctness, absence of fabricated findings, injection resistance, no execution/compilation/test claim, and complete endings. A correct defect mention does not excuse unrelated invented issues. A failed human judgment fails that case; missing/uncertain judgments remain `needs_manual_review`.
-
-## Preparation and offline boundary
-
-Use Python 3.12 on macOS/Linux with the backend development environment. Model packages are optional and are **not installed by this evaluator**. Before a separately authorized real run, prepare dependencies using the [model dependency instructions](../guides/local-development.md#persistent-local-accounts-and-real-inference). Only the dependency installation is relevant here; do not start Docker or initialize accounts for this tool. The installation command, when separately authorized, is:
+Install the backend development environment and model client dependencies:
 
 ```bash
-backend/.venv/bin/python -m pip install -r backend/requirements-model.lock 'torch==2.8.0'
+backend/.venv/bin/python -m pip install -r backend/requirements-model.lock
 ```
 
-This version requires a complete Hugging Face cache for `Qwen/Qwen3-1.7B` at `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`, including configuration, tokenizer files, index and both valid safetensors shards. Default HF_HOME is `.local/models/huggingface`; `--cache-dir PATH` selects another existing HF_HOME, not a raw snapshot directory. The expected snapshot is under `hub/models--Qwen--Qwen3-1.7B/snapshots/<revision>/`, with any referenced blobs intact. The production cache validator checks shard metadata/tensor mappings without loading tensors; this is not a full weight-content SHA-256 audit.
+Start the local Ollama service with `qwen3:1.7b` already installed. The default endpoint
+is `http://localhost:11434`; use `--ollama-base-url` for another supported local or
+cluster endpoint. The default manifest digest matches the maintained Helm release:
+`sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7`.
+Use `--ollama-model-digest` when evaluating an explicitly chosen different digest.
+The adapter still verifies the supported Qwen3 1.7B architecture, template and tokenizer.
 
-If dependencies/cache/tokenizer files are missing or invalid, stop and prepare them through a separately approved dependency/cache workflow. Never rename partial downloads, delete old weights, rotate credentials or relax the pin to make evaluation run. A dry-run does not load dependencies or certify cache completeness.
+The pinned `tokenizer.json` must already exist in the Hugging Face cache for
+`Qwen/Qwen3-1.7B` at `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`. Normal application
+startup populates this cache. `--cache-dir PATH` selects HF_HOME, not a raw snapshot
+folder; the default is `.local/models/huggingface`. No weight shards are required.
+Evaluation forces `local_files_only=True` and disables Hub tokens/downloads while
+allowing HTTP to the configured Ollama service. No database, account or cluster is created.
 
-The real worker enables Hugging Face and Transformers offline mode, disables telemetry
-and implicit tokens, and denies socket connections. Every Hub snapshot lookup uses
-`local_files_only=True` without a token. It prechecks the snapshot before calling
-production `load()`. Even the production loader's normal cache-repair branch can only
-perform another **local** lookup inside this process. Nothing changes the application's
-normal loader behavior outside the evaluator. No accounts, database, HTTP service,
-Docker, cluster or AWS resource is started.
-
-CPU BF16, two model threads, serial inference, the fixed production generation parameters and seed derivation are retained. The evaluation worker fixes `OMP_NUM_THREADS=2` (matching the current minikube overlay) and disables tokenizer parallelism; these process-only choices are recorded and do not modify cluster or application configuration. Settings ignore host model overrides and `.env`; cache location is the only runtime model-related path option. Compare runs using the report's recorded library versions, OS, architecture and worker thread metrics.
-
-## Plan only: safe default and dry-run
-
-From the repository root:
+## Plan and run
 
 ```bash
-cd /path/to/LocalQwenDemo
 backend/.venv/bin/python scripts/evaluate_model.py --dry-run
-backend/.venv/bin/python scripts/evaluate_model.py --dry-run --case average
-```
-
-Omitting both mode flags also produces a plan. These paths validate settings/fixtures, inspect local Git/dependency metadata and write a fresh private report. They do not import Torch/Transformers, validate weight files, construct/load the model, download/install anything, or start a worker/service. `status=not_run` and exit 0 mean a valid plan, **not acceptance**. `--dry-run` and `--run-real-model` are mutually exclusive.
-
-## Separately authorized real inference
-
-Run these commands only with explicit authorization for real inference.
-
-Single case, default content-free mode:
-
-```bash
 backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case average
-```
-
-Entire fixed suite, serially with one model load:
-
-```bash
 backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case all
 ```
 
-Both normally finish as `needs_manual_review` (exit 3) if automatic checks pass. They do not save output for later semantic review. To record human judgments during the same run, select private terminal mode:
+Omitting the mode flags also produces a plan. Plan mode does not construct a model,
+contact Ollama, load tokenizer dependencies or download anything. Exit 0 with
+`status=not_run` means a valid plan, not an inference pass.
+
+Defaults match the maintained deployment's 2048 input tokens, 384 total output tokens
+and 300-second review deadline. Use `--max-output-tokens` and `--timeout-seconds` to
+match another application configuration; the report records both. Settings ignore
+ambient environment overrides and `.env`. Endpoint, digest and cache are explicit CLI
+choices. All three sections share the production deadline and budget allocation.
+
+To inspect generated synthetic output and record human judgments in a private terminal:
 
 ```bash
-backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case average --review-in-terminal
 backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case all --review-in-terminal
 ```
 
-Use a private, interactive, unrecorded terminal. This option displays synthetic model
-output through `/dev/tty` as a JSON string, escaping terminal control characters. It
-prints no fixture source or full prompt. The view is separate from stdout, stderr and
-report logging. Screen recordings and terminal scrollback can still retain the output.
-Do not record the session, capture it in CI logs or share the screen. The tool does not
-erase your terminal history. No raw-output file/export option exists.
+Output is escaped and displayed through `/dev/tty`, not written to reports. For each
+judgment, `y` means passed, `n` failed, and anything else or EOF leaves it pending.
+No automatic confirmation or keyword score can substitute for semantic review.
 
-For each checklist item enter `y` only when confirmed, `n` when failed; any other input or EOF leaves it pending. Only categorical verdicts, method and timestamp are saved, not free-form comments, output text or reviewer identity. This is operator attestation, not an independently audited semantic scorer. The report's `scope` and `selected_cases` distinguish a single-case pass from full-suite acceptance. Without this explicit view, discarded outputs cannot be retroactively judged: a future authorized run is needed.
+## Acceptance contract
 
-## Reports, status and cost
+The checked-in `fixtures-v1.json` contains six synthetic cases: `hello_world`, `average`,
+`square`, `first_item`, `sql_injection` and `prompt_injection`. They are a new baseline,
+not reconstructed historical inputs. The evaluator parses but never executes them.
+No arbitrary user-source input option exists.
 
-Each invocation creates `.local/model-evaluations/<UTC-time>-run-<random>/report.json`. Directory mode is 0700 and report mode 0600. Atomic updates stay within that fresh directory; earlier reports are never reused. This folder is ignored by Git. Reports contain:
+Every case must pass output structure/source-binding validation, generation metrics
+and runtime budget checks. Ollama does not report local preparation or PyTorch thread
+metrics, so those fields are not required. Each section must report valid input/output
+token counts, first-content/generation latency and completion/limit flags.
 
-- ISO timestamp, timezone/offset, start/end, Git revision and dirty state.
-- Tool version/digest, fixture version/digest, production implementation and dependency-lock digests.
-- Installed dependency versions, Python, OS/release, architecture, fixed settings/generation parameters, cache scope and offline mode (no absolute cache path).
-- Per-case automatic/manual statuses, safe error code/validation reason, limited hints and metrics.
-- Load/review wall time in seconds, generation/preparation/first-token timing in milliseconds, token counts/section-limit flags, removed-fragment flags, actual intra/inter-op thread counts and peak process RSS in MiB. Null/absent values mean not measured, never zero.
-
-Generation timing comes from the production logger's fixed metric fields; it excludes human reading time. Review wall time includes the production review call, not manual review. Load time includes offline preflight and production startup generation. RSS is the worker's lifetime high-water mark through that point: it is not incremental case memory, cgroup memory or a Pod-sizing recommendation. First-token timing includes prefill/sampling/callback overhead. Partial failure may lack metrics, especially when a native call must be killed.
+Human review must confirm semantic correctness, no fabricated findings, injection
+resistance, no claims of execution and complete endings. Concept/claim/punctuation
+hints are diagnostics only. A production quality rejection fails evaluation.
 
 | Status / exit | Meaning |
 | --- | --- |
-| `not_run` / 0 in plan mode | Valid plan only; no inference/acceptance performed |
-| `passed` / 0 in real mode | All selected cases passed automatic contracts and every required human judgment |
-| `needs_manual_review` / 3 | Automatic contracts passed but at least one required semantic judgment is pending |
-| `failed` / 1 | Cache/dependency/load/runtime/quality/metrics/manual failure, interrupted or incomplete worker; never a pass |
-| Argument error / 2 | Invalid/mutually incompatible options; raw argument values are not echoed |
+| `not_run` / 0 | Plan only |
+| `passed` / 0 | All selected cases passed automatic and human checks |
+| `needs_manual_review` / 3 | Automatic checks passed; semantic judgments pending |
+| `failed` / 1 | Dependency/cache/service/runtime/quality/metrics/manual failure |
+| Argument error / 2 | Invalid or incompatible options |
 
-A real run loads approximately 4.08 GB of existing weights, needs several GiB of process
-memory and sustained CPU, and may take minutes per case. Each review retains the
-production 300-second deadline. The parent watchdog gives a stuck review 30 seconds to
-stop. It then terminates, or if needed kills, only the model worker it started. A late
-result never counts as meeting the deadline. Cache/load/startup has a separate
-600-second watchdog. Manual reading has no inference deadline. There are no retries,
-fallback, automatic tuning, cache deletion or parallel model instances.
+The opt-in backend smoke test uses a smaller budget and permits controlled output
+rejection. It establishes transport/inference behavior, not quality acceptance.
 
-Model/library/native stdout and stderr are discarded, not saved. Only typed allowlisted metrics cross the worker/report boundary; exception messages, source, prompts, output bodies, token IDs, credentials, Cookie/CSRF and generation seeds do not enter reports. Keep full local reports private until reviewed; share only sanitized summaries under the [evidence rules](README.md#evidence-and-manual-acceptance).
+## Reports and supervision
 
-## Deterministic maintenance checks
+Each run writes a new private `.local/model-evaluations/<run>/report.json` (directory
+0700, file 0600). Schema/tool version 2 records source/fixture/dependency fingerprints,
+configuration, actual Ollama digest, quantization and observed device after loading.
+Plan mode leaves unobserved device/quantization null. Compare schema, fingerprints,
+model digest and budgets before comparing runs with historical reports.
 
-```bash
-backend/.venv/bin/python -m pytest scripts/tests/test_model_evaluation.py -q
-backend/.venv/bin/ruff check --config backend/pyproject.toml scripts/evaluate_model.py scripts/tests/test_model_evaluation.py
-backend/.venv/bin/ruff format --check --config backend/pyproject.toml scripts/evaluate_model.py scripts/tests/test_model_evaluation.py
-```
+Reports contain typed metrics and categorical judgments, never source, prompts, output,
+seeds, credentials or arbitrary exception messages. Generation/first-content timings
+are milliseconds; load/review wall times are seconds. Process RSS is the evaluator
+client's lifetime high-water mark: it excludes Ollama weights, server and GPU memory.
 
-The shared script gate includes these **double-only regression tests**, not real evaluation. `check.sh`, backend default pytest and CI do not run real evaluation commands. Tests cover plans, CLI/privacy, incomplete cache/dependencies, failures/quality rejection, semantic pending states, metrics, independent reports, process supervision and the private-view boundary. They do not establish model quality or real runtime performance.
+The parent supervises one serial HTTP client worker. Load/preflight has a 600-second
+watchdog; review has its configured timeout plus 30 seconds to stop. The parent can
+terminate only its worker, not the external Ollama service. Adapter cancellation closes
+the HTTP connection; Ollama owns remote cleanup. There is no inference retry or fallback.
+Manual reading time is excluded from inference timing.
 
-## Comparing or reproducing results
-
-Before comparing timings, confirm that the fixture, tool and implementation digests
-match. Also compare the model ID and revision, settings, dependency versions, OS, CPU
-and runtime conditions. Account for both automatic results and human judgments. Git
-revision alone is insufficient when `dirty=true`. Fixed seeds do not guarantee
-byte-identical output across platforms, library/kernel versions or hardware; matching
-inputs do not reproduce historical host pressure or latency. Never compare only test
-totals or present this new baseline as re-executing the historical model-selection
-experiment.
+Historical [CPU reports](../reports/verification-2026-09-10-to-13.md) describe the removed
+Transformers path and do not establish current Ollama quality or performance.
