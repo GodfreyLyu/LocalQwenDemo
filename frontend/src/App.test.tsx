@@ -15,7 +15,7 @@ const runtimeInfo = {
   accepting_submissions: true,
   model_id: 'Qwen/Qwen3-1.7B',
   model_revision: '70d244cc86ccca08cf5af4e1e306ecf908b1ad5e',
-  model_source: 'backend_configuration',
+  model_source: 'ollama_api',
   device: 'cpu',
 };
 

@@ -9,11 +9,8 @@ gh release download v0.7.0 --repo yannh/kubeconform \
 (cd "$tool_dir" && sha256sum --check --ignore-missing CHECKSUMS && tar -xzf kubeconform-linux-amd64.tar.gz)
 args=()
 if [ -f "$repo_root/release-values.yaml" ]; then args+=(-f "$repo_root/release-values.yaml"); fi
-for mode in ollama transformers; do
-  helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
-    --set "model.backend=$mode" \
-    | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
-done
+helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
+  | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
 helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
   -f "$repo_root/deploy/helm/local-review/values-minikube.yaml" \
   | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0

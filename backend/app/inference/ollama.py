@@ -19,6 +19,7 @@ import httpx
 from app.config import MODEL_REVISION, Settings
 from app.errors import AppError
 from app.inference.generation import (
+    REVIEW_GENERATION_PARAMETERS,
     GenerationMetrics,
     SectionMetrics,
     allocate_section_token_limits,
@@ -276,11 +277,7 @@ class OllamaModel:
                 + self.settings.model_max_output_tokens,
                 "num_predict": limit,
                 "seed": seed,
-                "temperature": 0.7,
-                "top_p": 0.8,
-                "top_k": 20,
-                "min_p": 0.0,
-                "repeat_penalty": 1.0,
+                **REVIEW_GENERATION_PARAMETERS,
             },
         }
         fragments, finished, received = [], False, 0

@@ -39,10 +39,7 @@ def install(target, args):
         if r["kind"] == "ConfigMap" and r["metadata"]["name"] == "review-config"
     )
     host_ip = None
-    if (
-        cfg["MODEL_BACKEND"] == "ollama"
-        and cfg["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434"
-    ):
+    if cfg["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434":
         host_ip = target.ollama_ip()
         base += [
             "--set-string",

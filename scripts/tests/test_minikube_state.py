@@ -309,7 +309,7 @@ def real_build_inputs(monkeypatch, tmp_path):
         "backend/Dockerfile": "FROM python:3.12\n",
         "backend/pyproject.toml": '[project]\nname = "fixture"\n',
         "backend/requirements.lock": "fastapi==0.115.0\n",
-        "backend/requirements-model.lock": "transformers==4.57.6\n",
+        "backend/requirements-model.lock": "tokenizers==0.22.2\n",
         "backend/app/inference/model.py": "MODEL = 'fixed'\n",
         "frontend/Dockerfile": "FROM node:24\n",
         "frontend/package.json": '{"name":"fixture"}\n',

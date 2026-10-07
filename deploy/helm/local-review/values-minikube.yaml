@@ -1,7 +1,6 @@
 # Local learning environment. Apply after release-values.yaml.
 # Copy to an ignored/local file before adding machine-specific overrides.
 model:
-  backend: ollama
   ollamaBaseUrl: http://review-ollama.local-inference.svc.cluster.local:11434
 persistence:
   storageClass: standard

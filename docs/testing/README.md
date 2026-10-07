@@ -2,8 +2,8 @@
 
 [Documentation index](../README.md)
 
-The maintained deployment runs on an existing Minikube cluster and defaults to an
-independent Ollama service. The Transformers CPU backend remains an explicit option.
+The maintained deployment runs on an existing Minikube cluster and uses an
+independent Ollama service exclusively.
 Offline tests exercise product behavior and deployment safety without a cluster,
 model download or real inference. Operational acceptance requires separate authorization and real results.
 
@@ -19,9 +19,7 @@ a real-model success. No test may weaken ownership or security just to pass.
 Backend tests retain their component-based layout under `backend/tests`. Application
 implementations now live in `app.api`, `app.inference` and `app.persistence`; tests
 replace dependencies at those canonical locations (including monkeypatch strings).
-The existing public limiter test still exercises `app.auth.RateLimiter`, and the
-model-identity test also exercises the `app.model.TransformersModel` compatibility
-export without loading weights.
+The existing public limiter test still exercises `app.auth.RateLimiter`, and model-identity tests verify Ollama provenance without contacting a service.
 
 Script checks cover the local harness, users initializer and evaluator after their
 imports were updated. Remote command strings use the canonical inference package. The
@@ -34,13 +32,13 @@ from their original revisions.
 
 | Surface | Entry | What it establishes |
 | --- | --- | --- |
-| Backend | `cd backend && .venv/bin/pytest` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, model/cache/startup/logging contracts; Moto accounts and model doubles |
+| Backend | `cd backend && .venv/bin/pytest` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/tokenizer/startup/logging contracts; Moto accounts and model doubles |
 | Local transport | Backend local-DynamoDB tests | Missing/remote endpoints rejected; SDK host credentials/profiles/metadata/proxies cannot replace local transport |
 | Minikube | `scripts/check_minikube_demo.sh` | Real offline Kustomize render, profile/state/ownership, migration, image proof, forwarding, undeploy and lost-state recovery; simulated cluster APIs and real loopback fixtures |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |
 | Evaluator | Shared script gate | Model doubles, report states, privacy and fixed synthetic-suite contracts; no model load |
 | Frontend | `npm --prefix frontend test` | UI/API handling and rendering with test doubles |
-| Manifest invariants | `backend/.venv/bin/python scripts/validate_manifests.py` | Actual minikube render: model/OMP/resources/security/three PVCs/local dependency settings |
+| Manifest invariants | `backend/.venv/bin/python scripts/validate_manifests.py` | Actual minikube render: model/resources/security/three PVCs/local dependency settings |
 | Browser harness | `npm --prefix frontend run test:e2e` | Real local browser/API/SQLite with deterministic fake model and Moto; not real-model minikube acceptance |
 
 ## Suite ownership

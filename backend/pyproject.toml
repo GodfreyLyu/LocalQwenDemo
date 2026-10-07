@@ -17,8 +17,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-model = ["torch>=2.7,<3", "transformers>=4.53,<5", "huggingface-hub>=0.34,<1"]
-dev = ["httpx>=0.28,<1", "pytest>=8.4,<10", "ruff>=0.12,<1", "moto[dynamodb]>=5,<6", "pyyaml>=6,<7", "numpy>=2,<3", "safetensors>=0.8,<1"]
+model = ["tokenizers>=0.22,<0.23", "huggingface-hub>=0.34,<1"]
+dev = ["httpx>=0.28,<1", "pytest>=8.4,<10", "ruff>=0.12,<1", "moto[dynamodb]>=5,<6", "pyyaml>=6,<7"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
@@ -26,7 +26,7 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["real_model: opt-in download and CPU inference using the pinned real model"]
+markers = ["real_model: opt-in inference using the configured local Ollama service"]
 
 [tool.ruff]
 target-version = "py312"

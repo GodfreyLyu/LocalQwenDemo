@@ -4,7 +4,6 @@ WORKDIR /build
 COPY requirements.lock requirements-model.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.lock \
-    && /opt/venv/bin/pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu \
     && /opt/venv/bin/pip install -r requirements-model.lock
 COPY pyproject.toml ./
 COPY app ./app

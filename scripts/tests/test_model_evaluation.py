@@ -33,11 +33,11 @@ def metric_record(**updates):
         "generated_tokens": 30,
         "output_token_limit": 384,
         "output_limit_reached": False,
-        "worker_intraop_threads": 2,
-        "worker_interop_threads": 8,
+        "worker_intraop_threads": None,
+        "worker_interop_threads": None,
         "section_generated_tokens": dict.fromkeys(ev.REQUIRED_SECTIONS, 10),
         "section_input_tokens": dict.fromkeys(ev.REQUIRED_SECTIONS, 60),
-        "section_prepare_ms": dict.fromkeys(ev.REQUIRED_SECTIONS, 2),
+        "section_prepare_ms": dict.fromkeys(ev.REQUIRED_SECTIONS, None),
         "section_generation_ms": dict.fromkeys(ev.REQUIRED_SECTIONS, 400),
         "section_first_token_ms": dict.fromkeys(ev.REQUIRED_SECTIONS, 10),
         "section_limits_reached": dict.fromkeys(ev.REQUIRED_SECTIONS, False),
@@ -83,9 +83,9 @@ def test_plan_only_has_no_model_cache_or_network_side_effects(monkeypatch, tmp_p
     out = tmp_path / "reports"
     monkeypatch.setattr(ev, "OUTPUT_ROOT", out)
     blocked = Mock(side_effect=AssertionError("must not run"))
-    monkeypatch.setattr(ev, "TransformersModel", blocked)
+    monkeypatch.setattr(ev, "OllamaModel", blocked)
     monkeypatch.setattr(ev, "supervise", blocked)
-    monkeypatch.setattr(ev, "offline_runtime", blocked)
+    monkeypatch.setattr(ev, "cached_tokenizer_runtime", blocked)
     monkeypatch.setattr(socket.socket, "connect", blocked)
     cache = tmp_path / "absent"
     assert ev.main([*args, "--cache-dir", str(cache)]) == 0
@@ -98,19 +98,15 @@ def test_plan_only_has_no_model_cache_or_network_side_effects(monkeypatch, tmp_p
 
 
 def test_env_does_not_change_fixed_configuration(monkeypatch, tmp_path):
-    monkeypatch.setenv("MODEL_DTYPE", "float32")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://untrusted.example:11434")
     monkeypatch.setenv("MODEL_REVISION", "0" * 40)
-    monkeypatch.setenv("MODEL_CPU_THREADS", "15")
     monkeypatch.setenv("INFERENCE_TIMEOUT_SECONDS", "1")
     monkeypatch.setenv("HF_TOKEN", SECRET)
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("MODEL_MAX_OUTPUT_TOKENS=64\nSIGNING_SECRET=bad\n")
     settings = ev.settings_for(tmp_path / "cache")
-    assert (settings.model_dtype, settings.model_revision, settings.model_cpu_threads) == (
-        "bfloat16",
-        ev.MODEL_REVISION,
-        2,
-    )
+    assert settings.model_revision == ev.MODEL_REVISION
+    assert settings.ollama_base_url == "http://localhost:11434"
     assert settings.model_max_output_tokens == 384 and settings.inference_timeout_seconds == 300
 
 
@@ -149,7 +145,7 @@ def test_preconditions_fail_without_worker(monkeypatch, tmp_path, missing):
     monkeypatch.setattr(ev, "OUTPUT_ROOT", tmp_path / "reports")
     dependency_versions = dict.fromkeys(ev.DEPENDENCIES, "test")
     if missing == "dependencies":
-        dependency_versions["torch"] = None
+        dependency_versions["tokenizers"] = None
     monkeypatch.setattr(ev, "versions", lambda: dependency_versions)
     spy = Mock(side_effect=AssertionError("must not start"))
     monkeypatch.setattr(ev, "supervise", spy)
@@ -258,44 +254,34 @@ def test_metrics_capture_rejects_extra_text_and_malformed_values():
     assert "section_generated_tokens" not in capture.records[0]
 
 
-def test_offline_guard_forces_local_download_path_and_blocks_sockets(monkeypatch, settings):
+def test_cached_tokenizer_forces_local_resolution_without_blocking_ollama(monkeypatch, settings):
     calls = []
 
-    def snapshot(**kwargs):
+    def download(*args, **kwargs):
         calls.append(kwargs)
-        return "/synthetic-cache"
+        return "/synthetic-cache/tokenizer.json"
 
-    hub = SimpleNamespace(
-        snapshot_download=snapshot, constants=SimpleNamespace(HF_HUB_OFFLINE=False)
-    )
+    hub = SimpleNamespace(hf_hub_download=download, constants=SimpleNamespace(HF_HUB_OFFLINE=False))
     monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
-    monkeypatch.setattr(ev, "validate_model_snapshot", lambda _: None)
-    with ev.offline_runtime(settings):
-        hub.snapshot_download(repo_id=settings.model_id, local_files_only=False, token=SECRET)
-        with pytest.raises(ev.EvaluationError, match="network_disabled"):
-            socket.create_connection(("127.0.0.1", 9))
-        with socket.socket() as s, pytest.raises(ev.EvaluationError, match="network_disabled"):
-            s.connect(("127.0.0.1", 9))
+    original_connect = socket.socket.connect
+    with ev.cached_tokenizer_runtime(settings):
+        hub.hf_hub_download(
+            settings.model_id, "tokenizer.json", local_files_only=False, token=SECRET
+        )
+        assert socket.socket.connect is original_connect
     assert all(c["local_files_only"] is True and c["token"] is False for c in calls)
+    assert calls[0]["revision"] == settings.model_revision
     assert hub.constants.HF_HUB_OFFLINE is False
 
 
-def test_incomplete_cache_stops_before_model_load(monkeypatch, settings):
-    hub = SimpleNamespace(
-        snapshot_download=lambda **_: "/synthetic-cache",
-        constants=SimpleNamespace(HF_HUB_OFFLINE=False),
-    )
-    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
-
-    def fail(_):
+def test_missing_tokenizer_cache_stops_before_model_load(monkeypatch, settings):
+    def fail(**_):
         raise RuntimeError(SECRET)
 
-    monkeypatch.setattr(ev, "validate_model_snapshot", fail)
-    entered = False
-    with pytest.raises(RuntimeError):
-        with ev.offline_runtime(settings):
-            entered = True
-    assert not entered
+    hub = SimpleNamespace(hf_hub_download=fail, constants=SimpleNamespace(HF_HUB_OFFLINE=False))
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    with pytest.raises(RuntimeError), ev.cached_tokenizer_runtime(settings):
+        pytest.fail("Missing tokenizer must prevent entry")
 
 
 def test_fresh_private_reports_and_plan_metadata(monkeypatch, tmp_path):
@@ -310,7 +296,8 @@ def test_fresh_private_reports_and_plan_metadata(monkeypatch, tmp_path):
         assert path.parent.stat().st_mode & 0o777 == 0o700
         assert report["git"]["revision"] and type(report["git"]["dirty"]) is bool
         assert len(report["fixture_sha256"]) == len(report["implementation_sha256"]) == 64
-        assert report["parameters"]["offline"] and not report["parameters"]["downloads_allowed"]
+        assert not report["parameters"]["offline"]
+        assert not report["parameters"]["downloads_allowed"]
         assert report["started_at"] and report["timezone"] and report["utc_offset"]
         assert "signing_secret" not in path.read_text().lower()
 
@@ -338,7 +325,9 @@ class FakeRuntimeModel:
     """Exercise the real worker/report boundary with synthetic content and deliberately noisy IO."""
 
     def __init__(self, settings):
-        self.model = SimpleNamespace(device="cpu", training=False, dtype="torch.bfloat16")
+        self.digest = settings.ollama_model_digest
+        self.device = "gpu"
+        self.quantization = "Q4_K_M"
 
     def load(self):
         os.write(1, SECRET.encode())
@@ -351,12 +340,14 @@ class FakeRuntimeModel:
 
 def test_real_worker_lifecycle_with_fake_model(monkeypatch, tmp_path, settings, case, capfd):
     # Fork preserves these in-memory doubles. No model libraries are imported or loaded.
-    monkeypatch.setattr(ev, "offline_runtime", fake_offline)
-    monkeypatch.setattr(ev, "TransformersModel", FakeRuntimeModel)
+    monkeypatch.setattr(ev, "cached_tokenizer_runtime", fake_offline)
+    monkeypatch.setattr(ev, "OllamaModel", FakeRuntimeModel)
     report = ev.build_report(settings, ev.load_fixtures(), [case["id"]], True, False)
     ev.supervise(report, settings, [case], tmp_path, False, multiprocessing.get_context("fork"))
     assert report["status"] == "needs_manual_review"
     assert report["load"]["status"] == "passed"
+    assert report["parameters"]["device"] == "gpu"
+    assert report["parameters"]["model_revision"] == settings.ollama_model_digest
     assert SECRET not in str(capfd.readouterr()) and SECRET not in json.dumps(report)
 
 
@@ -398,14 +389,14 @@ def test_worker_preflight_and_load_failures_remain_sanitized(
     monkeypatch, tmp_path, settings, case, stage, capfd
 ):
     monkeypatch.setattr(
-        ev, "offline_runtime", invalid_offline if stage == "cache" else fake_offline
+        ev, "cached_tokenizer_runtime", invalid_offline if stage == "cache" else fake_offline
     )
-    monkeypatch.setattr(ev, "TransformersModel", LoadFailureModel)
+    monkeypatch.setattr(ev, "OllamaModel", LoadFailureModel)
     report = ev.build_report(settings, ev.load_fixtures(), [case["id"]], True, False)
     ev.supervise(report, settings, [case], tmp_path, False, multiprocessing.get_context("fork"))
     assert report["status"] == "failed" and report["load"]["status"] == "failed"
     assert report["error_code"] == (
-        "offline_cache_invalid" if stage == "cache" else "model_load_failed"
+        "tokenizer_cache_invalid" if stage == "cache" else "model_load_failed"
     )
     assert report["cases"][0]["status"] == "not_run"
     assert report["load"]["seconds"] >= 0

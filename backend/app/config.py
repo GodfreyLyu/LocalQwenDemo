@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-1"
     dynamodb_table: str = "llm-review-users"
     dynamodb_endpoint_url: str
-    model_backend: Literal["transformers", "ollama"] = "ollama"
     ollama_base_url: str = "http://review-ollama.local-inference.svc.cluster.local:11434"
     ollama_model: str = Field(default="qwen3:1.7b", pattern=r"^[a-zA-Z0-9._:/-]{1,128}$")
     ollama_model_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
@@ -37,8 +36,6 @@ class Settings(BaseSettings):
     model_max_input_tokens: int = Field(default=2048, ge=128, le=4096)
     model_max_output_tokens: int = Field(default=512, ge=3, le=1024)
     model_inference_concurrency: int = Field(default=1, ge=1, le=1)
-    model_dtype: Literal["bfloat16", "float32"] = "bfloat16"
-    model_cpu_threads: int = Field(default=2, ge=1, le=16)
     inference_timeout_seconds: float = Field(default=180, gt=0, le=600)
     inference_drain_seconds: float = Field(default=30, gt=0, le=120)
     shutdown_grace_seconds: float = Field(default=20, gt=0, le=60)

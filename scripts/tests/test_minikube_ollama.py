@@ -141,15 +141,14 @@ def test_resolution_failure_precedes_namespace_build_and_application_mutations(m
     build.assert_not_called()
 
 
-@pytest.mark.parametrize("backend", ["ollama", "transformers"])
-def test_explicit_adapter_render_preserves_budget_and_network(backend):
-    resources = d.render(8080, ollama_host_ip="192.168.65.254", model_backend=backend)
+def test_ollama_render_preserves_budget_and_network():
+    resources = d.render(8080, ollama_host_ip="192.168.65.254")
     config = next(
         r["data"]
         for r in resources
         if r["kind"] == "ConfigMap" and r["metadata"]["name"] == "review-config"
     )
-    assert config["MODEL_BACKEND"] == backend
+    assert "MODEL_BACKEND" not in config
     assert config["MODEL_MAX_INPUT_TOKENS"] == "2048"
     assert config["MODEL_MAX_OUTPUT_TOKENS"] == "384"
     assert config["OLLAMA_BASE_URL"] == "http://host.minikube.internal:11434"
@@ -171,4 +170,6 @@ def test_acceptance_uses_ollama_digest_and_rejects_hf_revision():
     }
     v.completed_review(review, identity)
     with pytest.raises(d.DemoError, match="identity"):
-        v.completed_review(review | {"model_revision": v.REVISION}, identity)
+        v.completed_review(
+            review | {"model_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"}, identity
+        )

@@ -77,7 +77,7 @@ Values are applied in this order: Chart defaults, `values-minikube.yaml`, user `
 files, explicit CLI options, then local build image identities. Later values override
 earlier ones; multiple `-f` files are applied in the order supplied. User values are not
 silently imported from the previous release. Repeat your values/options on each upgrade.
-`--port` updates the browser Origin; `--model-backend` and `--storage-class` are
+`--port` updates the browser Origin; `--storage-class` is
 optional explicit overrides. Deployment waits default to 3900 seconds (`--timeout`, also
 accepting the old `--cold-timeout` spelling).
 

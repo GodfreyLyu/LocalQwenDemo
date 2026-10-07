@@ -33,16 +33,16 @@ data.
 
 Never log source, prompt, generated/rejected model text, token IDs, seed, source hash, raw path/URL/query, request or response body, login/user identity, password, cookie, session/CSRF token, secret value, environment dump, or raw exception string. Uvicorn and frontend access logging remain disabled.
 
-## CPU and startup measurement boundaries
+## Inference and startup measurement boundaries
 
-Startup diagnostics distinguish download, cache verification, tokenizer loading, weight
-loading, CPU placement, startup generation validation and final storage checks. Safe
+Startup diagnostics distinguish Ollama metadata verification, tokenizer loading,
+startup generation validation and final storage checks. Safe
 stage/error-type/status/errno fields never expose raw exception text or URLs.
 
-Generation metrics record preparation, generation and first-token time for each fixed
-section, input/generated token counts, and actual worker thread settings. First-token
+Generation metrics record generation and first-content time for each fixed section,
+plus input/generated token counts. Preparation and PyTorch thread fields are null. First-token
 time is included in generation duration; do not add it again. Missing sections remain
-unmeasured. Configuration or a successful BF16 operation does not prove hardware acceleration.
+unmeasured. Ollama placement is observed through `/api/ps` at startup or the last successful review.
 
 For a separately authorized single review, bind cgroup measurements to the same Pod UID,
 container ID/start time and image. Divide the change in CPU usage by elapsed wall time

@@ -762,30 +762,10 @@ def preflight(args, owner):
     reusable = measure("reusable_images", lambda: reusable_images(owner, fingerprints, arch))
     # Unknown cache availability gets the full disk budget, never an assumed cache deduction.
     reusable = reusable if reusable is not None else {}
-    cached_weights = False
-    if owner and "review-backend" in (owner.get("images") or {}):
-
-        def cached_snapshot():
-            result = d.k(
-                "exec",
-                "deployment/review-backend",
-                "-c",
-                "review-backend",
-                "--",
-                "python",
-                "-c",
-                "from app.inference.model import snapshot_has_model_weights; "
-                "from app.config import MODEL_REVISION; "
-                "p='/models/huggingface/hub/models--Qwen--Qwen3-1.7B/snapshots/'+MODEL_REVISION; "
-                "print(int(snapshot_has_model_weights(p)))",
-                check=False,
-            )
-            return result.stdout.strip() == "1" if result.returncode == 0 else None
-
-        cached_weights = measure("cached_weights", cached_snapshot) is True
-    # No new cluster overhead. Per changed image: layers/copies 4 GiB + build scratch 3 GiB.
-    # Remaining 4 GiB transfer scratch + 6 GiB safety/data growth, plus missing weights 4 GiB.
-    disk_need = (10 + 7 * (2 - len(reusable)) + (0 if cached_weights else 4)) * GIB
+    # Per changed image: layers/copies 4 GiB + build scratch 3 GiB.
+    # 10 GiB covers transfer scratch, tokenizer assets and safety/data growth.
+    # Ollama weights live in its independently managed service, not the backend cache.
+    disk_need = (10 + 7 * (2 - len(reusable))) * GIB
     disk_free = measure("host_disk", lambda: shutil.disk_usage(d.ROOT).free)
 
     def vm_disk():
@@ -840,7 +820,6 @@ def preflight(args, owner):
         "vm_disk_free_gib": gib(vm_free),
         "incremental_disk_budget_gib": disk_need / GIB,
         "reusable_images": sorted(reusable),
-        "cached_weights_confirmed": cached_weights,
         "cni": cni,
         "storage_class": sc_name,
         "blockers": errors,

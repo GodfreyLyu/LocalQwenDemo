@@ -28,8 +28,8 @@ from minikube_demo import (
     wait_rollout,
 )
 
-MODEL = "Qwen/Qwen3-1.7B"
-REVISION = "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"
+MODEL = "qwen3:1.7b"
+REVISION = "sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7"
 SOURCE = "def average(values):\n    return sum(values) / len(values)\n"
 
 
@@ -47,7 +47,7 @@ def completed_review(value, identity=None):
     )
     sys.path.insert(0, str(ROOT / "backend"))
     from app.errors import AppError
-    from app.inference.model import validate_review_output
+    from app.inference.review_output import validate_review_output
 
     try:
         validate_review_output(value.get("review_result") or "", SOURCE)
@@ -126,12 +126,7 @@ def cache_inventory(executor=None):
         "import json; from pathlib import Path; from app.config import Settings\n"
         "s=Settings()\n"
         "p=s.hf_home/'hub'/'models--Qwen--Qwen3-1.7B'/'snapshots'/s.model_revision\n"
-        "if s.model_backend == 'ollama':\n"
-        "    files=[p/'tokenizer.json']\n"
-        "else:\n"
-        "    from app.inference.model import snapshot_has_model_weights\n"
-        "    assert snapshot_has_model_weights(str(p))\n"
-        "    files=list(p.glob('*.safetensors'))\n"
+        "files=[p/'tokenizer.json']\n"
         "assert files and all(f.is_file() and f.stat().st_size > 0 for f in files)\n"
         "print(json.dumps({f.name:[f.stat().st_size, f.stat().st_mtime_ns, f.stat().st_ino] "
         "for f in files}))"
@@ -177,21 +172,12 @@ def runtime_checks(owner):
             "op=urllib.request.build_opener(urllib.request.ProxyHandler({}))\n"
             "identity=json.load(op.open('http://127.0.0.1:8000/api/v1/runtime',timeout=5))\n"
             "assert identity['inference_mode']=='real' and identity['accepting_submissions']\n"
-            "result={'machine':platform.machine(),'model_backend':s.model_backend,'identity':identity}\n"
-            "if s.model_backend == 'ollama':\n"
-            "    assert identity['inference_backend']=='ollama'\n"
-            "    assert identity['model_id']==s.ollama_model\n"
-            "    assert identity['model_revision'].startswith('sha256:')\n"
-            "    assert not s.ollama_model_digest or "
+            "result={'machine':platform.machine(),'model_backend':'ollama','identity':identity}\n"
+            "assert identity['inference_backend']=='ollama'\n"
+            "assert identity['model_id']==s.ollama_model\n"
+            "assert identity['model_revision'].startswith('sha256:')\n"
+            "assert not s.ollama_model_digest or "
             "identity['model_revision']==s.ollama_model_digest\n"
-            "else:\n"
-            "    import torch\n"
-            "    assert torch.__version__.split('+')[0]=='2.8.0' and torch.version.cuda is None\n"
-            "    assert identity['model_id']==s.model_id "
-            "and identity['model_revision']==s.model_revision\n"
-            "    torch.set_num_threads(2); a=torch.ones((8,8),dtype=torch.bfloat16)\n"
-            "    assert torch.isfinite(a@a).all()\n"
-            "    result.update(torch=torch.__version__,dtype='bfloat16')\n"
             "print(json.dumps(result))"
         ).stdout
     )

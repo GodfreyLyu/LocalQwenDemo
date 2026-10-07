@@ -313,7 +313,7 @@ The host filesystem and the target Docker node's backing filesystem are checked 
 
 ## Success criteria and real inference acceptance
 
-The minikube overlay retains `OMP_NUM_THREADS=2`; see the [model reference](../reference/model.md) for the model contract and [dated measurements](../reports/minikube-cpu-b-measurement-2026-09-21.md) for its limited evidence.
+See the [model reference](../reference/model.md) for the Ollama contract.
 
 ### Acceptance procedure
 
@@ -324,13 +324,11 @@ address reachable from minikube before `up`. A changed upstream tag must be revi
 and its digest explicitly updated in the overlay; startup rejects a mismatch.
 
 ```bash
-scripts/minikube_demo.sh legacy up --profile minikube --model-backend ollama
+scripts/minikube_demo.sh legacy up --profile minikube
 scripts/minikube_demo.sh legacy verify --profile minikube
-# Explicit CPU baseline / fallback (never automatic):
-scripts/minikube_demo.sh legacy up --profile minikube --model-backend transformers
 ```
 
-Both adapters retain three separate section prompts, 2048 input / 384 total output
+The Ollama adapter retains three separate section prompts, 2048 input / 384 total output
 tokens, a 300-second whole-job timeout, one worker, unchanged validation and account
 isolation. The Ollama adapter calls `/api/chat` with `think=false`, verifies the stock
 chat template and GGUF vocabulary/merges against the pinned HF tokenizer, and checks
@@ -338,18 +336,13 @@ chat template and GGUF vocabulary/merges against the pinned HF tokenizer, and ch
 weights stay on the host; only tokenizer assets are required in the model-cache PVC.
 Runtime and saved results expose the actual Ollama digest rather than the HF revision.
 
-The explicit Transformers path keeps `Qwen/Qwen3-1.7B` / HF revision
-`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`, Torch 2.8.0 CPU, BF16 and two threads.
-The existing image and resource reservations retain capacity for that fallback;
-Ollama migration alone does not reduce those reservations.
-
 `verify` checks the homepage and security headers through the same localhost entry point, live/ready JSON, and 401 responses for unauthenticated API requests. It registers/logs in a dedicated account, checks Cookie/CSRF behavior and rejection of an incorrect Origin, and submits the fixed `average(values)` sample. Acceptance requires a real `completed` result, the correct model/revision, valid Summary/Findings/Suggestions, the existing quality checks, and mention of the sample's empty-input/division-by-zero issue. A failed, timed-out, or invalid_model_response result, HTTP 200 alone, or a Running Pod is not success. The script does not retry blindly.
 
 It then checks history, repeat login, and isolation from a second user. Once the queue
 is idle, it recreates only this project's backend and DynamoDB Pods. It checks that the
 existing Cookie, account and history still work and that model identity is unchanged. It
-also verifies the size, modification time and inode of the active adapter's cached
-files: tokenizer files for Ollama or weights for Transformers. It records review
+also verifies the size, modification time and inode of the cached
+tokenizer files. It records review
 duration, cgroup current/peak memory, and warm recreation time. Unavailable measurements
 are recorded as `not_measured`.
 
@@ -415,45 +408,23 @@ termination signal and waits up to five seconds. If the child is still running, 
 that same process and waits up to another five seconds. The interactive `port-forward`
 command uses the same checks and cleanup.
 
-## Incomplete model cache and startup diagnostics
+## Ollama and tokenizer startup diagnostics
 
-A download progress bar reaching 100% does not establish a complete snapshot. The backend
-validates the cached `Qwen/Qwen3-1.7B` snapshot at revision
-`70d244cc86ccca08cf5af4e1e306ecf908b1ad5e` before reusing it and again after a download
-returns. An indexed snapshot must contain every referenced shard, with readable, structurally
-valid safetensors metadata and the exact tensor names assigned by the index. Missing files,
-broken links, unreadable files, invalid indexes, truncated weights, and mismatched tensor maps
-are rejected. Validation reads metadata without materializing model tensors. The existing
-cache-reuse checks in diagnostics and verification use the same validator.
+The backend verifies the installed Ollama model digest, template and tokenizer before
+becoming ready. It caches only the pinned Hugging Face `tokenizer.json`; Ollama owns
+model weights. A missing or changed Ollama model fails startup rather than selecting
+another engine. Transient service availability checks retry for up to 60 seconds.
 
-A complete cache is reused offline. An incomplete cache triggers one official downloader call
-using the same persistent cache, without `force_download`; existing blobs and resumable downloads
-remain available. If downloading or subsequent validation fails, startup fails. There is no
-application-level retry loop and no fallback to another model, revision, dtype, or inference mode.
-Never rename an `.incomplete` file to a weight file or link an unverified blob into a snapshot.
+`startup_stage_started`, `startup_stage_completed` and `startup_stage_failed` identify
+`ollama_validation`, `tokenizer_load`, `startup_generation` and storage stages.
+Safe diagnostic fields contain stage, error code/type, numeric errno/status and retry
+counts. Raw URLs, exceptions, credentials, source and model output are never attached.
+Historical logs may still contain retired weight-cache stages.
 
-`logs --profile NAME` includes `model_cache_incomplete`, `startup_stage_started`,
-`startup_stage_completed`, and `startup_stage_failed` events. Bounded `stage` values distinguish
-`cache_lookup`, `model_download`, `cache_validation`, `tokenizer_load`, `weights_load`,
-`cpu_placement`, and `startup_generation`. Coordinator failures also distinguish initial storage,
-queue recovery, and `post_model_storage`. Diagnostics include exception type, numeric `errno` or
-HTTP status when available, and a stable cache reason. Exception messages, download URLs, tokens,
-credentials, source, prompts, and model text are not attached to these events. The public
-readiness contract remains HTTP 503 with `startup_or_storage_failure`; internal diagnostics are
-not exposed through the browser API.
-
-For a controlled cache repair, first verify the target, ownership chain, PVC, current Pod identity,
-startup deadline, and an idle queue. If a long download needs a temporary Pod, pause only the owned
-backend after checking the queue, use an explicitly owned non-root temporary Pod with the existing
-model PVC, and do not load a second model. Keep it outside ready Service endpoints. Always clean
-up that exact temporary resource and restore the backend replica count, including on failure.
-Use the official downloader for the pinned missing file, verify it against the official revision's
-size/hash and index, and preserve existing valid shards. Do not delete PVCs, reset history, rotate
-Secrets, or redeploy DynamoDB/frontend for a model-cache repair.
-
-After updating only the backend image, require complete shards, a completed startup generation
-check, the `model_ready` event, HTTP 200 from `/health/ready`, and Pod Ready. These establish backend
-startup only; a real completed review and browser acceptance remain separate checks.
+Preserve existing PVCs, cached files and model pins when diagnosing failures. Check the
+configured service endpoint, installed digest and pinned tokenizer before any repair.
+A completed startup probe, `model_ready`, HTTP 200 from `/health/ready` and Pod Ready
+establish startup only; real review and browser acceptance are separate checks.
 
 ## Deployment state and interrupted-attempt recovery
 
