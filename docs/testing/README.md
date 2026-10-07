@@ -2,7 +2,8 @@
 
 [Documentation index](../README.md)
 
-The maintained deployment is a local CPU service on an existing minikube cluster.
+The maintained deployment runs on an existing Minikube cluster and defaults to an
+independent Ollama service. The Transformers CPU backend remains an explicit option.
 Offline tests exercise product behavior and deployment safety without a cluster,
 model download or real inference. Operational acceptance requires separate authorization and real results.
 
@@ -78,10 +79,14 @@ all maintained script regressions and manifest validation. It fails on the first
 stage. It never builds container images, deploys, migrates actual state or invokes real
 inference. Do not export `RUN_REAL_MODEL=1` during routine checks.
 
-On every push to any branch and on pull requests, GitHub CI runs these checks and
-the fake-model browser suite. It can also be called by another workflow. Container
-images are built locally for minikube; CI does not build or push images, deploy,
-federate credentials or provision cloud resources.
+The `Quality checks` workflow runs on pull requests to `main`, manual dispatch and
+calls from other workflows. It runs the offline checks and fake-model browser suite,
+plus Helm, release-automation and Kubernetes schema checks.
+
+After a merge to `main`, `Release candidate` reruns quality checks, builds changed
+backend, frontend and Ollama images, and publishes them to GHCR. It proposes a reviewed
+deployment snapshot; Argo CD reconciles approved snapshots in the cluster. CI does not
+access the cluster or establish real-model acceptance. See the [GitOps guide](../guides/gitops.md).
 
 ## Explicit real-model smoke and quality evaluation
 
@@ -92,8 +97,10 @@ not successful reviews. The default gate does not run real inference.
 
 ## Authorized environment acceptance
 
-Follow [the minikube guide](../guides/minikube-legacy.md). `up` establishes only
-readiness. `verify` requires records that match the deployed build and uses normal
+Follow the [local Helm guide](../guides/minikube-demo.md) for the development CLI or
+the [release guide](../guides/helm-release.md) for published deployments. The CLI
+command `up` establishes only readiness. `verify` requires records that match the
+deployed build and uses normal
 authentication. It must complete a real review that passes the quality checks, then
 verify account isolation and persistence. It may create accounts, write reviews and
 restart owned workloads. Do not run a full verify just to inspect a performance problem.

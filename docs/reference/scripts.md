@@ -130,6 +130,8 @@ validates the actual minikube render. Tests use temporary state, API doubles and
 loopback servers; no real cluster or model is needed.
 
 Browser tests are separate locally; CI also runs them with the fake-model harness.
-CI's pull-request image checks build local images without publishing; these are not
-part of `check.sh`. No workflow deploys or provisions a cloud environment. See the
-[test matrix](../testing/README.md#test-matrix) for boundaries and manual acceptance.
+Pull-request CI runs application and configuration checks. After a merge to `main`,
+the release workflow reruns those checks, builds changed images and publishes them to
+GHCR before proposing a deployment snapshot. Those release steps are separate from
+`check.sh`; CI has no cluster access. See the [GitOps guide](../guides/gitops.md) and
+[test matrix](../testing/README.md#test-matrix) for deployment and acceptance boundaries.

@@ -190,17 +190,21 @@ safe across workers. None of those distributed capabilities is implemented here.
 
 ## Deployment and persistence
 
-`deploy/kustomize/overlays/minikube` is the sole maintained deployment overlay. Its local
-base describes hardened application resources. A namespace-scoped signing Secret is
-created once by the deployment script and reused. Three independent PVCs hold history/
-queue/sessions, model cache and DynamoDB Local accounts. Existing supported hostpath
-storage and CNI are inspected, never installed or reconfigured by the scripts.
+The application and independent Ollama service have separate Helm Charts under
+`deploy/helm`. Approved release snapshots pin their images. Deploy with standard Helm
+commands or let Argo CD reconcile the release branch, using one manager per deployment.
+The application references a stable external signing Secret and uses three PVCs for
+history/queue/sessions, the backend model cache and DynamoDB Local accounts. Ollama
+has its own model PVC. See the [Helm guide](../guides/helm-release.md) and
+[GitOps guide](../guides/gitops.md) for ownership and storage retention.
 
-The minikube helpers verify profile/home/cluster identity, use a private kubeconfig and
-shared operation lock, and enforce namespace UID and random ownership markers. Source
-fingerprints, unique local image tags and image IDs bind deployment/verification to the
-actual checkout. [State import and cleanup](../guides/minikube-legacy.md#state-and-ownership-protection)
-work across checkout moves. Readiness and acceptance have independent reports.
+`deploy/kustomize/overlays/minikube` remains available for legacy deployments. Its
+helpers verify profile/home/cluster identity, use a private kubeconfig and shared
+operation lock, and enforce namespace UID and random ownership markers. Source
+fingerprints, image tags and image IDs bind records to the deployed build.
+[State import and cleanup](../guides/minikube-legacy.md#state-and-ownership-protection)
+work across checkout moves. Legacy commands must not manage Helm or Argo CD resources.
+Readiness and acceptance have independent reports.
 
 ## Observability flow
 

@@ -190,10 +190,10 @@ If changing the local port, also change `config.allowedOrigin` in the environmen
 file, run the Helm upgrade, and use the matching forwarding port. Origin matching
 is exact; do not substitute `127.0.0.1` in the browser URL.
 
-### Future Argo CD integration
+### Argo CD integration
 
-The same Chart can be rendered by Argo CD with the release values followed by
-environment overrides. Templates use no random secret generation, host discovery,
+Argo CD can render the same Chart with release values followed by environment
+overrides. The [GitOps guide](gitops.md) covers installation, first sync and migration. Templates use no random secret generation, host discovery,
 cluster `lookup`, or deployment hooks. Prepare external Secrets independently.
 Argo CD uses Helm to render resources and owns their synchronization; its instances
 are not ordinary Helm releases. Use one manager for each deployment, and validate

@@ -57,7 +57,7 @@ change resources or data. Offline tests do not verify the current cluster, real-
 quality or live cleanup.
 
 Repository source, manifests, CLI help and tests define current behavior.
-Historical cloud sections are archival only. Private state, credentials, user histories,
-weights and runtime logs remain outside Git. DynamoDB Local retains SDK names but requires
+Retired cloud deployment records remain in Git history. Private state, credentials,
+user histories, weights and runtime logs remain outside Git. DynamoDB Local retains SDK names but requires
 explicit local endpoints and invalid credentials, with metadata/shared-configuration
 fallback disabled.

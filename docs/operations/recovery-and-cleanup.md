@@ -2,7 +2,9 @@
 
 [Documentation index](../README.md)
 
-This runbook covers the local CPU service deployed to an existing minikube cluster.
+This runbook covers application startup and recovery for legacy Kustomize deployments.
+For Helm lifecycle operations, use the [Helm guide](../guides/helm-release.md); for
+Argo CD, use the [GitOps guide](../guides/gitops.md).
 Start with read-only diagnostics on an explicitly selected profile. Inspection does not
 authorize new inference, restarts, configuration changes or deletion. Preserve data and
 reports, including failed and incomplete results.
