@@ -45,8 +45,8 @@ For an offline install, set `model.pullIfMissing=false` in a local values file a
 that file on every upgrade. Install without `--wait`. Then copy a complete Ollama model
 store into `/models` in the `ollama` container, copying blobs before the `manifests/`
 tree. The store must include the pinned model and all its referenced blobs. The process
-waits up to `model.waitSeconds` for the model; readiness remains false until GPU
-validation completes. Alternatively prepare a PVC first and set
+waits up to `model.waitSeconds` for the model; readiness remains false until
+installation and digest validation complete. Alternatively prepare a PVC first and set
 `persistence.existingClaim`.
 
 ## Readiness and GPU verification
@@ -57,17 +57,15 @@ ownership of the PVC root; no privileged workload or hostPath is used. Imported
 files must also be readable by UID 10001. Set `volumePermissions.enabled=false`
 when the storage system already supplies the correct permissions.
 
-- Startup: wait for the API, verify the installed model digest, perform an actual
-  short generation, and check `/api/ps` for the matching model with
-  `size_vram >= size > 0` (Ollama's full GPU placement report).
-- Readiness: repeat the resident model digest/GPU check. CPU fallback, partial
-  offload and unloaded models are not admitted to the Service.
-- Liveness: check the Ollama process and API, without performing inference.
-- Recovery: retain the model in memory; if a client's `keep_alive` causes idle
-  unloading, reload and reverify it. A failed GPU check causes the supervisor to
-  exit, allowing Kubernetes to restart it.
-- `helm test`: generate text through the Service and independently check model
-  identity and GPU residency. The test Pod does not request a GPU itself.
+- Startup: wait for the API and optionally install/verify the bootstrap model digest.
+- Readiness/liveness: check the process and API. After preparation, no fixed model
+  needs to be resident. Unloading, CPU placement or another client's model selection
+  does not mark the entire Ollama service unavailable.
+- Recovery: normal model eviction never triggers an automatic bootstrap-model reload.
+- `helm test` / optional Argo PostSync: explicit bootstrap-model GPU inference checks,
+  separate from readiness. These do not establish placement for Review's chosen model.
+- Set `model.bootstrap=false` to skip initial model management and its GPU hooks.
+  Manage/download models through Ollama independently; Review probes its own selection.
 
 `100% GPU` describes layer placement, not zero CPU use. CPU work and host memory
 remain necessary. The readiness check is not an accuracy evaluation or load test.
@@ -111,7 +109,8 @@ The application already defaults to this Service; the optional overlay above
 reduces backend resources because the model runs in its own Pod. The Minikube
 profile disables NetworkPolicy for the local CNI. With an enforcing CNI, enable
 policies: default namespace/release selectors allow access to this Ollama Pod.
-The model name and digest must agree between the two Charts. Use standard Helm
+The Review model and optional bootstrap model may differ; install Review's chosen
+model before restarting its backend. Use standard Helm
 commands for krunkit; the optional local build script requires the Docker driver.
 
 ## Upgrade, rollback and storage
@@ -146,6 +145,6 @@ With Minikube's `standard` StorageClass, this also deletes the stored model data
 The main release workflow builds this image for linux/arm64 after PR checks and
 merge, publishes a GHCR digest, and includes this Chart in the reviewed deployment
 snapshot. Argo CD uses values-release.yaml plus values-argocd.yaml; its PostSync
-Job verifies GPU inference through the Service. The Job is disabled for normal
+Job verifies bootstrap-model GPU inference through the Service when bootstrap is enabled. The Job is disabled for normal
 Helm installs, where helm test remains available. See the
 [GitOps guide](../../../docs/guides/gitops.md) for first installation and migration.

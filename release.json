@@ -1,40 +1,40 @@
 {
   "schemaVersion": 3,
-  "sourceSha": "39472b4c008719c51b434fade9a470daa94344ed",
+  "sourceSha": "463a2b8bd347802638f7e0f88513e2f8f8cf0d1e",
   "repository": "GodfreyLyu/LocalQwenDemo",
   "inputs": {
-    "backend": "37135da3882e91338741a45d5a1b49f5bf2dfe9020bea13611141f8e3bf26f0e",
-    "frontend": "c6ba71d3dbdcf3f51cf0e995d60b50c799ebfddaee8c80288b41d5f1edf49073",
-    "ollama": "b284e35686103ca6ca9d0a20a2c90eaa73bee099db0f4c803134ceb220d6b4c6",
-    "deployment": "afd85caf2a3ad87e8d80bcce758217e58885a415d7939ec02d4a92ddb46d349f"
+    "backend": "ff8cfb2680a74ebb41eea2a701745924ca03607264bd66067bf2bdaf6b1c1a15",
+    "frontend": "586ccdec39ac9768b37ba084981554494668a0e6ac26adba1583148ecc6eb1c4",
+    "ollama": "f041dc402fcaa346bca837eb11bcc552b38866f0d60521846d5b081fb6817c62",
+    "deployment": "eec1db6b34fa4c53990f1f58af5aaf65bd3ccc7fb639662a43f2b9c07c1fafc2"
   },
   "images": {
     "backend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-backend",
-      "sourceSha": "39472b4c008719c51b434fade9a470daa94344ed",
-      "digest": "sha256:1393f4cff8359a5dd452d42677903939738098ab3157c0cbc9deef6ee34079a6"
+      "sourceSha": "463a2b8bd347802638f7e0f88513e2f8f8cf0d1e",
+      "digest": "sha256:e50c70b32ccee25f2b93400f3a88683d0ed29c57265d13c0ef2655ed60553038"
     },
     "frontend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-frontend",
-      "sourceSha": "39472b4c008719c51b434fade9a470daa94344ed",
-      "digest": "sha256:74759601498ff233f0034d9bc5fb8d4fea8dfe5ed8805c6dcd9042072e33dcf1"
+      "sourceSha": "463a2b8bd347802638f7e0f88513e2f8f8cf0d1e",
+      "digest": "sha256:1f393813ed1ca76bf517888d80cada72677a8f38f477a5db75950b481f658448"
     },
     "ollama": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-ollama",
-      "sourceSha": "75e22cc4751e4af7f9073c2d6140b023e2a1d035",
-      "digest": "sha256:4c15e1ef07aa8112ddc2b101eaf0694fc496237d0f470f2cdcaf655433d55e33"
+      "sourceSha": "463a2b8bd347802638f7e0f88513e2f8f8cf0d1e",
+      "digest": "sha256:82ec70bf298558067e1f303e0f86241f4c4656a7ece2e148f0da17aac2cdfadd"
     }
   },
   "candidate": {
-    "version": "0.1.3-rc.8",
-    "branch": "release-candidate/0.1.3-rc.8",
-    "runId": "37597248714",
-    "runNumber": 8,
-    "baseSha": "84218cb3b4b99bb326a8f351ba1da130ad9df1cc"
+    "version": "0.1.3-rc.10",
+    "branch": "release-candidate/0.1.3-rc.10",
+    "runId": "37639904919",
+    "runNumber": 10,
+    "baseSha": "cdf7cabb863eb88b75658ca45dc891a039eeb762"
   },
   "chartVersions": {
-    "local-review": "0.1.3-rc.8",
+    "local-review": "0.1.3-rc.10",
     "local-ollama": "0.1.1"
   },
-  "chartVersion": "0.1.3-rc.8"
+  "chartVersion": "0.1.3-rc.10"
 }
