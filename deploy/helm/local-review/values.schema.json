@@ -404,26 +404,16 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "backend",
         "ollamaBaseUrl",
         "ollamaModel",
         "ollamaModelDigest",
         "id",
         "revision",
-        "dtype",
         "maxInputTokens",
         "maxOutputTokens",
-        "cpuThreads",
         "timeoutSeconds"
       ],
       "properties": {
-        "backend": {
-          "type": "string",
-          "enum": [
-            "ollama",
-            "transformers"
-          ]
-        },
         "ollamaBaseUrl": {
           "type": "string"
         },
@@ -442,13 +432,6 @@
           "type": "string",
           "pattern": "^[a-f0-9]{40}$"
         },
-        "dtype": {
-          "type": "string",
-          "enum": [
-            "bfloat16",
-            "float32"
-          ]
-        },
         "maxInputTokens": {
           "type": "integer",
           "minimum": 128,
@@ -458,11 +441,6 @@
           "type": "integer",
           "minimum": 3,
           "maximum": 1024
-        },
-        "cpuThreads": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 16
         },
         "timeoutSeconds": {
           "type": "integer",

@@ -19,9 +19,6 @@ data:
   HOME: /tmp
   INFERENCE_TIMEOUT_SECONDS: {{ .Values.model.timeoutSeconds | toString | quote }}
   MAX_RETRIES: {{ .Values.config.maxRetries | toString | quote }}
-  MODEL_BACKEND: {{ .Values.model.backend | toString | quote }}
-  MODEL_CPU_THREADS: {{ .Values.model.cpuThreads | toString | quote }}
-  MODEL_DTYPE: {{ .Values.model.dtype | toString | quote }}
   MODEL_ID: {{ .Values.model.id | toString | quote }}
   MODEL_INFERENCE_CONCURRENCY: '1'
   MODEL_MAX_INPUT_TOKENS: {{ .Values.model.maxInputTokens | toString | quote }}
