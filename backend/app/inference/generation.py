@@ -61,15 +61,6 @@ def check_deadline(stop: threading.Event, deadline: float, *, now: float | None 
         raise AppError("inference_timeout", "Review timed out. Try a shorter submission.", 504)
 
 
-REVIEW_GENERATION_PARAMETERS = {
-    "temperature": 0.7,
-    "top_p": 0.8,
-    "top_k": 20,
-    "min_p": 0.0,
-    "repeat_penalty": 1.0,
-}
-
-
 SECTION_TOKEN_WEIGHTS = {"summary": 9, "findings": 22, "suggestions": 17}
 
 

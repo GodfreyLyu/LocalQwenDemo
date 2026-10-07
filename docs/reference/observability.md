@@ -35,7 +35,7 @@ Never log source, prompt, generated/rejected model text, token IDs, seed, source
 
 ## Inference and startup measurement boundaries
 
-Startup diagnostics distinguish Ollama metadata verification, tokenizer loading,
+Startup diagnostics distinguish Ollama capability/context verification,
 startup generation validation and final storage checks. Safe
 stage/error-type/status/errno fields never expose raw exception text or URLs.
 

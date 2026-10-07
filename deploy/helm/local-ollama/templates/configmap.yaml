@@ -1,5 +1,5 @@
-{{- if lt (int .Values.startupTimeoutSeconds) (int (add .Values.model.waitSeconds 240)) }}
-{{- fail "startupTimeoutSeconds must allow model.waitSeconds plus 240 seconds for GPU loading" }}
+{{- if and .Values.model.bootstrap (lt (int .Values.startupTimeoutSeconds) (int (add .Values.model.waitSeconds 240))) }}
+{{- fail "startupTimeoutSeconds must allow model.waitSeconds plus 240 seconds for model preparation" }}
 {{- end }}
 apiVersion: v1
 kind: ConfigMap
@@ -16,3 +16,4 @@ data:
   MODEL_PULL_IF_MISSING: {{ .Values.model.pullIfMissing | toString | quote }}
   MODEL_WAIT_SECONDS: {{ .Values.model.waitSeconds | toString | quote }}
   OLLAMA_CONTEXT_LENGTH: {{ .Values.model.context | toString | quote }}
+  MODEL_BOOTSTRAP: {{ .Values.model.bootstrap | toString | quote }}

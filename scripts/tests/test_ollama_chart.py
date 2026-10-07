@@ -92,7 +92,7 @@ def test_first_start_pulls_but_pvc_restart_reuses_model():
     runtime.prepare(api, CONFIG, threading.Event())
     assert sum(path == "/api/pull" for path, _ in api.calls) == 1
     payloads = [payload for path, payload in api.calls if path == "/api/chat"]
-    assert all(p["keep_alive"] == -1 and p["options"]["num_gpu"] == 999 for p in payloads)
+    assert not payloads  # Bootstrap installs only; Review selects and loads its own model.
 
 
 def test_offline_missing_model_never_downloads(monkeypatch):
@@ -217,3 +217,69 @@ def test_application_cluster_egress_is_scoped_to_the_inference_release(profiles)
             },
         }
     ]
+
+
+def test_model_bootstrap_can_be_disabled_without_any_model_loading():
+    api = API()
+    api.available = api.resident = False
+    runtime.prepare(api, replace(CONFIG, bootstrap=False), threading.Event())
+    assert api.calls == [("/api/version", None)]
+    resources = render("model.bootstrap=false")
+    assert resources["ConfigMap", "review-ollama-config"]["data"]["MODEL_BOOTSTRAP"] == "false"
+    assert not any(kind in {"Job", "Pod"} for kind, _ in resources)
+
+
+@pytest.mark.parametrize(
+    "resident,available,vram", [(False, False, 0), (True, True, 0), (True, True, 50)]
+)
+def test_readiness_does_not_depend_on_bootstrap_model_residency(resident, available, vram):
+    import io
+    from types import SimpleNamespace
+
+    api = API()
+    api.resident, api.available = resident, available
+    api.model["size_vram"] = vram
+    prepared = threading.Event()
+    prepared.set()
+    health = runtime.handler(api, CONFIG, SimpleNamespace(poll=lambda: None), prepared)
+    request = health.__new__(health)
+    request.path = "/ready"
+    request.wfile = io.BytesIO()
+    statuses = []
+    request.send_response = statuses.append
+    request.send_header = lambda *args: None
+    request.end_headers = lambda: None
+    request.do_GET()
+    assert statuses == [200]
+    assert api.calls == [("/api/version", None)]
+
+
+def test_review_chart_passes_model_options_and_rejects_oversubscribed_context():
+    chart = ROOT / "deploy/helm/local-review"
+    command = [
+        "helm",
+        "template",
+        "local-review",
+        str(chart),
+        "--set",
+        "model.ollamaModel=llama3.2:1b",
+        "--set",
+        "model.contextTokens=8192",
+        "--set-json",
+        "model.temperature=0.1",
+        "--set",
+        "model.ollamaModelDigest=",
+    ]
+    docs = list(yaml.safe_load_all(subprocess.check_output(command, text=True)))
+    data = next(
+        d["data"]
+        for d in docs
+        if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "review-config"
+    )
+    assert data["OLLAMA_MODEL"] == "llama3.2:1b"
+    assert data["MODEL_CONTEXT_TOKENS"] == "8192"
+    assert data["MODEL_TEMPERATURE"] == "0.1"
+    assert "OLLAMA_MODEL_DIGEST" not in data
+    assert "MODEL_ID" not in data and "MODEL_REVISION" not in data
+    result = subprocess.run(command + ["--set", "model.contextTokens=2048"], capture_output=True)
+    assert result.returncode != 0

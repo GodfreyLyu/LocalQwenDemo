@@ -63,7 +63,6 @@ def main():
         aws_region="us-east-1",
         dynamodb_table="demo-users",
         dynamodb_endpoint_url="http://127.0.0.1:8001",
-        hf_home=ROOT / ".local" / "models" / "huggingface",
         ollama_base_url=args.ollama_base_url,
     )
     with mock_aws():

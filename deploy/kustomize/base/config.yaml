@@ -7,12 +7,9 @@ data:
   ALLOWED_ORIGIN: http://localhost:8080
   COOKIE_SECURE: 'false'
   DATA_DIR: /data
-  HF_HOME: /models/huggingface
   OLLAMA_BASE_URL: http://review-ollama.local-inference.svc.cluster.local:11434
   OLLAMA_MODEL: qwen3:1.7b
   OLLAMA_MODEL_DIGEST: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
-  MODEL_ID: Qwen/Qwen3-1.7B
-  MODEL_REVISION: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
   MODEL_MAX_INPUT_TOKENS: '2048'
   MODEL_MAX_OUTPUT_TOKENS: '384'
   MODEL_INFERENCE_CONCURRENCY: '1'
@@ -29,5 +26,11 @@ data:
   AWS_EC2_METADATA_DISABLED: 'true'
   AWS_CONFIG_FILE: /dev/null
   AWS_SHARED_CREDENTIALS_FILE: /dev/null
-  HF_HUB_DISABLE_TELEMETRY: '1'
   HOME: /tmp
+  MODEL_CONTEXT_TOKENS: "4096"
+  MODEL_KEEP_ALIVE: "5m"
+  MODEL_TEMPERATURE: "0.7"
+  MODEL_TOP_P: "0.8"
+  MODEL_TOP_K: "20"
+  MODEL_MIN_P: "0"
+  MODEL_REPEAT_PENALTY: "1"

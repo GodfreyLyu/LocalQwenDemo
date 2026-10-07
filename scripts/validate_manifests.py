@@ -31,8 +31,8 @@ def validate():
     assert (
         cfg.items()
         >= {
-            "MODEL_ID": "Qwen/Qwen3-1.7B",
-            "MODEL_REVISION": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+            "OLLAMA_MODEL": "qwen3:1.7b",
+            "MODEL_CONTEXT_TOKENS": "4096",
             "MODEL_INFERENCE_CONCURRENCY": "1",
             "MODEL_MAX_INPUT_TOKENS": "2048",
             "MODEL_MAX_OUTPUT_TOKENS": "384",

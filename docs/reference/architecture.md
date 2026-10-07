@@ -95,7 +95,11 @@ limit, the backend may delete only its incomplete trailing fragment after the la
 complete terminator. It never adds a continuation call or alters an earlier complete
 sentence or list item.
 
-Qwen3's tokenizer chat template is always invoked with the hard `enable_thinking=False` switch, so the application neither requests nor parses chain-of-thought. Each section uses the pinned model's explicit non-thinking sampling parameters and a stable SHA-256-derived seed inside an isolated CPU RNG context. Exiting the context restores the process RNG state, and neither seed nor source-derived hash is logged or persisted. Repeatability is scoped to the same dependency, CPU, and runtime stack.
+Ollama renders the selected model's native template and tokenizes each prompt. Requests
+set `think=false`, `truncate=false` and `shift=false`; the backend rejects unexpected
+thinking/tool output and checks actual prompt token counts before saving a result.
+Sampling settings are centralized and each section uses a stable digest-derived seed.
+See [model configuration](model.md) for budgets, startup checks and model switching.
 
 DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_thread`; model execution never runs on the main event loop. One backend replica and the `Recreate` rollout strategy preserve this ownership. There is no HPA, distributed queue, conversational store, external LLM, or code execution path.
 
@@ -104,7 +108,7 @@ DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_threa
 | PVC                  | Mounted by                       | Data / configured size                                                |
 | -------------------- | -------------------------------- | --------------------------------------------------------------------- |
 | `review-history`     | Backend at `/data`               | `reviews.sqlite3`: queue, review bodies, history and sessions; 10 GiB |
-| `review-model-cache` | Backend at `/models/huggingface` | Pinned snapshot, tokenizer and download cache; 12 GiB                 |
+| `review-model-cache` | Backend at `/models/huggingface` | Legacy cache retained but unused by Ollama adapter; 12 GiB                 |
 | `review-dynamodb`    | DynamoDB Local at `/data`        | Account records and password hashes; 1 GiB                            |
 
 The signing key is a separate `review-secrets` Kubernetes Secret. Host-side deployment
@@ -250,7 +254,7 @@ Use these sources when auditing or changing the design:
 | HTTP protection and error mapping | [middleware.py](../../backend/app/api/middleware.py), [http_errors.py](../../backend/app/api/http_errors.py) |
 | Durable admission, recovery and sessions             | [storage.py](../../backend/app/persistence/storage.py)                                                       |
 | Single executor, readiness and cancellation/draining | [coordinator.py](../../backend/app/coordinator.py)                                               |
-| Inference and tokenizer verification | [ollama.py](../../backend/app/inference/ollama.py) |
+| Inference and model/context verification | [ollama.py](../../backend/app/inference/ollama.py) |
 | Prompt, output and generation policy | [prompts.py](../../backend/app/inference/prompts.py), [review_output.py](../../backend/app/inference/review_output.py), [generation.py](../../backend/app/inference/generation.py) |
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |
 | Deployment composition                               | [Minikube overlay](../../deploy/kustomize/overlays/minikube/kustomization.yaml)                  |

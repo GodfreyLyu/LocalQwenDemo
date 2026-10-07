@@ -54,7 +54,7 @@ def test_clean_snapshot_removes_legacy_executable_files(source, tmp_path):
     assert not (root / "docs").exists()
 
 
-@pytest.mark.parametrize("change", ["image", "values-order", "destination", "hook", "model"])
+@pytest.mark.parametrize("change", ["image", "values-order", "destination", "hook"])
 def test_gitops_contract_rejects_drift(source, tmp_path, change):
     manifest = released(source, tmp_path)
     root = tmp_path / "release"
@@ -74,9 +74,6 @@ def test_gitops_contract_rejects_drift(source, tmp_path, change):
     elif change == "hook":
         path = root / snapshot.OLLAMA_CHART / "templates/gpu-verification-job.yaml"
         path.write_text(path.read_text().replace("PostSync", "PreSync"))
-    else:
-        path = root / snapshot.OLLAMA_CHART / "values.yaml"
-        path.write_text(path.read_text().replace("qwen3:1.7b", "qwen3:other"))
     with pytest.raises(ValueError):
         validate_snapshot(root, manifest)
 
@@ -102,3 +99,11 @@ def test_pr_quality_is_required_before_main_image_publication():
     ]
     assert protection["enforce_admins"]
     assert protection["required_pull_request_reviews"]["required_approving_review_count"] == 0
+
+
+def test_review_model_is_independent_from_bootstrap_model(source, tmp_path):
+    manifest = released(source, tmp_path)
+    root = tmp_path / "release"
+    path = root / snapshot.OLLAMA_CHART / "values.yaml"
+    path.write_text(path.read_text().replace("qwen3:1.7b", "qwen3:other"))
+    validate_snapshot(root, manifest)

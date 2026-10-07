@@ -17,7 +17,7 @@ ENV HOME=/tmp/ollama-home \
     OLLAMA_VULKAN=1 \
     OLLAMA_NUM_PARALLEL=1 \
     OLLAMA_MAX_LOADED_MODELS=1 \
-    OLLAMA_KEEP_ALIVE=-1 \
+    OLLAMA_KEEP_ALIVE=5m \
     VK_DRIVER_FILES=/usr/share/vulkan/icd.d/virtio_icd.aarch64.json
 USER 10001:10001
 EXPOSE 11434 11435

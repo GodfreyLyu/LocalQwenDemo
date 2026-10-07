@@ -70,7 +70,8 @@
         "context",
         "cpuThreads",
         "pullIfMissing",
-        "waitSeconds"
+        "waitSeconds",
+        "bootstrap"
       ],
       "properties": {
         "name": {
@@ -98,6 +99,9 @@
           "type": "integer",
           "minimum": 30,
           "maximum": 3600
+        },
+        "bootstrap": {
+          "type": "boolean"
         }
       }
     },

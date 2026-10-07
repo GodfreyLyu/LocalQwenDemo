@@ -74,7 +74,8 @@ class ReviewService:
             raise AppError(
                 self.coordinator.state, "The model is not ready. Please retry shortly.", 503
             )
-        if self.model.count_tokens(source, language) > self.settings.model_max_input_tokens:
+        count = self.model.count_tokens(source, language)
+        if count is not None and count > self.settings.model_max_input_tokens:
             raise AppError(
                 "token_limit", "Source exceeds the model token limit. Try a smaller section.", 422
             )
