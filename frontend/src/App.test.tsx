@@ -520,8 +520,11 @@ it.each([
 );
 
 it('labels simulated execution and stored results, without real-model timing claims', async () => {
-  let finish: (value: Response) => void = () => {};
-  mockWorkspace((path, options) => {
+  let finish!: (value: Response) => void;
+  const detail = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const fetcher = mockWorkspace((path, options) => {
     if (path === '/api/v1/runtime')
       return response({
         ...runtimeInfo,
@@ -534,10 +537,7 @@ it('labels simulated execution and stored results, without real-model timing cla
       });
     if (path === '/api/v1/reviews' && options?.method === 'POST')
       return response({ review_id: 'review-1', status: 'running' }, 202);
-    if (path === '/api/v1/reviews/review-1')
-      return new Promise((resolve) => {
-        finish = resolve;
-      });
+    if (path === '/api/v1/reviews/review-1') return detail;
   });
   render(<App />);
   const editor = await screen.findByLabelText('Source code');
@@ -552,6 +552,13 @@ it('labels simulated execution and stored results, without real-model timing cla
   expect(
     screen.queryByText(/Rough model-time estimate:/),
   ).not.toBeInTheDocument();
+  // The running label can render before the detail-polling effect starts.
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/v1/reviews/review-1',
+      expect.any(Object),
+    ),
+  );
   finish(
     response({
       ...review,
