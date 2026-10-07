@@ -88,7 +88,7 @@ AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local .venv/bin/uvicorn app.main:c
   --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
 ```
 
-These literal dummy credentials are only for loopback DynamoDB Local. The runtime accepts no regional/cloud endpoint and disables host SDK profiles, metadata, shared configuration and proxy fallback. Run `npm --prefix frontend run dev` in a separate terminal from the project root. Check readiness with `curl -i http://127.0.0.1:8000/health/ready`; start Ollama with `qwen3:1.7b` installed first. The backend downloads only the pinned tokenizer.
+These literal dummy credentials are only for loopback DynamoDB Local. The runtime accepts no regional/cloud endpoint and disables host SDK profiles, metadata, shared configuration and proxy fallback. Run `npm --prefix frontend run dev` in a separate terminal from the project root. Check readiness with `curl -i http://127.0.0.1:8000/health/ready`; start Ollama with `qwen3:1.7b` installed first. Ollama owns tokenization; no backend tokenizer download is required.
 
 DynamoDB Local persists to a Docker volume. The local Compose service intentionally runs as root only to initialize/write that named development volume; minikube application containers are non-root. `docker compose down` keeps local accounts. `docker compose down -v` deletes them and is destructive.
 
@@ -110,7 +110,7 @@ Open `http://localhost:5173`. This deterministic fixture does not establish real
 quality or minikube acceptance. Use a separate `--data-dir` when existing harness data
 must be preserved.
 
-For real inference with emulated accounts (no Docker), install the optional model dependencies shown above, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository root. Start local Ollama with the pinned model first; the harness defaults to `http://localhost:11434` and accepts `--ollama-base-url`. The backend may download its pinned tokenizer.
+For real inference with emulated accounts (no Docker), install the optional model dependencies shown above, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository root. Start local Ollama with the pinned model first; the harness defaults to `http://localhost:11434` and accepts `--ollama-base-url`. Model selection and generation settings are configurable; see the model reference.
 
 `scripts/local_demo.py --fake-model` uses Moto's DynamoDB API emulation and a deterministic model fixture, bound only to loopback. It creates no AWS resources. Accounts reset on harness restart, so a newly registered user with the same login may not be able to access old history. For persistent accounts use DynamoDB Local above. Omit `--fake-model` to test the actual model with emulated accounts.
 
@@ -176,7 +176,7 @@ safe startup events. Preserve partial downloads and existing data.
 
 ## Dependency maintenance
 
-`backend/requirements.lock`, `requirements-dev.lock`, `requirements-model.lock`, and `frontend/package-lock.json` pin resolved dependencies. The backend Dockerfile installs only the Ollama client/tokenizer dependencies; it contains no Torch or Transformers. To update Python locks deliberately, use `uv pip compile` with Python 3.12; review and rerun all relevant checks. Review Docker base image tags before updating the local deployment.
+`backend/requirements.lock`, `requirements-dev.lock`, `requirements-model.lock`, and `frontend/package-lock.json` pin resolved dependencies. The backend Dockerfile installs only the application and Ollama HTTP client dependencies; it contains no Torch or Transformers. To update Python locks deliberately, use `uv pip compile` with Python 3.12; review and rerun all relevant checks. Review Docker base image tags before updating the local deployment.
 
 ## Instance labels in the workbench
 

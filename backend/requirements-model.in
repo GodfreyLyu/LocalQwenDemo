@@ -1,2 +1,1 @@
-tokenizers>=0.22,<0.23
-huggingface-hub>=0.34,<1
+# Compatibility file: Ollama owns tokenization; no extra Python model dependencies.

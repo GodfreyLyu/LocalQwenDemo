@@ -1,13 +1,8 @@
-"""Native Ollama inference with a verified Qwen tokenizer and bounded cancellation.
-
-Only the stock Qwen3 template below is supported. A changed template/vocabulary
-fails startup rather than estimating tokens or silently truncating a submission.
-"""
+"""Native Ollama inference with server-owned tokenization and bounded cancellation."""
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import re
@@ -16,10 +11,9 @@ import time
 
 import httpx
 
-from app.config import MODEL_REVISION, Settings
+from app.config import Settings
 from app.errors import AppError
 from app.inference.generation import (
-    REVIEW_GENERATION_PARAMETERS,
     GenerationMetrics,
     SectionMetrics,
     allocate_section_token_limits,
@@ -35,57 +29,30 @@ from app.inference.review_output import (
 from app.startup import startup_stage
 
 logger = logging.getLogger("review")
-TEMPLATE_SHA256 = "ae370d884f108d16e7cc8fd5259ebc5773a0afa6e078b11f4ed7e39a27e0dfc4"
+MIN_OLLAMA_VERSION = (0, 24, 0)
+CONTEXT_ERROR = "the input length exceeds the context length"
 
 
 def invalid_model() -> AppError:
-    return AppError(
-        "ollama_model_mismatch", "Ollama model or tokenizer does not match configuration.", 503
-    )
+    return AppError("ollama_model_mismatch", "Ollama model does not match configuration.", 503)
 
 
-def render_prompt(messages: list[dict[str, str]]) -> str:
-    # Exact rendering of the hash-checked stock template for our two-message input,
-    # without tools, with think=false. Never use the HF chat template for Ollama.
-    return (
-        "".join(
-            f"<|im_start|>{m['role']}\n{m['content']}"
-            + (" /no_think" if m["role"] == "user" else "")
-            + "<|im_end|>\n"
-            for m in messages
-        )
-        + "<|im_start|>assistant\n<think>\n\n</think>\n\n"
-    )
+def token_limit() -> AppError:
+    return AppError("token_limit", "Source exceeds the model input token limit.", 422)
 
 
-def validate_tokenizer(document: dict, metadata: dict) -> None:
-    info = metadata.get("model_info", {})
-    template = metadata.get("template", "")
-    tokens = info.get("tokenizer.ggml.tokens", [])
-    vocab = document["model"]["vocab"]
-    added = document["added_tokens"]
-    merges = document["model"]["merges"]
-    if (
-        hashlib.sha256(template.encode()).hexdigest() != TEMPLATE_SHA256
-        or info.get("general.architecture") != "qwen3"
-        or info.get("general.size_label") != "1.7B"
-        or info.get("tokenizer.ggml.pre") != "qwen2"
-        or info.get("tokenizer.ggml.add_bos_token") is not False
-        or info.get("tokenizer.ggml.eos_token_id") != 151645
-        or len(tokens) < len(vocab) + len(added)
-        or any(tokens[i] != token for token, i in vocab.items())
-        or any(tokens[t["id"]] != t["content"] for t in added)
-        or info.get("tokenizer.ggml.merges")
-        != [" ".join(m) if isinstance(m, list) else m for m in merges]
-        or metadata.get("messages")
-        or metadata.get("system")
-    ):
-        raise invalid_model()
+def check_server_error(value: dict) -> None:
+    # Do not expose arbitrary server messages (which may contain user content).
+    error = value.get("error")
+    if isinstance(error, str) and CONTEXT_ERROR in error:
+        raise token_limit()
+    if "error" in value:
+        raise AppError("invalid_model_response", "Ollama returned an invalid response.", 502)
 
 
 class OllamaModel:
     def __init__(self, settings: Settings) -> None:
-        self.settings = settings
+        self.settings = settings.model_copy(deep=True)
         self.digest: str | None = None
         self.quantization: str | None = None
         self.device: str | None = None
@@ -122,6 +89,8 @@ class OllamaModel:
             raise AppError(
                 "ollama_model_missing", "The configured Ollama model is not installed.", 503
             )
+        if len(matches) != 1 or matches[0].get("remote_host"):
+            raise invalid_model()
         digest = matches[0].get("digest", "").removeprefix("sha256:")
         if not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise invalid_model()
@@ -199,11 +168,16 @@ class OllamaModel:
                 time.sleep(delay)
 
     def load(self) -> None:
-        if self.settings.model_revision != MODEL_REVISION:
-            raise invalid_model()
-
         async def metadata():
             async with self._client() as client:
+                version = await self._json(client, "GET", "/api/version")
+                match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", version.get("version", ""))
+                if not match or tuple(map(int, match.groups())) < MIN_OLLAMA_VERSION:
+                    raise AppError(
+                        "ollama_version_unsupported",
+                        "Ollama 0.24.0 or newer is required for context protection.",
+                        503,
+                    )
                 self.digest = await self._identity(client)
                 return await self._json(
                     client,
@@ -211,25 +185,21 @@ class OllamaModel:
                     "/api/show",
                     json={
                         "model": self.settings.ollama_model,
-                        "verbose": True,
                     },
                 )
 
         with startup_stage("ollama_validation"):
             shown = self._startup_metadata(metadata)
-        with startup_stage("tokenizer_load"):
-            from huggingface_hub import hf_hub_download
-            from tokenizers import Tokenizer
-
-            path = hf_hub_download(
-                self.settings.model_id,
-                "tokenizer.json",
-                revision=self.settings.model_revision,
-                cache_dir=str(self.settings.hf_home / "hub"),
-            )
-            with open(path) as file:
-                validate_tokenizer(json.load(file), shown)
-            self.tokenizer = Tokenizer.from_file(path)
+            info = shown.get("model_info", {})
+            architecture = info.get("general.architecture")
+            context = info.get(f"{architecture}.context_length")
+            if (
+                "completion" not in shown.get("capabilities", [])
+                or shown.get("remote_host")
+                or type(context) is not int
+                or context < self.settings.model_context_tokens
+            ):
+                raise invalid_model()
             self.quantization = shown.get("details", {}).get("quantization_level")
 
         async def probe():
@@ -253,37 +223,36 @@ class OllamaModel:
                 if type(size) is int and size > 0 and type(vram) is int and vram >= 0:
                     self.device = "cpu" if vram == 0 else "gpu" if vram >= size else "mixed"
 
-    def _tokens(self, messages):
-        return len(self.tokenizer.encode(render_prompt(messages), add_special_tokens=False).ids)
-
-    def count_tokens(self, source: str, language: str) -> int:
-        return max(
-            self._tokens(build_prompt_messages(source, language, s)) for s, _, _ in SECTION_SPECS
-        )
-
     async def _chat(self, client, messages, limit, seed, metrics):
-        metrics.input_tokens = self._tokens(messages)
-        if metrics.input_tokens > self.settings.model_max_input_tokens:
-            raise AppError("token_limit", "Source exceeds the model input token limit.", 422)
         started = time.monotonic()
         payload = {
             "model": self.settings.ollama_model,
             "messages": messages,
             "think": False,
             "stream": True,
-            "keep_alive": "5m",
+            "keep_alive": self.settings.model_keep_alive,
+            "truncate": False,
+            "shift": False,
             "options": {
-                "num_ctx": self.settings.model_max_input_tokens
-                + self.settings.model_max_output_tokens,
+                "num_ctx": self.settings.model_context_tokens,
                 "num_predict": limit,
                 "seed": seed,
-                **REVIEW_GENERATION_PARAMETERS,
+                **self.settings.generation_parameters,
             },
         }
         fragments, finished, received = [], False, 0
         try:
             async with client.stream("POST", "/api/chat", json=payload) as response:
-                self._status(response)
+                if response.status_code != 200:
+                    await response.aread()
+                    try:
+                        value = response.json()
+                    except ValueError:
+                        value = {}
+                    if isinstance(value, dict) and isinstance(value.get("error"), str):
+                        if CONTEXT_ERROR in value["error"]:
+                            raise token_limit()
+                    self._status(response)
                 async for line in response.aiter_lines():
                     if not line:
                         continue
@@ -291,7 +260,10 @@ class OllamaModel:
                     if received > 1_000_000:
                         raise invalid_model()
                     item = json.loads(line)
-                    if "error" in item or item.get("model") != self.settings.ollama_model:
+                    if not isinstance(item, dict):
+                        raise invalid_model()
+                    check_server_error(item)
+                    if item.get("model") != self.settings.ollama_model or item.get("remote_host"):
                         raise AppError(
                             "invalid_model_response", "Ollama returned an invalid response.", 502
                         )
@@ -310,8 +282,12 @@ class OllamaModel:
                             metrics.first_token_ms = round((time.monotonic() - started) * 1000)
                         fragments.append(content)
                     if item.get("done") is True:
-                        if item.get("prompt_eval_count") != metrics.input_tokens:
+                        count = item.get("prompt_eval_count")
+                        if type(count) is not int or count <= 0:
                             raise invalid_model()
+                        metrics.input_tokens = count
+                        if count > self.settings.model_max_input_tokens:
+                            raise token_limit()
                         count = item.get("eval_count")
                         if type(count) is not int or not 0 <= count <= limit:
                             raise invalid_model()
@@ -345,6 +321,7 @@ class OllamaModel:
                 bodies = []
                 for section, title, _ in SECTION_SPECS:
                     check_deadline(stop, deadline)
+                    await self._identity(client)
                     section_metrics = metrics.sections[section]
                     decoded = await self._chat(
                         client,

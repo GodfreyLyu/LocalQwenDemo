@@ -19,7 +19,7 @@ a real-model success. No test may weaken ownership or security just to pass.
 Backend tests retain their component-based layout under `backend/tests`. Application
 implementations now live in `app.api`, `app.inference` and `app.persistence`; tests
 replace dependencies at those canonical locations (including monkeypatch strings).
-The existing public limiter test still exercises `app.auth.RateLimiter`, and model-identity tests verify Ollama provenance without contacting a service.
+Limiter tests exercise `app.rate_limit.RateLimiter`, and model-identity tests verify Ollama provenance without contacting a service.
 
 Script checks cover the local harness, users initializer and evaluator after their
 imports were updated. Remote command strings use the canonical inference package. The
@@ -32,7 +32,7 @@ from their original revisions.
 
 | Surface | Entry | What it establishes |
 | --- | --- | --- |
-| Backend | `cd backend && .venv/bin/pytest` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/tokenizer/startup/logging contracts; Moto accounts and model doubles |
+| Backend | `cd backend && .venv/bin/pytest` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/context/startup/logging contracts; Moto accounts and model doubles |
 | Local transport | Backend local-DynamoDB tests | Missing/remote endpoints rejected; SDK host credentials/profiles/metadata/proxies cannot replace local transport |
 | Minikube | `scripts/check_minikube_demo.sh` | Real offline Kustomize render, profile/state/ownership, migration, image proof, forwarding, undeploy and lost-state recovery; simulated cluster APIs and real loopback fixtures |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |

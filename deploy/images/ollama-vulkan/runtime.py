@@ -1,4 +1,4 @@
-"""Supervise Ollama and admit traffic only after real, pinned-model GPU inference."""
+"""Supervise Ollama independently of model residency; optionally bootstrap a model."""
 
 import argparse
 import json
@@ -21,6 +21,7 @@ class Config:
     threads: int
     pull: bool
     wait_seconds: int
+    bootstrap: bool = True
 
     @classmethod
     def from_env(cls):
@@ -31,6 +32,7 @@ class Config:
             int(os.environ.get("MODEL_THREADS", "2")),
             os.environ.get("MODEL_PULL_IF_MISSING", "true") == "true",
             int(os.environ.get("MODEL_WAIT_SECONDS", "1200")),
+            os.environ.get("MODEL_BOOTSTRAP", "true") == "true",
         )
 
 
@@ -123,9 +125,11 @@ def prepare(client, config, stop):
             stop.wait(1)
     else:
         raise RuntimeError("Ollama API did not start")
+    if not config.bootstrap:
+        return
     while not stop.is_set():
         if installed(client, config):
-            return warmup(client, config)
+            return
         if time.monotonic() >= deadline:
             raise RuntimeError("Timed out waiting for the model in the PVC")
         if config.pull:
@@ -137,12 +141,12 @@ def prepare(client, config, stop):
             )
             if not installed(client, config):
                 raise RuntimeError("Model pull completed without the pinned model")
-            return warmup(client, config)
+            return
         stop.wait(2)
     raise RuntimeError("Shutdown requested")
 
 
-def handler(client, config, process, verified):
+def handler(client, process, verified):
     class Health(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path not in ("/live", "/ready"):
@@ -153,8 +157,8 @@ def handler(client, config, process, verified):
                     raise RuntimeError("Ollama process exited")
                 if self.path == "/ready":
                     if not verified.is_set():
-                        raise RuntimeError("Model GPU validation is pending")
-                    result = gpu_state(client, config)
+                        raise RuntimeError("Ollama preparation is pending")
+                    result = client.call("/api/version")
                 else:
                     result = client.call("/api/version")
                 status = 200
@@ -188,7 +192,7 @@ def serve(config):
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    server = ThreadingHTTPServer(("0.0.0.0", 11435), handler(client, config, process, verified))
+    server = ThreadingHTTPServer(("0.0.0.0", 11435), handler(client, process, verified))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         prepare(client, config, stop)
@@ -196,13 +200,9 @@ def serve(config):
         while not stop.wait(15):
             if process.poll() is not None:
                 raise RuntimeError("Ollama process exited")
-            try:
-                gpu_state(client, config)
-            except ModelNotLoaded:
-                # Clients may override keep_alive; restore residency after an idle unload.
-                verified.clear()
-                warmup(client, config)
-                verified.set()
+            # Other clients may unload or select any model. Never reload the
+            # bootstrap model in response to normal model eviction.
+            client.call("/api/version")
     finally:
         shutdown()
         server.shutdown()

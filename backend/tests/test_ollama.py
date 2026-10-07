@@ -4,7 +4,6 @@ import asyncio
 import json
 import threading
 import time
-from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -13,7 +12,7 @@ from pydantic import ValidationError
 from app.config import Settings
 from app.errors import AppError
 from app.inference.identity import model_identity
-from app.inference.ollama import OllamaModel, render_prompt
+from app.inference.ollama import OllamaModel
 from app.main import create_app
 
 SOURCE = "def average(values):\n    return sum(values) / len(values)\n"
@@ -34,14 +33,16 @@ def settings(**kwargs):
     )
 
 
-class Tokenizer:
-    def encode(self, text, **kwargs):
-        return SimpleNamespace(ids=list(range(200)))
-
-
 class Server:
     def __init__(self):
         self.payloads = []
+        self.name = "qwen3:1.7b"
+        self.version = "0.24.0"
+        self.metadata = {
+            "capabilities": ["completion"],
+            "model_info": {"general.architecture": "qwen3", "qwen3.context_length": 32768},
+            "details": {"quantization_level": "Q4_K_M"},
+        }
         self.status = 200
         self.override = {}
         self.missing = False
@@ -52,6 +53,10 @@ class Server:
     async def __call__(self, request):
         if self.fail_connection:
             raise httpx.ConnectError("PRIVATE_URL", request=request)
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": self.version})
+        if request.url.path == "/api/show":
+            return httpx.Response(200, json=self.metadata)
         if request.url.path == "/api/tags":
             return httpx.Response(
                 200,
@@ -59,7 +64,7 @@ class Server:
                     "models": []
                     if self.missing
                     else [
-                        {"name": "qwen3:1.7b", "digest": self.digest},
+                        {"name": self.name, "digest": self.digest},
                     ]
                 },
             )
@@ -76,11 +81,11 @@ class Server:
         self.payloads.append(payload)
         index = (len(self.payloads) - 1) % 3
         item = {
-            "model": "qwen3:1.7b",
+            "model": self.name,
             "message": {"content": BODIES[index]},
             "done": True,
             "prompt_eval_count": 200,
-            "eval_count": 20,
+            "eval_count": min(20, payload["options"]["num_predict"]),
             "done_reason": "stop",
         } | self.override
         if self.truncated:
@@ -93,7 +98,6 @@ def adapter(monkeypatch):
     server = Server()
     model = OllamaModel(settings(model_max_output_tokens=384))
     model.digest = "sha256:" + DIGEST
-    model.tokenizer = Tokenizer()
     model.quantization = "Q4_K_M"
     monkeypatch.setattr(
         model,
@@ -115,10 +119,10 @@ def test_real_three_section_contract_and_observed_identity(adapter):
     assert len(server.payloads) == 3
     assert sum(p["options"]["num_predict"] for p in server.payloads) == 384
     assert all(p["think"] is False and p["stream"] is True for p in server.payloads)
-    assert all(p["options"]["num_ctx"] == 2432 for p in server.payloads)
+    assert all(p["options"]["num_ctx"] == 4096 for p in server.payloads)
     assert all(len(p["messages"]) == 2 for p in server.payloads)
     assert all(SOURCE in p["messages"][1]["content"] for p in server.payloads)
-    identity = model_identity(model, model.settings)
+    identity = model_identity(model)
     assert identity["model_revision"] == "sha256:" + DIGEST
     assert identity["model_id"] == "qwen3:1.7b"
     assert identity["quantization"] == "Q4_K_M" and identity["device"] == "gpu"
@@ -133,7 +137,14 @@ def test_real_three_section_contract_and_observed_identity(adapter):
         ({"missing": True}, "ollama_model_missing"),
         ({"fail_connection": True}, "ollama_unavailable"),
         ({"digest": "b" * 64}, "ollama_model_mismatch"),
-        ({"override": {"prompt_eval_count": 199}}, "ollama_model_mismatch"),
+        ({"override": {"prompt_eval_count": 0}}, "ollama_model_mismatch"),
+        ({"override": {"prompt_eval_count": True}}, "ollama_model_mismatch"),
+        ({"override": {"prompt_eval_count": 2049}}, "token_limit"),
+        ({"override": {"error": "the input length exceeds the context length"}}, "token_limit"),
+        (
+            {"status": 400, "override": {"error": "the input length exceeds the context length"}},
+            "token_limit",
+        ),
         ({"override": {"eval_count": 999}}, "ollama_model_mismatch"),
         ({"override": {"message": {"thinking": "PRIVATE"}}}, "invalid_model_response"),
         ({"override": {"error": "PRIVATE"}}, "invalid_model_response"),
@@ -151,13 +162,12 @@ def test_errors_fail_closed_without_partial_review_or_fallback(adapter, change, 
     assert len(server.payloads) <= 1
 
 
-def test_input_limit_checked_locally_before_generation(adapter):
+def test_actual_input_limit_is_checked_by_worker_before_result_is_published(adapter):
     model, server = adapter
     model.settings.model_max_input_tokens = 128
-    assert model.count_tokens(SOURCE, "python") == 200
     with pytest.raises(AppError, match="token limit"):
         model.review(SOURCE, "python", threading.Event())
-    assert not server.payloads
+    assert len(server.payloads) == 1
 
 
 @pytest.mark.parametrize("by_stop", [False, True])
@@ -261,52 +271,57 @@ def test_factory_always_uses_ollama():
     assert isinstance(app.state.model, OllamaModel)
 
 
-def test_template_rendering_includes_think_control_and_generation_prefix():
-    assert render_prompt(
-        [{"role": "system", "content": "rules"}, {"role": "user", "content": "code"}]
-    ) == (
-        "<|im_start|>system\nrules<|im_end|>\n<|im_start|>user\ncode /no_think<|im_end|>\n"
-        "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+def test_load_and_review_a_different_model_without_local_tokenizer(adapter):
+    model, server = adapter
+    server.name = model.settings.ollama_model = "different-family:small"
+    server.metadata["model_info"] = {"general.architecture": "llama", "llama.context_length": 8192}
+    model.settings.model_temperature = 0.2
+    model.settings.model_top_k = 40
+    model.settings.model_keep_alive = "30s"
+    model.load()
+    server.payloads.clear()
+    assert "## Findings" in model.review(SOURCE, "python", threading.Event())
+    assert all(p["model"] == server.name and p["keep_alive"] == "30s" for p in server.payloads)
+    assert all(p["truncate"] is False and p["shift"] is False for p in server.payloads)
+    assert all(
+        p["options"]["temperature"] == 0.2 and p["options"]["top_k"] == 40 for p in server.payloads
     )
+    assert not hasattr(model, "tokenizer")
 
 
-def test_tokenizer_validation_rejects_changed_template_vocabulary_and_merges():
-    from copy import deepcopy
-    from pathlib import Path
+@pytest.mark.parametrize("version", ["0.23.9", "0.9.0", "unknown", ""])
+def test_old_or_unknown_ollama_cannot_silently_ignore_context_protection(adapter, version):
+    model, server = adapter
+    server.version = version
+    with pytest.raises(AppError) as error:
+        model.load()
+    assert error.value.code == "ollama_version_unsupported"
+    assert not server.payloads
 
-    from app.inference.ollama import validate_tokenizer
 
-    document = {
-        "model": {"vocab": {"a": 0}, "merges": [["a", "b"]]},
-        "added_tokens": [{"id": 1, "content": "<special>"}],
-    }
-    metadata = {
-        "template": (Path(__file__).parent / "fixtures/ollama-qwen3-template.txt").read_text(),
-        "model_info": {
-            "general.architecture": "qwen3",
-            "general.size_label": "1.7B",
-            "tokenizer.ggml.pre": "qwen2",
-            "tokenizer.ggml.add_bos_token": False,
-            "tokenizer.ggml.eos_token_id": 151645,
-            "tokenizer.ggml.tokens": ["a", "<special>"],
-            "tokenizer.ggml.merges": ["a b"],
-        },
-    }
-    validate_tokenizer(document, metadata)
-    for key, value in [
-        ("tokenizer.ggml.tokens", ["b", "<special>"]),
-        ("tokenizer.ggml.merges", ["b a"]),
-        ("tokenizer.ggml.add_bos_token", True),
-        ("general.size_label", "0.6B"),
-    ]:
-        changed = deepcopy(metadata)
-        changed["model_info"][key] = value
-        with pytest.raises(AppError):
-            validate_tokenizer(document, changed)
-    with pytest.raises(AppError):
-        validate_tokenizer(document, metadata | {"template": "different"})
-    with pytest.raises(AppError):
-        validate_tokenizer(document, metadata | {"system": "custom instructions"})
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"capabilities": ["embedding"]},
+        {"model_info": {"general.architecture": "llama", "llama.context_length": 2048}},
+        {"model_info": {}},
+        {"remote_host": "https://private.invalid"},
+    ],
+)
+def test_incompatible_model_fails_before_generation(adapter, metadata):
+    model, server = adapter
+    server.metadata.update(metadata)
+    with pytest.raises(AppError, match="configuration"):
+        model.load()
+    assert not server.payloads
+
+
+def test_configuration_is_snapshotted_for_the_model_instance():
+    config = settings()
+    model = OllamaModel(config)
+    config.ollama_model = "changed:latest"
+    assert model.settings.ollama_model == "qwen3:1.7b"
+    assert model_identity(model)["model_id"] == "qwen3:1.7b"
 
 
 def test_startup_retries_transient_network_but_has_a_fixed_deadline(adapter, monkeypatch):
@@ -370,14 +385,14 @@ def test_default_backend_calls_cluster_ollama():
 
 
 def test_review_uses_shared_sampling_and_digest_seed_for_each_section(adapter):
-    from app.inference.generation import REVIEW_GENERATION_PARAMETERS, derive_generation_seed
+    from app.inference.generation import derive_generation_seed
     from app.inference.prompts import SECTION_SPECS
 
     model, server = adapter
     model.review(SOURCE, "python", threading.Event())
     first = [p["options"] for p in server.payloads]
     for (section, _, _), options in zip(SECTION_SPECS, first, strict=True):
-        assert options.items() >= REVIEW_GENERATION_PARAMETERS.items()
+        assert options.items() >= model.settings.generation_parameters.items()
         assert options["seed"] == derive_generation_seed(model.digest, "python", section, SOURCE)
     model.review(SOURCE, "python", threading.Event())
     assert first == [p["options"] for p in server.payloads[3:]]
@@ -413,9 +428,7 @@ def test_capped_tail_is_trimmed_and_metrics_never_include_content(adapter, caplo
     assert "PRIVATE_FRAGMENT" not in SafeFormatter().format(events[0])
 
 
-@pytest.mark.parametrize(
-    "stage", ["ollama_validation", "tokenizer_load", "startup_generation", "post_model_storage"]
-)
+@pytest.mark.parametrize("stage", ["ollama_validation", "startup_generation", "post_model_storage"])
 def test_startup_diagnostics_never_format_exception(stage, caplog):
     from app.logging import SafeFormatter
     from app.startup import startup_stage
@@ -426,3 +439,30 @@ def test_startup_diagnostics_never_format_exception(stage, caplog):
     assert payload["stage"] == stage
     assert payload["exception_type"] == "ValueError"
     assert "SENTINEL" not in json.dumps(payload)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"prompt_eval_count": 129},
+        {"error": "the input length exceeds the context length"},
+    ],
+)
+def test_admitted_review_fails_safely_when_ollama_rejects_input_tokens(
+    adapter, factory, monkeypatch, override
+):
+    from conftest import register, wait_review
+
+    model, server = adapter
+    model.settings.model_max_input_tokens = 128
+    server.override = override
+    monkeypatch.setattr(model, "load", lambda: None)
+    client = factory(model, model_max_input_tokens=128)
+    register(client)
+    response = client.post("/api/v1/reviews", json={"source_code": SOURCE, "language": "python"})
+    assert response.status_code == 202
+    failed = wait_review(client, response.json()["review_id"])
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "token_limit"
+    assert failed["review_result"] is None
+    assert len(server.payloads) == 1

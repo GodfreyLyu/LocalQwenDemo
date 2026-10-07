@@ -538,7 +538,9 @@ def test_helm_acceptance_reports_real_review_and_persistence_separately(
             "OLLAMA_MODEL_DIGEST": "sha256:test",
         },
     )
-    monkeypatch.setattr(verify, "cache_inventory", lambda _: {"tokenizer.json": [123, 456]})
+    monkeypatch.setattr(
+        verify, "cache_inventory", lambda _: {"qwen3:1.7b": ["sha256:" + "a" * 64, 123]}
+    )
     monkeypatch.setattr(verify, "login", lambda *a: None)
     monkeypatch.setattr(verify, "completed_review", lambda *a: None)
     monkeypatch.setattr(verify, "history_contains", lambda *a: {"review_result": "same result"})

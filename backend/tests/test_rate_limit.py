@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from app.auth import RateLimiter as LegacyRateLimiter
 from app.errors import AppError
 from app.rate_limit import RateLimiter
 
@@ -13,7 +12,7 @@ from app.rate_limit import RateLimiter
 def test_window_boundary_and_rejections_do_not_extend_the_quota(monkeypatch):
     now = 0.0
     monkeypatch.setattr("app.rate_limit.time.monotonic", lambda: now)
-    limiter = LegacyRateLimiter()
+    limiter = RateLimiter()
     limiter.check("account", 2)
     now = 10.0
     limiter.check("account", 2)

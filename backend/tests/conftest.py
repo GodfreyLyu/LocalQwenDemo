@@ -19,9 +19,6 @@ class FakeModel:
     def load(self):
         pass
 
-    def count_tokens(self, source, language):
-        return len(source.split()) + 50
-
     def review(self, source, language, stop):
         self.calls += 1
         self.active += 1

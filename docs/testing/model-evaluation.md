@@ -6,25 +6,15 @@ Transformers model. Run commands from the repository root.
 
 ## Preparation
 
-Install the backend development environment and model client dependencies:
+Install the backend development environment and start Ollama 0.24.0 or newer
+with the chosen local model already installed. No tokenizer cache or optional model
+Python dependencies are needed. The evaluator never downloads a model.
 
-```bash
-backend/.venv/bin/python -m pip install -r backend/requirements-model.lock
-```
-
-Start the local Ollama service with `qwen3:1.7b` already installed. The default endpoint
-is `http://localhost:11434`; use `--ollama-base-url` for another supported local or
-cluster endpoint. The default manifest digest matches the maintained Helm release:
-`sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7`.
-Use `--ollama-model-digest` when evaluating an explicitly chosen different digest.
-The adapter still verifies the supported Qwen3 1.7B architecture, template and tokenizer.
-
-The pinned `tokenizer.json` must already exist in the Hugging Face cache for
-`Qwen/Qwen3-1.7B` at `70d244cc86ccca08cf5af4e1e306ecf908b1ad5e`. Normal application
-startup populates this cache. `--cache-dir PATH` selects HF_HOME, not a raw snapshot
-folder; the default is `.local/models/huggingface`. No weight shards are required.
-Evaluation forces `local_files_only=True` and disables Hub tokens/downloads while
-allowing HTTP to the configured Ollama service. No database, account or cluster is created.
+The default endpoint is `http://localhost:11434`, and the default model is
+`qwen3:1.7b`. Use `--ollama-base-url`, `--ollama-model` and optionally
+`--ollama-model-digest` to select another installed model. Without an explicit digest,
+the adapter captures it at startup and checks it throughout the run.
+All validation and sampling defaults come from the production model settings.
 
 ## Plan and run
 
@@ -35,14 +25,14 @@ backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case all
 ```
 
 Omitting the mode flags also produces a plan. Plan mode does not construct a model,
-contact Ollama, load tokenizer dependencies or download anything. Exit 0 with
+contact Ollama, load model dependencies or download anything. Exit 0 with
 `status=not_run` means a valid plan, not an inference pass.
 
 Defaults match the maintained deployment's 2048 input tokens, 384 total output tokens
 and 300-second review deadline. Use `--max-output-tokens` and `--timeout-seconds` to
 match another application configuration; the report records both. Settings ignore
-ambient environment overrides and `.env`. Endpoint, digest and cache are explicit CLI
-choices. All three sections share the production deadline and budget allocation.
+ambient environment overrides and `.env`. Model, endpoint, digest, context and sampling are explicit CLI
+choices; use `--help` for all options. All three sections share the production deadline and budget allocation.
 
 To inspect generated synthetic output and record human judgments in a private terminal:
 
@@ -75,7 +65,7 @@ hints are diagnostics only. A production quality rejection fails evaluation.
 | `not_run` / 0 | Plan only |
 | `passed` / 0 | All selected cases passed automatic and human checks |
 | `needs_manual_review` / 3 | Automatic checks passed; semantic judgments pending |
-| `failed` / 1 | Dependency/cache/service/runtime/quality/metrics/manual failure |
+| `failed` / 1 | Dependency/service/runtime/quality/metrics/manual failure |
 | Argument error / 2 | Invalid or incompatible options |
 
 The opt-in backend smoke test uses a smaller budget and permits controlled output
@@ -84,7 +74,7 @@ rejection. It establishes transport/inference behavior, not quality acceptance.
 ## Reports and supervision
 
 Each run writes a new private `.local/model-evaluations/<run>/report.json` (directory
-0700, file 0600). Schema/tool version 2 records source/fixture/dependency fingerprints,
+0700, file 0600). Schema/tool version 3 records source/fixture/dependency fingerprints,
 configuration, actual Ollama digest, quantization and observed device after loading.
 Plan mode leaves unobserved device/quantization null. Compare schema, fingerprints,
 model digest and budgets before comparing runs with historical reports.

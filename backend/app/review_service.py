@@ -8,7 +8,6 @@ from app.config import Settings
 from app.coordinator import Coordinator
 from app.domain import ReviewRecord
 from app.errors import AppError
-from app.inference.model import ReviewModel
 from app.persistence.storage import Store
 from app.rate_limit import RateLimiter
 
@@ -20,13 +19,11 @@ class ReviewService:
         self,
         settings: Settings,
         store: Store,
-        model: ReviewModel,
         coordinator: Coordinator,
         limiter: RateLimiter,
     ) -> None:
         self.settings = settings
         self.store = store
-        self.model = model
         self.coordinator = coordinator
         self.limiter = limiter
 
@@ -37,7 +34,7 @@ class ReviewService:
         language: str,
         request_id: str | None = None,
     ) -> ReviewRecord:
-        self._validate(source, language)
+        self._validate(source)
         self.limiter.check("submit:" + user_id, self.settings.submission_rate_limit)
         try:
             result = self.store.create_review(
@@ -63,7 +60,7 @@ class ReviewService:
             )
         return result.review
 
-    def _validate(self, source: str, language: str) -> None:
+    def _validate(self, source: str) -> None:
         if not source.strip():
             raise AppError("empty_input", "Enter source code before running a review.", 422)
         if len(source) > self.settings.source_max_chars:
@@ -73,10 +70,6 @@ class ReviewService:
         if not self.coordinator.ready:
             raise AppError(
                 self.coordinator.state, "The model is not ready. Please retry shortly.", 503
-            )
-        if self.model.count_tokens(source, language) > self.settings.model_max_input_tokens:
-            raise AppError(
-                "token_limit", "Source exceeds the model token limit. Try a smaller section.", 422
             )
 
     def _log_queue_rejection(self) -> None:

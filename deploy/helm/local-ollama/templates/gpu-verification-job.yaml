@@ -1,3 +1,4 @@
+{{- if .Values.model.bootstrap }}
 {{- if .Values.verification.argoPostSync }}
 apiVersion: batch/v1
 kind: Job
@@ -41,4 +42,5 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+{{- end }}
 {{- end }}

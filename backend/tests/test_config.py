@@ -17,12 +17,11 @@ def test_kubernetes_config_map_values_load_from_environment(monkeypatch):
     assert settings.environment == "local"
     assert settings.cookie_secure is False
     assert settings.model_inference_concurrency == 1
-    assert settings.model_id == "Qwen/Qwen3-1.7B"
-    assert settings.model_revision == "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"
+    assert settings.ollama_model == "qwen3:1.7b"
+    assert settings.model_context_tokens == 4096
     assert settings.model_max_output_tokens == 384
     assert settings.inference_timeout_seconds == 300
     assert settings.data_dir == Path("/data")
-    assert settings.hf_home == Path("/models/huggingface")
     assert settings.release_sha is None
 
 
@@ -52,12 +51,31 @@ def test_removed_cloud_environment_is_rejected_without_leaking_signing_secret():
     assert secret not in str(error.value)
 
 
-def test_runtime_model_substitution_is_rejected():
+def test_model_selection_and_sampling_are_configurable_from_environment(monkeypatch):
+    monkeypatch.setenv("OLLAMA_MODEL", "llama3.2:1b")
+    monkeypatch.setenv("MODEL_CONTEXT_TOKENS", "8192")
+    monkeypatch.setenv("MODEL_MAX_INPUT_TOKENS", "4096")
+    monkeypatch.setenv("MODEL_TEMPERATURE", "0.1")
+    config = Settings(dynamodb_endpoint_url="http://localhost:8001", signing_secret="x" * 32)
+    assert config.ollama_model == "llama3.2:1b"
+    assert config.model_context_tokens == 8192
+    assert config.generation_parameters["temperature"] == 0.1
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"model_context_tokens": 2048},
+        {"model_top_p": 0},
+        {"model_temperature": -1},
+        {"model_keep_alive": "-1"},
+        {"ollama_model": "model-without-tag"},
+    ],
+)
+def test_invalid_model_configuration_is_rejected(overrides):
     with pytest.raises(ValidationError):
         Settings(
-            dynamodb_endpoint_url="http://127.0.0.1:8001",
-            signing_secret="test-secret-" * 4,
-            model_id="some-other/model",
+            dynamodb_endpoint_url="http://localhost:8001", signing_secret="x" * 32, **overrides
         )
 
 

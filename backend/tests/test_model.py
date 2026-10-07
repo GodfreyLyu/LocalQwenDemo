@@ -2,7 +2,6 @@ import inspect
 
 import pytest
 
-from app.config import MODEL_REVISION
 from app.errors import AppError, ValidationReason
 from app.inference.generation import allocate_section_token_limits, derive_generation_seed
 from app.inference.prompts import build_prompt_messages
@@ -111,14 +110,14 @@ def test_section_token_limits_reject_budget_too_small_for_three_sections():
 
 def test_generation_seed_is_stable_section_and_source_specific():
     source = "def private_source_identifier(private_values): return private_values"
-    first = derive_generation_seed(MODEL_REVISION, "python", "summary", source)
-    repeated = derive_generation_seed(MODEL_REVISION, "python", "summary", source)
+    first = derive_generation_seed("sha256:" + "a" * 64, "python", "summary", source)
+    repeated = derive_generation_seed("sha256:" + "a" * 64, "python", "summary", source)
     section_seeds = {
-        derive_generation_seed(MODEL_REVISION, "python", section, source)
+        derive_generation_seed("sha256:" + "a" * 64, "python", section, source)
         for section in ("summary", "findings", "suggestions")
     }
     changed_source = derive_generation_seed(
-        MODEL_REVISION, "python", "summary", source + "\nprivate_values = []"
+        "sha256:" + "a" * 64, "python", "summary", source + "\nprivate_values = []"
     )
 
     assert first == repeated

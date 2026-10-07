@@ -50,9 +50,7 @@ def create_app(
     app.state.model = review_model = model or OllamaModel(config)
     app.state.coordinator = Coordinator(store, user_store, review_model, config)
     app.state.limiter = limiter = RateLimiter()
-    app.state.review_service = ReviewService(
-        config, store, review_model, app.state.coordinator, limiter
-    )
+    app.state.review_service = ReviewService(config, store, app.state.coordinator, limiter)
     app.add_middleware(RequestGuard)
     register_error_handlers(app)
     for router in (auth.router, reviews.router, health.router, runtime.router):

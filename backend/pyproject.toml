@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "local-llm-code-review"
 version = "1.0.0"
-description = "Persistent, independent code reviews using backend-only Qwen3 inference"
+description = "Persistent, independent code reviews using local Ollama inference"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "httpx>=0.28,<1",
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-model = ["tokenizers>=0.22,<0.23", "huggingface-hub>=0.34,<1"]
+model = []  # Compatibility extra; Ollama owns all model dependencies.
 dev = ["httpx>=0.28,<1", "pytest>=8.4,<10", "ruff>=0.12,<1", "moto[dynamodb]>=5,<6", "pyyaml>=6,<7"]
 
 [tool.setuptools.packages.find]

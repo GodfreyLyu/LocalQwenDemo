@@ -3,11 +3,10 @@ import resource
 import sys
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
-from app.config import MODEL_REVISION, Settings
+from app.config import Settings
 from app.errors import AppError
 from app.inference.ollama import OllamaModel
 
@@ -21,16 +20,12 @@ def test_pinned_real_model(record_property):
     settings = Settings(
         signing_secret="local-smoke-only-" * 3,
         dynamodb_endpoint_url="http://127.0.0.1:8001",
-        hf_home=Path(os.environ.get("HF_HOME", "../.local/models/huggingface")),
         model_max_output_tokens=64,
         inference_timeout_seconds=180,
     )
     model = OllamaModel(settings)
     model.load()
     loaded = time.perf_counter()
-    assert settings.model_id == "Qwen/Qwen3-1.7B"
-    assert settings.model_revision == MODEL_REVISION
-    assert model.count_tokens("def average(xs): return sum(xs) / len(xs)", "python") < 2048
     try:
         result = model.review(
             "def average(xs): return sum(xs) / len(xs)", "python", threading.Event()

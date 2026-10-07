@@ -19,7 +19,7 @@ Source and review text are private per user and stored in SQLite on a local pers
 Input is bounded by HTTP bytes, characters, and model prompt tokens. Output token count, queue size, retry count, and inference concurrency are bounded. The model has no tools. Prompt injection can still influence review quality; model text is always untrusted.
 
 Three independent prompts reuse only the original untrusted source, never a previously
-generated section. Qwen3's tokenizer receives the hard `enable_thinking=False`
+generated section. Ollama receives the explicit `think=false`
 chat-template option; the application does not request, parse, store, or log
 chain-of-thought. Backend code inserts the fixed Markdown headings, but every review
 body remains model-generated. When a section reaches its token limit, post-processing

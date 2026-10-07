@@ -124,11 +124,12 @@ def validate_snapshot(root, manifest):
     )
     ollama = rendered["review-ollama"]
     ollama_config = ollama["ConfigMap", "review-ollama-config"]["data"]
-    require(
-        config["OLLAMA_MODEL"] == ollama_config["MODEL_NAME"]
-        and config["OLLAMA_MODEL_DIGEST"] == ollama_config["MODEL_DIGEST"],
-        "Application and Ollama model identity must match",
-    )
+    # The optional bootstrap model and the application's selected model are independent.
+    if ollama_config["MODEL_BOOTSTRAP"] == "false":
+        require(
+            ("Job", "review-ollama-gpu-verify") not in ollama, "Bootstrap hook must be disabled"
+        )
+        return
     require(("Job", "review-ollama-gpu-verify") in ollama, "GPU verification Job missing")
     job = ollama["Job", "review-ollama-gpu-verify"]
     require(

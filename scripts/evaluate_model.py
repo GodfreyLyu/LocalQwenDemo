@@ -1,9 +1,9 @@
 """Opt-in Ollama evaluation of the production model on versioned synthetic fixtures.
 
 The parent writes content-free reports and supervises one serial model worker.
-The worker reuses production inference and metrics, calls local Ollama, prevents Hub downloads, and
-suppresses library/native output. Only explicit private terminal review can show
-synthetic model output; no source, prompt, body or token IDs enter reports.
+The worker reuses production inference and metrics, calls local Ollama without
+downloading models, and suppresses library/native output. Only explicit private
+terminal review can show synthetic model output; no source, prompt, body or token IDs enter reports.
 """
 
 import argparse
@@ -21,18 +21,15 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.config import MODEL_REVISION, Settings  # noqa: E402
+from app.config import Settings  # noqa: E402
 from app.errors import AppError, ValidationReason  # noqa: E402
 from app.inference.generation import (  # noqa: E402
-    REVIEW_GENERATION_PARAMETERS,
     allocate_section_token_limits,
 )
 from app.inference.ollama import OllamaModel  # noqa: E402
@@ -40,12 +37,11 @@ from app.inference.review_output import REQUIRED_SECTIONS, validate_review_outpu
 
 logger = logging.getLogger("review")
 
-TOOL_VERSION = "2.0.0"
+TOOL_VERSION = "3.0.0"
 FIXTURES = ROOT / "scripts/evaluation/fixtures-v1.json"
-CACHE_DEFAULT = ROOT / ".local/models/huggingface"
 OUTPUT_ROOT = ROOT / ".local/model-evaluations"
 CASE_IDS = ("hello_world", "average", "square", "first_item", "sql_injection", "prompt_injection")
-DEPENDENCIES = ("httpx", "tokenizers", "huggingface-hub")
+DEPENDENCIES = ("httpx",)
 MANUAL_CHECKS = (
     "semantic_correctness",
     "no_fabricated_findings",
@@ -68,28 +64,26 @@ class Parser(argparse.ArgumentParser):
 
 
 def settings_for(
-    cache,
     *,
     ollama_base_url="http://localhost:11434",
-    ollama_model_digest="sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+    ollama_model_digest=None,
     model_max_output_tokens=384,
     inference_timeout_seconds=300,
+    **model_overrides,
 ):
     """Use production validation while isolating every setting from .env and host overrides."""
     defaults = {name: field.default for name, field in Settings.model_fields.items()}
     defaults.update(
         signing_secret="synthetic-evaluation-only-" * 2,
         dynamodb_endpoint_url="http://127.0.0.1:8001",
-        model_id="Qwen/Qwen3-1.7B",
-        model_revision=MODEL_REVISION,
         ollama_base_url=ollama_base_url,
         ollama_model_digest=ollama_model_digest,
         model_inference_concurrency=1,
         model_max_input_tokens=2048,
         model_max_output_tokens=model_max_output_tokens,
         inference_timeout_seconds=inference_timeout_seconds,
-        hf_home=cache,
     )
+    defaults.update(model_overrides)
     return Settings(_env_file=None, **defaults)
 
 
@@ -176,7 +170,7 @@ def pending_case(case_id):
 def build_report(settings, suite, selected, real, manual):
     now = datetime.now().astimezone()
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "tool_version": TOOL_VERSION,
         "started_at": now.isoformat(),
         "timezone": str(now.tzinfo),
@@ -197,6 +191,7 @@ def build_report(settings, suite, selected, real, manual):
                     "inference/generation",
                     "inference/review_output",
                     "config",
+                    "model_config",
                     "errors",
                     "startup",
                 )
@@ -223,7 +218,9 @@ def build_report(settings, suite, selected, real, manual):
             "inference_backend": "ollama",
             "model_id": settings.ollama_model,
             "model_revision": settings.ollama_model_digest,
-            "tokenizer_revision": settings.model_revision,
+            "tokenizer": "ollama",
+            "context_tokens": settings.model_context_tokens,
+            "keep_alive": settings.model_keep_alive,
             "device": None,
             "quantization": None,
             "concurrency": 1,
@@ -233,15 +230,12 @@ def build_report(settings, suite, selected, real, manual):
             "inference_timeout_seconds": settings.inference_timeout_seconds,
             "load_watchdog_seconds": LOAD_TIMEOUT_SECONDS,
             "drain_watchdog_seconds": DRAIN_SECONDS,
-            "generation": REVIEW_GENERATION_PARAMETERS.copy(),
+            "generation": settings.generation_parameters,
             "enable_thinking": False,
             "seed_policy": "production_stable_per_section",
             "offline": False,
             "transport": "configured_local_ollama",
             "downloads_allowed": False,
-            "cache_scope": "project_default"
-            if settings.hf_home == CACHE_DEFAULT
-            else "explicit_local_path",
             "selected_cases": selected,
             "private_terminal_review": manual,
         },
@@ -479,40 +473,6 @@ def aggregate(statuses):
     return "not_run"
 
 
-@contextmanager
-def cached_tokenizer_runtime(settings):
-    """Resolve the pinned tokenizer locally; inference still uses the configured Ollama endpoint."""
-    fixed = {
-        "HF_HOME": str(settings.hf_home),
-        "HF_HUB_OFFLINE": "1",
-        "HF_HUB_DISABLE_TELEMETRY": "1",
-        "HF_HUB_DISABLE_PROGRESS_BARS": "1",
-        "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
-        "TOKENIZERS_PARALLELISM": "false",
-    }
-    with patch.dict(os.environ, fixed):
-        import huggingface_hub
-        from huggingface_hub import constants
-
-        original = huggingface_hub.hf_hub_download
-
-        def local_tokenizer(*args, **kwargs):
-            kwargs.update(local_files_only=True, token=False)
-            return original(*args, **kwargs)
-
-        with (
-            patch.object(constants, "HF_HUB_OFFLINE", True),
-            patch.object(huggingface_hub, "hf_hub_download", local_tokenizer),
-        ):
-            local_tokenizer(
-                repo_id=settings.model_id,
-                filename="tokenizer.json",
-                revision=settings.model_revision,
-                cache_dir=str(settings.hf_home / "hub"),
-            )
-            yield
-
-
 def worker(connection, configuration, cases, manual):
     """One disposable client worker runs serial requests; Ollama owns model memory."""
     # Redirect native file descriptors, not only Python streams; do not save suppressed output.
@@ -527,41 +487,39 @@ def worker(connection, configuration, cases, manual):
     logger.propagate = False
     settings = Settings(_env_file=None, **configuration)
     started = time.monotonic()
-    phase = "tokenizer_cache_invalid"
+    phase = "model_load_failed"
     try:
-        with cached_tokenizer_runtime(settings):
-            phase = "model_load_failed"
-            model = OllamaModel(settings)
-            model.load()
-            connection.send(
-                (
-                    "load",
-                    {
-                        "status": "passed",
-                        "model_id": settings.ollama_model,
-                        "model_revision": model.digest,
-                        "device": model.device,
-                        "quantization": model.quantization,
-                        "seconds": round(time.monotonic() - started, 3),
-                        "peak_process_rss_mib": peak_rss_mib(),
-                    },
-                )
+        model = OllamaModel(settings)
+        model.load()
+        connection.send(
+            (
+                "load",
+                {
+                    "status": "passed",
+                    "model_id": settings.ollama_model,
+                    "model_revision": model.digest,
+                    "device": model.device,
+                    "quantization": model.quantization,
+                    "seconds": round(time.monotonic() - started, 3),
+                    "peak_process_rss_mib": peak_rss_mib(),
+                },
             )
-            phase = "worker_failed"
-            for index, case in enumerate(cases):
-                connection.send(("stage", index, "inference"))
+        )
+        phase = "worker_failed"
+        for index, case in enumerate(cases):
+            connection.send(("stage", index, "inference"))
 
-                def reviewer(result, current, case_index=index):
-                    connection.send(("stage", case_index, "manual"))
-                    with (
-                        open("/dev/tty", encoding="utf-8") as answers,
-                        open("/dev/tty", "w", encoding="utf-8") as terminal,
-                    ):
-                        return manual_review(result, current, terminal, answers)
+            def reviewer(result, current, case_index=index):
+                connection.send(("stage", case_index, "manual"))
+                with (
+                    open("/dev/tty", encoding="utf-8") as answers,
+                    open("/dev/tty", "w", encoding="utf-8") as terminal,
+                ):
+                    return manual_review(result, current, terminal, answers)
 
-                row = evaluate_case(model, settings, case, capture, reviewer if manual else None)
-                connection.send(("case", index, row))
-            connection.send(("done",))
+            row = evaluate_case(model, settings, case, capture, reviewer if manual else None)
+            connection.send(("case", index, row))
+        connection.send(("done",))
     except Exception:
         connection.send(("failure", phase, round(time.monotonic() - started, 3), peak_rss_mib()))
     finally:
@@ -654,13 +612,22 @@ def main(argv=None):
     )
     parser.add_argument("--dry-run", action="store_true", help="validate and save a plan only")
     parser.add_argument("--case", choices=("all", *CASE_IDS), default="all")
-    parser.add_argument(
-        "--cache-dir", type=Path, default=CACHE_DEFAULT, help="existing HF tokenizer cache"
-    )
     parser.add_argument("--ollama-base-url", default="http://localhost:11434")
-    parser.add_argument(
-        "--ollama-model-digest", default=settings_for(CACHE_DEFAULT).ollama_model_digest
-    )
+    parser.add_argument("--ollama-model-digest", default=None)
+    from app.model_config import ModelSettings
+
+    for name, field in ModelSettings.model_fields.items():
+        if name in {
+            "ollama_base_url",
+            "ollama_model_digest",
+            "model_max_output_tokens",
+            "inference_timeout_seconds",
+            "model_inference_concurrency",
+        }:
+            continue
+        parser.add_argument(
+            "--" + name.replace("_", "-"), type=type(field.default), default=field.default
+        )
     parser.add_argument("--max-output-tokens", type=int, default=384)
     parser.add_argument("--timeout-seconds", type=float, default=300)
     parser.add_argument(
@@ -675,11 +642,15 @@ def main(argv=None):
     try:
         suite = load_fixtures()
         settings = settings_for(
-            args.cache_dir.expanduser().resolve(),
             ollama_base_url=args.ollama_base_url,
             ollama_model_digest=args.ollama_model_digest,
             model_max_output_tokens=args.max_output_tokens,
             inference_timeout_seconds=args.timeout_seconds,
+            **{
+                name: getattr(args, name)
+                for name in ModelSettings.model_fields
+                if hasattr(args, name) and name not in {"ollama_base_url", "ollama_model_digest"}
+            },
         )
         selected = list(CASE_IDS) if args.case == "all" else [args.case]
         report = build_report(
@@ -697,13 +668,11 @@ def main(argv=None):
                 f"Plan only: {len(selected)} selected case(s); {settings.ollama_model} "
                 f"at {settings.ollama_model_digest}; Ollama, serial; "
                 f"{settings.model_max_output_tokens} output tokens / "
-                f"{settings.inference_timeout_seconds:g} seconds; cached tokenizer only."
+                f"{settings.inference_timeout_seconds:g} seconds; Ollama tokenizer."
             )
         if args.run_real_model:
             if any(v is None for v in report["environment"]["dependencies"].values()):
                 report.update(status="failed", error_code="missing_model_dependencies")
-            elif not settings.hf_home.is_dir():
-                report.update(status="failed", error_code="missing_tokenizer_cache")
             elif args.review_in_terminal and not sys.stdin.isatty():
                 report.update(status="failed", error_code="private_terminal_required")
             else:

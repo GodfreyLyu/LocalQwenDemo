@@ -2,7 +2,6 @@
 
 from typing import Literal, NotRequired, TypedDict
 
-from app.config import Settings
 from app.inference.model import ReviewModel
 from app.inference.ollama import OllamaModel
 
@@ -17,11 +16,11 @@ class ModelIdentity(TypedDict):
     quantization: NotRequired[str | None]
 
 
-def model_identity(model: ReviewModel, settings: Settings) -> ModelIdentity:
+def model_identity(model: ReviewModel) -> ModelIdentity:
     if isinstance(model, OllamaModel):
         return {
             "inference_mode": "real",
-            "model_id": settings.ollama_model,
+            "model_id": model.settings.ollama_model,
             "model_revision": model.digest,
             "model_source": "ollama_api",
             "device": model.device,

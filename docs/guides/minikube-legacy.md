@@ -330,10 +330,11 @@ scripts/minikube_demo.sh legacy verify --profile minikube
 
 The Ollama adapter retains three separate section prompts, 2048 input / 384 total output
 tokens, a 300-second whole-job timeout, one worker, unchanged validation and account
-isolation. The Ollama adapter calls `/api/chat` with `think=false`, verifies the stock
-chat template and GGUF vocabulary/merges against the pinned HF tokenizer, and checks
-`prompt_eval_count` on every response. Unsupported templates fail startup. Ollama
-weights stay on the host; only tokenizer assets are required in the model-cache PVC.
+isolation. Ollama owns the selected model's chat template and tokenizer. The adapter
+requires Ollama 0.24.0+, disables truncation/context shifting, and checks actual
+`prompt_eval_count` against the input budget. Exact token-limit failures occur in
+the worker after admission; no partial review is saved. The old backend cache PVC
+is retained but unused. See [model configuration](../reference/model.md) for switching.
 Runtime and saved results expose the actual Ollama digest rather than the HF revision.
 
 `verify` checks the homepage and security headers through the same localhost entry point, live/ready JSON, and 401 responses for unauthenticated API requests. It registers/logs in a dedicated account, checks Cookie/CSRF behavior and rejection of an incorrect Origin, and submits the fixed `average(values)` sample. Acceptance requires a real `completed` result, the correct model/revision, valid Summary/Findings/Suggestions, the existing quality checks, and mention of the sample's empty-input/division-by-zero issue. A failed, timed-out, or invalid_model_response result, HTTP 200 alone, or a Running Pod is not success. The script does not retry blindly.
@@ -341,8 +342,7 @@ Runtime and saved results expose the actual Ollama digest rather than the HF rev
 It then checks history, repeat login, and isolation from a second user. Once the queue
 is idle, it recreates only this project's backend and DynamoDB Pods. It checks that the
 existing Cookie, account and history still work and that model identity is unchanged. It
-also verifies the size, modification time and inode of the cached
-tokenizer files. It records review
+also verifies the installed Ollama model digest and size. It records review
 duration, cgroup current/peak memory, and warm recreation time. Unavailable measurements
 are recorded as `not_measured`.
 
@@ -408,21 +408,21 @@ termination signal and waits up to five seconds. If the child is still running, 
 that same process and waits up to another five seconds. The interactive `port-forward`
 command uses the same checks and cleanup.
 
-## Ollama and tokenizer startup diagnostics
+## Ollama startup diagnostics
 
-The backend verifies the installed Ollama model digest, template and tokenizer before
-becoming ready. It caches only the pinned Hugging Face `tokenizer.json`; Ollama owns
-model weights. A missing or changed Ollama model fails startup rather than selecting
-another engine. Transient service availability checks retry for up to 60 seconds.
+The backend verifies the selected model digest, completion capability and context
+before becoming ready, then runs a startup generation probe. It downloads no model
+or tokenizer files. Missing/changed models fail startup; transient service failures
+are retried for up to 60 seconds.
 
 `startup_stage_started`, `startup_stage_completed` and `startup_stage_failed` identify
-`ollama_validation`, `tokenizer_load`, `startup_generation` and storage stages.
+`ollama_validation`, `startup_generation` and storage stages.
 Safe diagnostic fields contain stage, error code/type, numeric errno/status and retry
 counts. Raw URLs, exceptions, credentials, source and model output are never attached.
 Historical logs may still contain retired weight-cache stages.
 
 Preserve existing PVCs, cached files and model pins when diagnosing failures. Check the
-configured service endpoint, installed digest and pinned tokenizer before any repair.
+configured service endpoint, installed digest and context configuration before any repair.
 A completed startup probe, `model_ready`, HTTP 200 from `/health/ready` and Pod Ready
 establish startup only; real review and browser acceptance are separate checks.
 

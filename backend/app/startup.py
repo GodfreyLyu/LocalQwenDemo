@@ -14,7 +14,6 @@ STAGES = frozenset(
         "queue_recovery",
         "model_load",
         "ollama_validation",
-        "tokenizer_load",
         "startup_generation",
         "post_model_storage",
         "queue_processing",

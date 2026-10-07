@@ -123,16 +123,18 @@ def memory_sample():
 
 def cache_inventory(executor=None):
     result = (executor or backend_python)(
-        "import json; from pathlib import Path; from app.config import Settings\n"
+        "import json, httpx; from app.config import Settings\n"
         "s=Settings()\n"
-        "p=s.hf_home/'hub'/'models--Qwen--Qwen3-1.7B'/'snapshots'/s.model_revision\n"
-        "files=[p/'tokenizer.json']\n"
-        "assert files and all(f.is_file() and f.stat().st_size > 0 for f in files)\n"
-        "print(json.dumps({f.name:[f.stat().st_size, f.stat().st_mtime_ns, f.stat().st_ino] "
-        "for f in files}))"
+        "with httpx.Client(base_url=s.ollama_base_url, trust_env=False, timeout=10) as c:\n"
+        " r=c.get('/api/tags'); r.raise_for_status(); models=r.json()['models']\n"
+        " matches=[m for m in models if m['name']==s.ollama_model]\n"
+        " assert len(matches)==1\n"
+        " m=matches[0]; digest='sha256:'+m['digest'].removeprefix('sha256:')\n"
+        " assert not s.ollama_model_digest or digest==s.ollama_model_digest\n"
+        " print(json.dumps({s.ollama_model:[digest,m.get('size')]}))"
     )
     data = json.loads(result.stdout)
-    require(bool(data), "Active adapter cache missing or incomplete.")
+    require(bool(data), "Selected Ollama model inventory missing or incomplete.")
     return data
 
 

@@ -1,17 +1,16 @@
 FROM python:3.12-slim-bookworm AS build
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /build
-COPY requirements.lock requirements-model.lock ./
+COPY requirements.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.lock \
-    && /opt/venv/bin/pip install -r requirements-model.lock
+    python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.lock
 COPY pyproject.toml ./
 COPY app ./app
 RUN /opt/venv/bin/pip install --no-deps --no-cache-dir .
 
 FROM python:3.12-slim-bookworm
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
-    HF_HOME=/models/huggingface HF_HUB_DISABLE_TELEMETRY=1 HOME=/tmp
+    HOME=/tmp
 RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --no-create-home \
       --shell /usr/sbin/nologin app \
     && mkdir -p /data /models/huggingface && chown -R 10001:10001 /data /models

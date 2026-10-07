@@ -56,8 +56,8 @@ Install the [independent Ollama release](../../deploy/helm/local-ollama/README.m
 first, as `review-ollama` in `local-inference`, serving the pinned `qwen3:1.7b` model.
 The default endpoint is `http://review-ollama.local-inference.svc.cluster.local:11434`.
 The application Chart connects to this Service; it does not install Ollama itself. The
-application validates the model digest and tokenizer at startup. Both inference modes
-may need outbound HTTPS to initialize tokenizer or model files.
+application validates its selected model digest, capabilities and context at startup.
+Only Ollama needs registry access to download a missing model.
 
 ### One-time namespace and Secret preparation
 
