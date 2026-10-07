@@ -1,5 +1,5 @@
 image:
   repository: ghcr.io/godfreylyu/localqwendemo-ollama
-  digest: sha256:4c15e1ef07aa8112ddc2b101eaf0694fc496237d0f470f2cdcaf655433d55e33
-  tag: sha-75e22cc4751e4af7f9073c2d6140b023e2a1d035
+  digest: sha256:82ec70bf298558067e1f303e0f86241f4c4656a7ece2e148f0da17aac2cdfadd
+  tag: sha-463a2b8bd347802638f7e0f88513e2f8f8cf0d1e
   pullPolicy: IfNotPresent

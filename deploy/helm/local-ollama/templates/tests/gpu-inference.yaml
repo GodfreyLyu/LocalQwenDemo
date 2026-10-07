@@ -1,3 +1,4 @@
+{{- if .Values.model.bootstrap }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -38,3 +39,4 @@ spec:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
+{{- end }}
