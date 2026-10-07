@@ -64,16 +64,13 @@ persistence:
 volumePermissions:
   enabled: true
 model:
-  backend: ollama
   ollamaBaseUrl: http://review-ollama.local-inference.svc.cluster.local:11434
   ollamaModel: qwen3:1.7b
   ollamaModelDigest: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
   id: Qwen/Qwen3-1.7B
   revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
-  dtype: bfloat16
   maxInputTokens: 2048
   maxOutputTokens: 384
-  cpuThreads: 2
   timeoutSeconds: 300
 config:
   allowedOrigin: http://localhost:8080
