@@ -61,9 +61,9 @@ helm template local-review ./deploy/helm/local-review \
 
 ## Lifecycle
 
-One release per namespace; fixed Service names preserve local endpoint validation.
-Backend replicas remain one and updates use `Recreate`. Chart-created PVCs are
-retained on Helm uninstall. To reuse storage, set the three
+Each namespace supports one release. Fixed Service names preserve local endpoint
+validation. The backend runs one replica and uses `Recreate` updates. Chart-created PVCs
+are retained on Helm uninstall. To reuse storage, set the three
 `persistence.*.existingClaim` values and retain the original signing Secret.
 
 The Chart has deterministic templates and can also be rendered by Argo CD. Choose

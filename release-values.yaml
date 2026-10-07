@@ -11,4 +11,4 @@ frontend:
     tag: sha-d81cd2bf3590116e0f54d63f9f91178f5e9232bf
     pullPolicy: IfNotPresent
 config:
-  releaseSha: 75e22cc4751e4af7f9073c2d6140b023e2a1d035
+  releaseSha: 3c59ed41fee455dc7ece7b48d470d28cb502ac1d

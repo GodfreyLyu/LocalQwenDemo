@@ -41,13 +41,13 @@ publish a tested image and set `image.repository` plus `image.digest`; do not
 reuse a mutable tag for changed runtime code. Image publishing is separate from
 this Chart and the application's existing release pipeline.
 
-For an offline install, set `model.pullIfMissing=false` in a local values file
-and use that file on every upgrade. Install without `--wait`, then copy a complete
-Ollama model store into `/models` in the `ollama` container, with blobs copied
-before the `manifests/` tree. The store must include the pinned model and all its
-referenced blobs. The process waits up to `model.waitSeconds` for the model;
-readiness remains false until GPU validation completes. Alternatively prepare
-a PVC first and set `persistence.existingClaim`.
+For an offline install, set `model.pullIfMissing=false` in a local values file and use
+that file on every upgrade. Install without `--wait`. Then copy a complete Ollama model
+store into `/models` in the `ollama` container, copying blobs before the `manifests/`
+tree. The store must include the pinned model and all its referenced blobs. The process
+waits up to `model.waitSeconds` for the model; readiness remains false until GPU
+validation completes. Alternatively prepare a PVC first and set
+`persistence.existingClaim`.
 
 ## Readiness and GPU verification
 
@@ -116,8 +116,9 @@ commands for krunkit; the optional local build script requires the Docker driver
 
 ## Upgrade, rollback and storage
 
-Single replica with `Recreate` releases the one GPU slot before scheduling its
-replacement. This causes downtime during upgrades; there is no HA claim.
+The deployment uses one replica and the `Recreate` strategy. It releases the GPU slot
+before scheduling the replacement Pod, so upgrades cause downtime. High availability is
+not supported.
 
 ```bash
 helm history review-ollama --kube-context minikube -n local-inference
