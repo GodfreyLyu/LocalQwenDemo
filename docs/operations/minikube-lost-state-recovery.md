@@ -55,11 +55,12 @@ Every listable namespaced API resource type must be enumerated successfully. Dis
 failures, missing permissions, duplicate/ambiguous identities, or unknown objects stop
 cleanup rather than being interpreted as an empty namespace. Directly managed resource
 types require the exact original marker. Unmarked ReplicaSets, Pods and EndpointSlices
-must have a single controller ownerReference with the actual parent's UID, kind, API
-version and name, traced to a verified root. A similar name, label or marker on a Pod
-alone is insufficient. Resources with unsupported or missing ownership links (including
-legacy Endpoints or Events without a verifiable ownerReference) are conservatively
-reported as unknown. Inspect them; do not relabel them to force authorization.
+must have exactly one controller ownerReference. Its UID, kind, API version and name
+must match the actual parent, and the ownership chain must lead to a verified root
+resource. A similar name, label or marker on a Pod alone is insufficient. Resources with
+unsupported or missing ownership links (including legacy Endpoints or Events without a
+verifiable ownerReference) are conservatively reported as unknown. Inspect them; do not
+relabel them to force authorization.
 
 The default ServiceAccount and `kube-root-ca.crt` ConfigMap are not accepted by name alone.
 They require recorded Kubernetes-controller provenance, no foreign owner/marker, and
@@ -92,9 +93,10 @@ with UID/resourceVersion patch tests, waits for its Pods to exit and rechecks th
 It then reuses the existing SQLite writer reservation in the running backend: new review
 commits, including direct backend submissions, cannot enter while the backend is being
 stopped. No additional model process is launched. Busy, draining, expired or unavailable
-guards fail closed. An externally restarted workload invalidates the stopped proof.
-Deployment generation is checked as well as UID and replicas, so a scale-up followed
-by scale-down cannot reuse an earlier idle proof merely because replicas are zero again.
+guards fail closed. An externally restarted workload invalidates the stopped proof. The
+command checks Deployment generation as well as UID and replica count. Scaling up and
+then back down invalidates earlier evidence that the workload was idle, even if the
+replica count returns to zero.
 
 The entire namespace inventory is revalidated before workload changes, before each
 managed-resource deletion and immediately before namespace deletion. Every deletion
@@ -153,9 +155,10 @@ modified. Do not combine restoration with deletion flags.
 A crash after backend shutdown but before the completed queue-fence checkpoint is
 ambiguous. With retained history and no confirmed idle proof, retry stops. Do not edit
 `quiesced`, fabricate ownership, force deletion, or assume missing Pods imply an empty
-queue. A separately reviewed, identity-protected backend restoration and fresh ready/
-queue check is needed before cleanup can proceed. Recovery does not automatically
-launch a model or discard potentially queued work to resolve this uncertainty.
+queue. Before cleanup can proceed, the backend must be restored through a separately
+reviewed operation that verifies its identity. Then check readiness and the queue again.
+Recovery does not automatically launch a model or discard potentially queued work to
+resolve this uncertainty.
 
 ## 4. Start a new deployment only after confirmed cleanup
 
@@ -165,10 +168,11 @@ Only after `cleaned` and observed namespace absence:
 scripts/minikube_demo.sh legacy up --profile "$PROFILE"
 ```
 
-The explicit `up` rechecks namespace absence and matching recovery identity, archives the
-old partial records and completed recovery journal, and creates normal new ownership for
-new resources. Interruption during archival retains recoverable copies. An unexpected
-replacement namespace blocks this transition. It builds/verifies actual checkout inputs
-with the normal unique image tags, image IDs and fingerprints. It never reuses an old
-review as evidence for new code. Nothing here runs `up` automatically or establishes
-completed-review, persistence, complete `verify`, or browser acceptance.
+The explicit `up` rechecks namespace absence and matching recovery identity, archives
+the old partial records and completed recovery journal, and creates normal new ownership
+for new resources. Interruption during archival retains recoverable copies. An
+unexpected replacement namespace blocks this transition. It builds and verifies the
+actual checkout inputs using the usual unique image tags, image IDs and fingerprints. It
+never reuses an old review as evidence for new code. Nothing here runs `up`
+automatically or establishes completed-review, persistence, complete `verify`, or
+browser acceptance.

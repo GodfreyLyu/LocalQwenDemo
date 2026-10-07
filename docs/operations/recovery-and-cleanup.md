@@ -2,7 +2,9 @@
 
 [Documentation index](../README.md)
 
-This runbook covers the local CPU service deployed to an existing minikube cluster.
+This runbook covers application startup and recovery for legacy Kustomize deployments.
+For Helm lifecycle operations, use the [Helm guide](../guides/helm-release.md); for
+Argo CD, use the [GitOps guide](../guides/gitops.md).
 Start with read-only diagnostics on an explicitly selected profile. Inspection does not
 authorize new inference, restarts, configuration changes or deletion. Preserve data and
 reports, including failed and incomplete results.
@@ -42,15 +44,16 @@ repairs, deletes or clears account storage.
 
 Startup checks use a separate SDK client with one total request attempt, a 3-second
 connect timeout and a 5-second read timeout. Normal account operations retain their
-existing SDK retry settings. The asynchronous backoff is 1, 2, 4, 8, then 10 seconds
-maximum; the final wait is shortened to the remaining budget. The **120-second
-monotonic budget includes both calls and waits**. No new call starts at or after the
-deadline. An in-flight call is awaited, not abandoned via an asyncio timeout, and
-cannot make startup succeed after the deadline. Consequently completion/failure
-reporting can extend past 120 seconds while the final request returns (normally
-up to one 3-second connect / 5-second read attempt). Socket timeouts are not hard
-wall-clock bounds on OS DNS resolution, scheduling or a continuously trickling
-response. There is no parallel check or overlapping retry.
+existing SDK retry settings. Retries wait asynchronously for 1, 2, 4 and 8 seconds, then
+at most 10 seconds between attempts. The final wait is shortened to fit the remaining
+budget. The **120-second monotonic budget includes both calls and waits**. No new call
+starts at or after the deadline. The code waits for an in-flight call to return instead
+of abandoning it with an asyncio timeout. Even a successful response cannot make startup
+succeed after the deadline. Reporting may therefore extend beyond 120 seconds while the
+final request finishes, normally within one attempt's 3-second connect and 5-second read
+timeouts. Socket timeouts are not hard wall-clock bounds on OS DNS resolution,
+scheduling or a continuously trickling response. There is no parallel check or
+overlapping retry.
 
 During retries, `/health/live` stays responsive and alive; `/health/ready` remains
 503 with the compatible `model_loading` state and submissions remain rejected.
@@ -113,9 +116,10 @@ scripts/minikube_demo.sh legacy undeploy --profile minikube
 
 Import is appropriate only when a trusted old copy exists. Default undeploy removes
 owned runtime resources but preserves the three PVCs, signing Secret and recovery
-information. It checks readiness/queue state, pauses the owned frontend, reserves SQLite
-writes to fence racing requests, and conditionally deletes verified resources. A queued,
-running, draining or unmeasurable inference prevents cleanup.
+information. It checks readiness and queue state, then pauses the owned frontend. It
+reserves SQLite writes to block concurrent submissions before deleting verified
+resources with identity preconditions. A queued, running, draining or unmeasurable
+inference prevents cleanup.
 
 For deliberate full data removal under trusted state:
 

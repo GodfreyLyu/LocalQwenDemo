@@ -47,14 +47,15 @@ known row shapes; these annotations are not runtime database validation.
 `CreateReviewResult` and generation metrics/context are small dataclasses because
 operation metadata and mutable execution observations are not HTTP payloads.
 
-`create_app` assembles settings, stores, the limiter, model, coordinator and service
-for each application instance. `api/dependencies.py` is the only route-facing adapter
-from Request/app state to those typed dependencies. The service takes explicit
-Python collaborators and has no Request/Response dependency. Simple owner-scoped
-history/detail queries call `Store` directly from routes; a forwarding-only service
-layer would add no policy. Canonical callers use `app.inference`, `app.persistence` and `app.api`.
-The root `app.model` remains an explicit compatibility facade for older evaluator
-and operational imports; implementation modules never import through it.
+`create_app` assembles settings, stores, the limiter, model, coordinator and service for
+each application instance. `api/dependencies.py` is the only route-facing adapter from
+Request/app state to those typed dependencies. The service receives its Python
+dependencies explicitly and does not depend on HTTP Request or Response objects. Routes
+call `Store` directly for simple history and detail queries scoped to the authenticated
+user. An extra service layer would only forward those calls without adding policy.
+Canonical callers use `app.inference`, `app.persistence` and `app.api`. The root
+`app.model` remains an explicit compatibility facade for older evaluator and operational
+imports; implementation modules never import through it.
 
 ### Shared readiness and rate limits
 
@@ -86,7 +87,14 @@ policy, and Store checks idempotency while atomically persisting a queued review
 browser polls the persisted status and renders only sanitized completed Markdown.
 The cluster is accessed through an explicitly owned loopback forward, not a public ingress.
 
-One Uvicorn process and one background coordinator own a dedicated one-thread inference executor. Each review invokes the executor once to generate Summary, Findings, and Suggestions sequentially. The sections share one 384-token deployment budget split 72/176/136, one deadline, and one stop event; no section output becomes a later model instruction. If an individual section reaches its fixed limit, the backend may delete only its incomplete trailing fragment after the last complete terminator. It never adds a continuation call or alters an earlier complete sentence or list item.
+One Uvicorn process and one background coordinator share a dedicated inference executor
+with one thread. Each review invokes that executor once to generate Summary, Findings
+and Suggestions in order. The sections share a 384-token deployment budget, split
+72/176/136, along with one deadline and one stop event. Generated text from one section
+is never used as an instruction for another. If an individual section reaches its fixed
+limit, the backend may delete only its incomplete trailing fragment after the last
+complete terminator. It never adds a continuation call or alters an earlier complete
+sentence or list item.
 
 Qwen3's tokenizer chat template is always invoked with the hard `enable_thinking=False` switch, so the application neither requests nor parses chain-of-thought. Each section uses the pinned model's explicit non-thinking sampling parameters and a stable SHA-256-derived seed inside an isolated CPU RNG context. Exiting the context restores the process RNG state, and neither seed nor source-derived hash is logged or persisted. Repeatability is scoped to the same dependency, CPU, and runtime stack.
 
@@ -117,7 +125,12 @@ Sessions are signed opaque random tokens; only a SHA-256 token hash, user identi
 
 By default, the queue allows eight queued jobs plus one running job, with at most one active job per account. Admission and status transitions are persisted before HTTP acceptance or inference. History writes fail closed: no success is returned when storage fails.
 
-Before queue recovery, startup account-store checks retry only explicitly allowed transport failures within a 120-second budget, using serial single-attempt SDK calls and asynchronous capped backoff. Readiness stays false throughout. See [startup retry boundaries](../operations/recovery-and-cleanup.md#temporary-account-store-connection-failures). This does not retry other initialization stages or inference.
+Before recovering the queue, startup checks the account store. It retries only
+explicitly allowed transport failures, within a 120-second budget. Each SDK call makes
+one attempt, and retries run serially with asynchronous waits capped at a fixed maximum.
+Readiness stays false throughout. See [startup retry
+boundaries](../operations/recovery-and-cleanup.md#temporary-account-store-connection-failures).
+This does not retry other initialization stages or inference.
 
 On process restart, queued jobs are recovered. Stale running jobs are requeued once, incrementing `retry_count`. A second interruption fails them as `interrupted`. A reduced queue capacity preserves the oldest jobs and fails excess recovered work. Ordinary inference failures, empty or invalid output, and timeouts are not automatically retried; the user may make a new submission.
 
@@ -140,12 +153,13 @@ normal processing or draining without hiding the last operational state.
 | `inference_stuck` | false | false | Stop claiming jobs; late thread exit cannot restore readiness |
 | `startup_or_storage_failure` | false | false | Stop the worker loop; restart/recovery is required |
 
-A cooperative or late successful/failed exit during the drain window returns to
-`ready`; the persisted timeout remains failed and is not replaced by a late result.
-Shutdown sets `closing`, clears readiness through the property, signals the stop
-event and waits for a bounded grace period before cancelling the coordinator task.
-Loading or draining finishing during shutdown cannot reopen admission. Cancellation
-cannot kill native inference; process termination is still the final bound.
+If inference exits during the drain window, the coordinator returns to `ready`, whether
+inference stopped cooperatively, succeeded late or failed. The stored job remains failed
+with a timeout; a late result does not replace it. Shutdown sets `closing`, clears
+readiness through the property, signals the stop event and waits for a bounded grace
+period before cancelling the coordinator task. Loading or draining finishing during
+shutdown cannot reopen admission. Cancellation cannot kill native inference; process
+termination is still the final bound.
 
 ## Design tradeoffs and scaling boundary
 
@@ -157,36 +171,40 @@ appropriate for a local demonstration, not a multi-worker deployment guarantee.
 worker and one replica. Increasing Uvicorn workers would instantiate more models,
 coordinators and limiters; the in-process constraint would no longer be global.
 
-SQLite keeps queue admission, idempotency, history and session revocation together
-with short transactions and no separate broker. WAL supports concurrent readers,
-while writes serialize. Its queue survives process restarts, but it provides no
-worker lease or distributed execution ownership. DynamoDB Local holds accounts and
-Argon2id hashes separately, exercising the DynamoDB API without cloud credentials.
-The cost is a second local dependency and no transaction spanning account creation
-and SQLite session creation; a successful registration followed by a session-store
-failure can leave an account that must log in later.
+SQLite keeps queue admission, idempotency, history and session revocation together with
+short transactions and no separate broker. WAL supports concurrent readers, while writes
+serialize. Its queue survives process restarts, but it provides no worker lease or
+distributed execution ownership. DynamoDB Local holds accounts and Argon2id hashes
+separately, exercising the DynamoDB API without cloud credentials. This adds a second
+local dependency. There is no transaction spanning account creation and SQLite session
+creation. If registration succeeds but saving the session fails, the account remains and
+the user must log in later.
 
-Multi-process operation would require explicit worker ownership/leases, safe
-recovery that cannot requeue another live worker's job, shared admission/rate-limit
-policy, model-memory planning, and cross-worker cancellation/health semantics.
-Database placement, write contention and durable handoff would also need review.
-The existing SQLite transaction prevents duplicate admission; it does **not** make
-inference exactly-once or make current startup recovery safe across workers. None
-of those distributed capabilities is implemented here.
+Multi-process operation would require explicit worker ownership and leases. Recovery
+would need to avoid requeueing another live worker's job. Workers would also need shared
+admission and rate-limit policies, planned model memory usage, and consistent
+cancellation and health behavior. Database placement, write contention and durable
+handoff would also need review. The existing SQLite transaction prevents duplicate
+admission; it does **not** make inference exactly-once or make current startup recovery
+safe across workers. None of those distributed capabilities is implemented here.
 
 ## Deployment and persistence
 
-`deploy/kustomize/overlays/minikube` is the sole maintained deployment overlay. Its local
-base describes hardened application resources. A namespace-scoped signing Secret is
-created once by the deployment script and reused. Three independent PVCs hold history/
-queue/sessions, model cache and DynamoDB Local accounts. Existing supported hostpath
-storage and CNI are inspected, never installed or reconfigured by the scripts.
+The application and independent Ollama service have separate Helm Charts under
+`deploy/helm`. Approved release snapshots pin their images. Deploy with standard Helm
+commands or let Argo CD reconcile the release branch, using one manager per deployment.
+The application references a stable external signing Secret and uses three PVCs for
+history/queue/sessions, the backend model cache and DynamoDB Local accounts. Ollama
+has its own model PVC. See the [Helm guide](../guides/helm-release.md) and
+[GitOps guide](../guides/gitops.md) for ownership and storage retention.
 
-The minikube helpers verify profile/home/cluster identity, use a private kubeconfig and
-shared operation lock, and enforce namespace UID and random ownership markers. Source
-fingerprints, unique local image tags and image IDs bind deployment/verification to the
-actual checkout. [State import and cleanup](../guides/minikube-legacy.md#state-and-ownership-protection)
-work across checkout moves. Readiness and acceptance have independent reports.
+`deploy/kustomize/overlays/minikube` remains available for legacy deployments. Its
+helpers verify profile/home/cluster identity, use a private kubeconfig and shared
+operation lock, and enforce namespace UID and random ownership markers. Source
+fingerprints, image tags and image IDs bind records to the deployed build.
+[State import and cleanup](../guides/minikube-legacy.md#state-and-ownership-protection)
+work across checkout moves. Legacy commands must not manage Helm or Argo CD resources.
+Readiness and acceptance have independent reports.
 
 ## Observability flow
 

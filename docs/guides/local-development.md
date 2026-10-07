@@ -1,10 +1,9 @@
 # Local development
 
 For current local deployment, use the [Helm workflow](minikube-demo.md).
-The Kustomize commands below remain available under `legacy`.
-
-Use this guide to develop and test locally. For deployment to an existing cluster,
-follow the [minikube guide](minikube-legacy.md).
+Use this guide to develop and test locally. For published deployments, follow the
+[Helm release guide](helm-release.md). Existing Kustomize deployments use the separate
+[legacy guide](minikube-legacy.md).
 
 [Documentation index](../README.md) · Run commands from the repository root unless shown otherwise. Check each section's side effects before running it.
 
@@ -46,7 +45,11 @@ The reported executable must be under the repository's `backend/.venv`, and the 
 
 ### Recover a virtual environment created from a temporary interpreter
 
-Errors such as `init_fs_encoding: failed to get the Python codec of the filesystem encoding`, or a `backend/.venv/bin/python` symlink that resolves under `/private/tmp`, mean that the base interpreter has been removed or partially cleaned. A virtual environment is not portable across base interpreters; rebuild it rather than editing `pyvenv.cfg` or replacing individual symlinks.
+The error `init_fs_encoding: failed to get the Python codec of the filesystem encoding`
+can indicate that the base interpreter was removed or partially cleaned up. Also check
+whether `backend/.venv/bin/python` points into `/private/tmp`. Rebuild the environment
+with a persistent interpreter; editing `pyvenv.cfg` or individual symlinks does not make
+a virtual environment portable.
 
 From the repository root, deactivate the broken environment, retain an ignored local backup, and recreate the same `backend/.venv` path:
 
@@ -115,9 +118,9 @@ For real inference with emulated accounts (no Docker), install the optional mode
 
 ### Backend code map
 
-The Uvicorn entry point remains `app.main:create_app`. The factory wires application
-state, middleware, error handlers and routers; each router reads the current app's
-state from the request, so separate app instances do not share stores or settings.
+The Uvicorn entry point remains `app.main:create_app`. The factory sets up application
+state, middleware, error handlers and routers. Each router reads its app's state from
+the request. This keeps stores and settings separate across app instances.
 
 | Module under `backend/app` | Responsibility |
 | --- | --- |
@@ -169,7 +172,11 @@ With the fake harness, the API must report ready, registration/login must work i
 
 ## Common failures and handling
 
-For a broken interpreter, use the recovery section above. For a 403, open `http://localhost:5173` exactly; for occupied ports, stop only the process you own. For model-loading failures, inspect the pinned cache and safe startup events using [troubleshooting](../operations/recovery-and-cleanup.md); preserve partial downloads and data.
+For a broken interpreter, use the recovery section above. For a 403 response, open
+`http://localhost:5173` exactly as written. If a port is occupied, stop only a process
+you own. For model-loading failures, follow
+[troubleshooting](../operations/recovery-and-cleanup.md) to inspect the pinned cache and
+safe startup events. Preserve partial downloads and existing data.
 
 ## Dependency maintenance
 

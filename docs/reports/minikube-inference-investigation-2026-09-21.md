@@ -1,6 +1,8 @@
 # CPU inference timeout investigation — 2026-09-21
 
-Historical report: results apply only to the dates, models and environments stated below. This document is not evidence that the current checkout was revalidated. Audience: maintainers investigating prior work; prerequisite: [current documentation index](../README.md).
+This historical report is for maintainers reviewing earlier work. Its results apply only
+to the dates, models and environments stated below and do not validate the current
+checkout. For current guidance, start with the [documentation index](../README.md).
 
 Status: `investigated`; performance root cause: `not_determined`.
 No inference, verification run, deployment, restart, resource adjustment, or data repair
@@ -39,11 +41,11 @@ logs contain the following events; all occur after its start time:
 | `review_finished` | 07:48:26.858 | `inference_timeout`, duration 300072 ms |
 | `model_generation_finished` | 07:48:27.147 | Generation duration 300224 ms, 139 tokens |
 
-The review ID is `4e994476-b6c7-4629-906f-f8897fbe6268`. A read-only SQLite
-metadata query confirms `failed` / `inference_timeout`; no queued/running reviews
-were present. The generation event has no review ID. Association is supported by
-the single inference worker, the only review start/finish in these logs, and the
-adjacent timestamps, rather than by an explicit ID in that event.
+The review ID is `4e994476-b6c7-4629-906f-f8897fbe6268`. A read-only SQLite metadata
+query confirms `failed` / `inference_timeout`; no queued/running reviews were present.
+The generation event has no review ID. The event can be associated with this review
+because there is one inference worker, only one review start and finish in the logs, and
+adjacent timestamps. The event itself contains no explicit review ID.
 
 The newly measured cumulative `nr_throttled=2761` and `throttled_usec=127658733`
 exactly match the supplied sample, while `nr_periods` has increased. Combined with
@@ -82,16 +84,16 @@ no exclusive two-core binding. The serving worker's effective PyTorch intra/inte
 getters were **not measured** in the existing process. A separate diagnostic Python
 process would not establish the serving worker's settings.
 
-The actual environment is Apple M2 Pro, Linux aarch64, torch `2.8.0+cpu`,
-Transformers `4.57.6`, huggingface-hub `0.36.2`, safetensors `0.8.0`.
-The node exposes `bf16` and `i8mm` CPU flags. The serving process maps Arm Compute
-Library and OpenMP libraries. A separate metadata-only import of the installed
-PyTorch binary reports oneDNN 3.7.1, OpenMP, OpenBLAS, `USE_MKLDNN=ON`,
-`USE_CUDA=OFF`, and `CPU capability usage: DEFAULT`.
-These show available capabilities and build support, **not** which BF16 kernels
-executed this review. Neither `DEFAULT` nor aarch64 alone proves a fallback or an
-accelerated path. No operator/kernel trace was available. Model configuration and
-code retain BF16 CPU placement; no dtype or inference setting was changed.
+The actual environment is Apple M2 Pro, Linux aarch64, torch `2.8.0+cpu`, Transformers
+`4.57.6`, huggingface-hub `0.36.2`, safetensors `0.8.0`. The node exposes `bf16` and
+`i8mm` CPU flags. The serving process maps Arm Compute Library and OpenMP libraries. A
+separate metadata-only import of the installed PyTorch binary reports oneDNN 3.7.1,
+OpenMP, OpenBLAS, `USE_MKLDNN=ON`, `USE_CUDA=OFF`, and `CPU capability usage: DEFAULT`.
+These observations show the capabilities available in the build. They do **not**
+identify which BF16 kernels executed this review. Neither `DEFAULT` nor aarch64 alone
+proves a fallback or an accelerated path. No operator/kernel trace was available. Model
+configuration and code retain BF16 CPU placement; no dtype or inference setting was
+changed.
 
 ## Resource evidence and limits
 
@@ -157,10 +159,10 @@ internal work happened. Generation exceptions and deadlines still fail normally.
 The formatter exports only these fixed fields, not tensors, source, prompts,
 model output, seeds, credentials, or exception strings. API responses are unchanged.
 
-Offline tests exercise separate preparation/first-token/total timings, unchanged
-sampling and budgets, deadline failure in the third section with partial counts,
-exceptions with elapsed time but no fabricated completion, unobserved sections,
-and formatter redaction. No real model was loaded by these tests.
+Offline tests cover preparation, first-token and total timings, as well as unchanged
+sampling and budgets. They also cover deadline failure in the third section with partial
+counts, exceptions that report elapsed time without claiming completion, unobserved
+sections and formatter redaction. No real model was loaded by these tests.
 
 Executed validation: 85 tests passed across `backend/tests/test_model.py` and
 `backend/tests/test_api.py`; Ruff lint and format checks passed for the four changed

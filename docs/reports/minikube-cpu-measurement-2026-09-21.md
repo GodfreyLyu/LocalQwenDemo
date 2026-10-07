@@ -1,6 +1,8 @@
 # Single CPU inference measurement — 2026-09-21
 
-Historical report: results apply only to the dates, models and environments stated below. This document is not evidence that the current checkout was revalidated. Audience: maintainers investigating prior work; prerequisite: [current documentation index](../README.md).
+This historical report is for maintainers reviewing earlier work. Its results apply only
+to the dates, models and environments stated below and do not validate the current
+checkout. For current guidance, start with the [documentation index](../README.md).
 
 Status: `measured_with_observation_gaps`. Review outcome: `failed` /
 `inference_timeout`. Optimization status: `not_validated`.
@@ -172,13 +174,13 @@ unavailable (`not_measured`); direct cgroup and proc measurements supplied these
 results without installing anything.
 
 Host VM statistics used 16 KiB pages and showed **activity during this interval**:
-101092 swap-in pages (~1.54 GiB), 42236 swap-out pages (~0.64 GiB), ~184.02 GiB
-of decompressed pages and ~185.24 GiB of compressed pages. The latter figures
-count repeated page operations, not unique data or disk I/O. Swap occupancy fell
-from ~11.61 to ~10.65 GiB. Host sampled CPU idle ranged 26.3–69.29%.
-The host therefore has a real concurrent memory-pressure confound, despite the
-container having no OOM/major-fault increase. Its contribution to this review
-cannot be assigned precisely from system-wide counters.
+101092 swap-in pages (~1.54 GiB), 42236 swap-out pages (~0.64 GiB), ~184.02 GiB of
+decompressed pages and ~185.24 GiB of compressed pages. The latter figures count
+repeated page operations, not unique data or disk I/O. Swap occupancy fell from ~11.61
+to ~10.65 GiB. Host sampled CPU idle ranged 26.3–69.29%. Host memory pressure was
+therefore a factor during the measurement, even though the container showed no increase
+in OOM events or major faults. System-wide counters cannot show precisely how much it
+affected this review.
 
 ## Thread churn: a stronger diagnostic lead
 
@@ -196,11 +198,11 @@ Short-lived threads can start and finish between samples. The first interval spa
 both active inference and subsequent idle time; the database was already failed
 when its final queue count was read.
 
-Together with 20.5 million minor faults and 87 CPU-seconds of system time, this
-supports investigating native thread-team creation/destruction and allocation or
-weight-reordering overhead before simply allocating more CPU. It does not identify
-the responsible operator/library. It also explains why a snapshot of 18 threads
-or `worker_interop_threads=10` alone would miss important behavior.
+The run also recorded 20.5 million minor faults and 87 CPU-seconds of system time.
+Together, these observations support investigating native thread-team creation and
+destruction, allocation overhead and weight reordering before allocating more CPU. It
+does not identify the responsible operator/library. It also explains why a snapshot of
+18 threads or `worker_interop_threads=10` alone would miss important behavior.
 
 ## Observation limitations
 
@@ -211,9 +213,9 @@ completed. The original command stderr was withheld, so the exact cause of each
 failed read is not established. This was not evidence of an API authentication
 failure or a model restart.
 
-Only observation was resumed. No second inference was submitted. Cumulative
-same-instance endpoints retain the total CPU/memory-event differences across the
-gaps, but cannot locate transient peaks or scheduling behavior inside those gaps.
+Only observation was resumed. No second inference was submitted. Cumulative counters
+from the same container still show total changes in CPU usage and memory events across
+the gaps. They cannot reveal transient peaks or scheduling behavior within those gaps.
 The CPU interval means spanning gaps are valid averages, not continuous samples.
 
 A fresh metadata-only PyTorch import was performed after draining to inspect the
@@ -278,11 +280,11 @@ this variable. If the responsible pool ignores OpenMP, the experiment may do not
   signing Secret, history and PVCs; preserve both experiment records.
 
 If that candidate does not reduce churn, stop configuration guessing. The next
-necessary diagnostic is a separately authorized bounded native operator/thread
-creation profile in the same serving process, recording only names/counts/times
-and no tensors, input text or generated text. Inspect actual BF16 backend selection
-and allocation/reorder paths. A targeted library/runtime integration fix should
-follow that evidence, rather than an unverified dependency upgrade.
+diagnostic would be a separately authorized, bounded profile of native operators and
+thread creation in the same serving process. It should record only names, counts and
+timings, with no tensors, input text or generated text. Inspect actual BF16 backend
+selection and allocation/reorder paths. A targeted library/runtime integration fix
+should follow that evidence, rather than an unverified dependency upgrade.
 
 Increasing only the CPU limit (for example 2 → 3, with worker threads still two)
 could later isolate quota effects because the current budget is saturated and the

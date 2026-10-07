@@ -33,10 +33,11 @@ host Ollama 0.35.1. The previous Transformers CPU path remains explicitly select
 | Real review immediately after these adapter failures | Completed in 2.343 seconds |
 | Transformers fallback startup in a separate Pod process | Cached BF16 weights loaded and one token generated; 19.48 seconds |
 
-Fault probes changed only their own process settings, not the running application's
-configuration. They confirm the async transport returns and a subsequent request
-completes. Coordinator queue recovery and serial execution also have offline tests.
-The fallback smoke does not constitute a new full CPU review benchmark.
+Fault probes changed only their own process settings and left the running application's
+configuration unchanged. They confirmed that the asynchronous transport returned after
+each failure and that a later request completed. Coordinator queue recovery and serial
+execution also have offline tests. The fallback smoke does not constitute a new full CPU
+review benchmark.
 
 The first deployment exposed transient connectivity during new Pod startup. The
 adapter now retries startup availability checks for at most 60 seconds, with bounded
@@ -45,16 +46,18 @@ and malformed metadata fail without retry. It never switches adapters automatica
 
 ## Known limits
 
-- **Network isolation is not verified.** The prohibited backend-to-frontend probe
-  was reachable. CNI discovery reported `portmap`/`ptp` with unknown policy support.
-  Existing cluster network components were not changed. Do not present isolation as passed.
+- **Network isolation is not verified.** The prohibited backend-to-frontend probe was
+  reachable. CNI discovery reported `portmap`/`ptp` with unknown policy support.
+  Existing cluster network components were not changed. Do not present isolation as
+  passed.
 - Resource diagnostics reported host/node memory pressure, a conservative disk-budget
   shortfall, and unavailable Pod metrics. Application acceptance passed independently.
   CPU fallback resource reservations and image dependencies were retained.
-- Backend cgroup memory at API acceptance was 294,006,784 bytes (peak 304,218,112).
-  This excludes native host Ollama/GPU memory and cannot be used as total system memory.
-- Single short-sample timings use different observation points and are not p50/p95,
-  throughput, cold-start model benchmarks or a defensible speedup against historical CPU runs.
+- Backend cgroup memory at API acceptance was 294,006,784 bytes (peak 304,218,112). This
+  excludes native host Ollama/GPU memory and cannot be used as total system memory.
+- These timings come from single short samples measured at different points. They do not
+  establish p50/p95 latency, throughput, cold-start performance or a reliable speedup
+  over historical CPU runs.
 - Existing quality gates passed; human review of generated findings is still needed.
 
 ## Reproduce
@@ -74,6 +77,7 @@ refresh history, sign out and sign back in. The CLI report intentionally retains
 `ui_verified=false`; browser evidence is a separate check, not a rewritten API report.
 Use `up --model-backend transformers` for a separately measured CPU baseline.
 
-Next: run both adapters against a fixed dataset with matched budgets, record cold/warm
-runs, latency percentiles, output tokens, quality acceptance and total host resources.
-Resolve and re-test the observed network isolation failure separately.
+For a future comparison, run both adapters against a fixed dataset with matching
+budgets. Record cold and warm runs, latency percentiles, output tokens, quality results
+and total host resource usage. Resolve and re-test the observed network isolation
+failure separately.
