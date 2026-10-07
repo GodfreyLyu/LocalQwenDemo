@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { RuntimeInfo } from '../src/runtime';
 
 test('register, review, refresh persisted history, logout, and login', async ({
   page,
@@ -139,6 +140,7 @@ for (const viewport of [
     let disconnected = false;
     let ready = false;
     let posts = 0;
+    const modelDigest = `sha256:${'a'.repeat(64)}`;
     page.on('request', (request) => {
       if (
         request.method() === 'POST' &&
@@ -154,11 +156,13 @@ for (const viewport of [
           inference_mode: 'real',
           service_status: ready ? 'ready' : 'model_loading',
           accepting_submissions: ready,
-          model_id: 'Qwen/' + 'long-model-display-fixture-'.repeat(6),
-          model_revision: '70d244cc86ccca08cf5af4e1e306ecf908b1ad5e',
-          model_source: 'backend_configuration',
-          device: 'cpu',
-        },
+          model_id: 'qwen3:' + 'long-model-display-fixture-'.repeat(6),
+          model_revision: modelDigest,
+          model_source: 'ollama_api',
+          inference_backend: 'ollama',
+          quantization: 'Q4_K_M',
+          device: 'gpu',
+        } satisfies RuntimeInfo,
       });
     });
     await page.goto('/');
@@ -204,7 +208,14 @@ for (const viewport of [
     await about.focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('details')).toHaveAttribute('open', '');
-    await expect(page.getByText(/pinned weight revision/)).toBeVisible();
+    await expect(page.locator('details')).toContainText(
+      'Ollama API; quantization Q4_K_M',
+    );
+    await expect(page.locator('details')).toContainText(
+      'Device at last inference: gpu',
+    );
+    await expect(page.locator('details')).toContainText('Digest:');
+    await expect(page.locator('details code')).toHaveText(modelDigest);
     await editor.fill('x'.repeat(1000));
     await expect(editor).toHaveText('x'.repeat(1000));
     await page.screenshot({
