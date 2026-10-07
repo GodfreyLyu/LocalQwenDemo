@@ -61,7 +61,7 @@ def test_storage_failure_and_shutdown_never_claim_readiness(factory, monkeypatch
 def test_real_adapter_identity_before_loading_is_not_fabricated(factory):
     client = factory()
     settings = client.app.state.settings
-    identity = model_identity(OllamaModel(settings), settings)
+    identity = model_identity(OllamaModel(settings))
     assert identity == {
         "inference_mode": "real",
         "model_id": settings.ollama_model,
@@ -72,8 +72,8 @@ def test_real_adapter_identity_before_loading_is_not_fabricated(factory):
         "quantization": None,
     }
     # Unknown injected adapters must not be labeled real just because Qwen is configured.
-    assert model_identity(object(), settings)["inference_mode"] == "unknown"
-    assert model_identity(object(), settings)["model_id"] is None
+    assert model_identity(object())["inference_mode"] == "unknown"
+    assert model_identity(object())["model_id"] is None
 
 
 @pytest.mark.parametrize("unavailable", [False, True])

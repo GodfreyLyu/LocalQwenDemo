@@ -26,7 +26,6 @@ def test_pinned_real_model(record_property):
     model = OllamaModel(settings)
     model.load()
     loaded = time.perf_counter()
-    assert model.count_tokens("def average(xs): return sum(xs) / len(xs)", "python") is None
     try:
         result = model.review(
             "def average(xs): return sum(xs) / len(xs)", "python", threading.Event()

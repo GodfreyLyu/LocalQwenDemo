@@ -146,7 +146,7 @@ def prepare(client, config, stop):
     raise RuntimeError("Shutdown requested")
 
 
-def handler(client, config, process, verified):
+def handler(client, process, verified):
     class Health(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path not in ("/live", "/ready"):
@@ -192,7 +192,7 @@ def serve(config):
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    server = ThreadingHTTPServer(("0.0.0.0", 11435), handler(client, config, process, verified))
+    server = ThreadingHTTPServer(("0.0.0.0", 11435), handler(client, process, verified))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         prepare(client, config, stop)

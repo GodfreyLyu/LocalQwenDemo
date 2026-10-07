@@ -73,9 +73,9 @@ response is preserved even though its HTTP status is 503.
 `rate_limit.RateLimiter` is shared by authentication and review admission without
 pulling HTTP authentication code into the business service. The application factory
 still creates one limiter per app. A lock keeps quota checking and recording atomic
-across worker threads; rejected attempts do not consume quota. The legacy
-`app.auth.RateLimiter` import remains available. Limits, windows, key eviction and
-error responses are unchanged.
+across worker threads; rejected attempts do not consume quota. Callers import
+`app.rate_limit.RateLimiter` directly. Limits, windows, key eviction and error
+responses are unchanged.
 
 ## Boundaries
 

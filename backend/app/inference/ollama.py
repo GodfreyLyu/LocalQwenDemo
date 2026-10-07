@@ -223,12 +223,6 @@ class OllamaModel:
                 if type(size) is int and size > 0 and type(vram) is int and vram >= 0:
                     self.device = "cpu" if vram == 0 else "gpu" if vram >= size else "mixed"
 
-    def count_tokens(self, source: str, language: str) -> None:
-        # The public Ollama API has no tokenize endpoint. Admission checks characters;
-        # authoritative token checks happen in the serial worker, using Ollama's
-        # native template/tokenizer. Never estimate an exact count with a different tokenizer.
-        return None
-
     async def _chat(self, client, messages, limit, seed, metrics):
         started = time.monotonic()
         payload = {

@@ -1,11 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
-import {
-  BASE_ESTIMATE_MS,
-  estimateModelTimeMs,
-  formatEstimatedModelTime,
-  MAX_ESTIMATE_MS,
-} from './modelTimeEstimate';
 import { Markdown } from './Markdown';
 import { api, ApiError } from './api';
 const runtimeInfo = {
@@ -77,26 +71,6 @@ function mockWorkspace(
   vi.stubGlobal('fetch', fetcher);
   return fetcher;
 }
-
-it('uses a deterministic bounded input-size estimate with half-minute display precision', () => {
-  expect(estimateModelTimeMs(0, session.source_max_chars)).toBe(
-    BASE_ESTIMATE_MS,
-  );
-  expect(
-    estimateModelTimeMs(1, session.source_max_chars),
-  ).toBeGreaterThanOrEqual(BASE_ESTIMATE_MS);
-  const medium = estimateModelTimeMs(6000, session.source_max_chars);
-  const maximum = estimateModelTimeMs(12000, session.source_max_chars);
-  expect(medium).toBeGreaterThan(BASE_ESTIMATE_MS);
-  expect(maximum).toBe(MAX_ESTIMATE_MS);
-  expect(estimateModelTimeMs(24000, session.source_max_chars)).toBe(
-    MAX_ESTIMATE_MS,
-  );
-  expect(estimateModelTimeMs(500, 0)).toBe(BASE_ESTIMATE_MS);
-  expect(estimateModelTimeMs(500, Number.NaN)).toBe(BASE_ESTIMATE_MS);
-  expect(formatEstimatedModelTime(BASE_ESTIMATE_MS)).toBe('3.5 minutes');
-  expect(formatEstimatedModelTime(MAX_ESTIMATE_MS)).toBe('5 minutes');
-});
 
 it('keeps model details collapsed and the runtime bar compact while idle', async () => {
   mockWorkspace();

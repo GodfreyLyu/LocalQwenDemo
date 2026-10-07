@@ -19,7 +19,7 @@ a real-model success. No test may weaken ownership or security just to pass.
 Backend tests retain their component-based layout under `backend/tests`. Application
 implementations now live in `app.api`, `app.inference` and `app.persistence`; tests
 replace dependencies at those canonical locations (including monkeypatch strings).
-The existing public limiter test still exercises `app.auth.RateLimiter`, and model-identity tests verify Ollama provenance without contacting a service.
+Limiter tests exercise `app.rate_limit.RateLimiter`, and model-identity tests verify Ollama provenance without contacting a service.
 
 Script checks cover the local harness, users initializer and evaluator after their
 imports were updated. Remote command strings use the canonical inference package. The

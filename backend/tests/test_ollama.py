@@ -122,7 +122,7 @@ def test_real_three_section_contract_and_observed_identity(adapter):
     assert all(p["options"]["num_ctx"] == 4096 for p in server.payloads)
     assert all(len(p["messages"]) == 2 for p in server.payloads)
     assert all(SOURCE in p["messages"][1]["content"] for p in server.payloads)
-    identity = model_identity(model, model.settings)
+    identity = model_identity(model)
     assert identity["model_revision"] == "sha256:" + DIGEST
     assert identity["model_id"] == "qwen3:1.7b"
     assert identity["quantization"] == "Q4_K_M" and identity["device"] == "gpu"
@@ -165,7 +165,6 @@ def test_errors_fail_closed_without_partial_review_or_fallback(adapter, change, 
 def test_actual_input_limit_is_checked_by_worker_before_result_is_published(adapter):
     model, server = adapter
     model.settings.model_max_input_tokens = 128
-    assert model.count_tokens(SOURCE, "python") is None
     with pytest.raises(AppError, match="token limit"):
         model.review(SOURCE, "python", threading.Event())
     assert len(server.payloads) == 1
@@ -322,7 +321,7 @@ def test_configuration_is_snapshotted_for_the_model_instance():
     model = OllamaModel(config)
     config.ollama_model = "changed:latest"
     assert model.settings.ollama_model == "qwen3:1.7b"
-    assert model_identity(model, config)["model_id"] == "qwen3:1.7b"
+    assert model_identity(model)["model_id"] == "qwen3:1.7b"
 
 
 def test_startup_retries_transient_network_but_has_a_fixed_deadline(adapter, monkeypatch):
@@ -440,3 +439,30 @@ def test_startup_diagnostics_never_format_exception(stage, caplog):
     assert payload["stage"] == stage
     assert payload["exception_type"] == "ValueError"
     assert "SENTINEL" not in json.dumps(payload)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"prompt_eval_count": 129},
+        {"error": "the input length exceeds the context length"},
+    ],
+)
+def test_admitted_review_fails_safely_when_ollama_rejects_input_tokens(
+    adapter, factory, monkeypatch, override
+):
+    from conftest import register, wait_review
+
+    model, server = adapter
+    model.settings.model_max_input_tokens = 128
+    server.override = override
+    monkeypatch.setattr(model, "load", lambda: None)
+    client = factory(model, model_max_input_tokens=128)
+    register(client)
+    response = client.post("/api/v1/reviews", json={"source_code": SOURCE, "language": "python"})
+    assert response.status_code == 202
+    failed = wait_review(client, response.json()["review_id"])
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "token_limit"
+    assert failed["review_result"] is None
+    assert len(server.payloads) == 1

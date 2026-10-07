@@ -28,5 +28,5 @@ def runtime(
         "deployment_environment": settings.deployment_environment,
         "service_status": state,
         "accepting_submissions": state == "ready",
-        **model_identity(model, settings),
+        **model_identity(model),
     }

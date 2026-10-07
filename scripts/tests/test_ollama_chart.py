@@ -241,7 +241,7 @@ def test_readiness_does_not_depend_on_bootstrap_model_residency(resident, availa
     api.model["size_vram"] = vram
     prepared = threading.Event()
     prepared.set()
-    health = runtime.handler(api, CONFIG, SimpleNamespace(poll=lambda: None), prepared)
+    health = runtime.handler(api, SimpleNamespace(poll=lambda: None), prepared)
     request = health.__new__(health)
     request.path = "/ready"
     request.wfile = io.BytesIO()

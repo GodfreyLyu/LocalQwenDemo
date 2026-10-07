@@ -147,7 +147,7 @@ class Coordinator:
         )
 
     async def finish(self, job: ReviewRecord, result: str | None, error: AppError | None) -> None:
-        identity = model_identity(self.model, self.settings)
+        identity = model_identity(self.model)
         await asyncio.to_thread(
             self.store.finish,
             job["review_id"],

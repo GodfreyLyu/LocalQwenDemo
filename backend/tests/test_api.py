@@ -156,13 +156,9 @@ def test_input_limits(factory, code, error):
     assert response.status_code == 422 and response.json()["error"]["code"] == error
 
 
-def test_tokens_invalid_id_body_limit_and_no_sensitive_echo(factory, capsys):
-    client = factory(model_max_input_tokens=128)
+def test_invalid_id_body_limit_and_no_sensitive_echo(factory, capsys):
+    client = factory()
     register(client)
-    assert (
-        client.post("/api/v1/reviews", json={"source_code": "word " * 100}).json()["error"]["code"]
-        == "token_limit"
-    )
     assert client.get("/api/v1/reviews/not-a-uuid").status_code == 422
     assert client.get(f"/api/v1/reviews/{uuid4()}").status_code == 404
     secret = "sensitive-password-or-source"
@@ -553,7 +549,7 @@ def test_unexpected_errors_do_not_escape_to_transport_logs(factory, monkeypatch,
     def broken(*args):
         raise RuntimeError("source-and-password-must-not-escape")
 
-    monkeypatch.setattr(client.app.state.model, "count_tokens", broken)
+    monkeypatch.setattr(client.app.state.store, "create_review", broken)
     response = client.post("/api/v1/reviews", json={"source_code": "private source"})
     assert response.status_code == 500
     assert "source-and-password" not in response.text + capsys.readouterr().err

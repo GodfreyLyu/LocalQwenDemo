@@ -41,9 +41,6 @@ def main():
         def load(self):
             pass
 
-        def count_tokens(self, source, language):
-            return len(source.split()) + 50
-
         def review(self, source, language, stop):
             stop.wait(0.8)
             return (
