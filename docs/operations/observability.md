@@ -2,16 +2,16 @@
 
 [Documentation index](../README.md) · [Safe log contract](../reference/observability.md)
 
-Start with `scripts/minikube_demo.sh legacy logs --profile minikube` and `status` using trusted
-shared state. If identity evidence is missing, use the [recovery inspection path](minikube-lost-state-recovery.md)
-without authorizing deletion. Do not use raw logs/environment dumps as a debugging shortcut.
-No external monitoring service or automated repair is installed by this project.
+For local Helm deployments, start with `scripts/minikube_demo.sh status --profile
+minikube` and `scripts/minikube_demo.sh logs --profile minikube`. For Argo CD, inspect
+Application sync/health and the selected Pod through the [GitOps guide](../guides/gitops.md).
+Confirm the context and namespace before interpreting results. No external monitoring
+service or automated repair is installed by this project.
 
-The CLI's `logs` output includes fewer fields than the backend's structured logs: it
-omits per-section timing maps and worker thread counts. To inspect those fields, extract
-only the needed allowlisted fields from the backend's `model_generation_finished` event.
-A field missing from the CLI output may still have been measured by the backend. Never
-export entire raw logs to obtain additional fields.
+The Helm CLI returns the backend container's last 100 log lines; it does not apply a
+second field filter. The backend emits the structured safe events defined by the
+[log contract](../reference/observability.md). Inspect only the needed events and fields;
+do not export environment dumps, credentials, source text or unrelated raw output.
 
 ## Correlate before drawing conclusions
 

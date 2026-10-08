@@ -245,7 +245,7 @@ def undeploy(session):
             session.target.object("deployment", "review-" + component)
             for component in ("backend", "frontend", "dynamodb")
         ),
-        "Workloads exist without a Helm release; use legacy cleanup or inspect ownership.",
+        "Workloads exist without a Helm release; inspect their manager and ownership.",
     )
     if session.args.delete_namespace:
         require(

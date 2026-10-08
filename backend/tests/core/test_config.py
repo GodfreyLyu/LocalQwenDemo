@@ -1,30 +1,7 @@
-from pathlib import Path
-
 import pytest
-import yaml
 from pydantic import ValidationError
 
 from app.config import Settings
-
-
-@pytest.mark.integration
-@pytest.mark.contract
-def test_kubernetes_config_map_values_load_from_environment(monkeypatch):
-    root = Path(__file__).resolve().parents[3]
-    config = yaml.safe_load((root / "deploy/kustomize/base/config.yaml").read_text())["data"]
-    for key, value in config.items():
-        monkeypatch.setenv(key, value)
-    settings = Settings(signing_secret="test-secret-" * 4)
-    assert settings.dynamodb_endpoint_url == "http://review-dynamodb:8000"
-    assert settings.environment == "local"
-    assert settings.cookie_secure is False
-    assert settings.model_inference_concurrency == 1
-    assert settings.ollama_model == "qwen3:1.7b"
-    assert settings.model_context_tokens == 4096
-    assert settings.model_max_output_tokens == 384
-    assert settings.inference_timeout_seconds == 300
-    assert settings.data_dir == Path("/data")
-    assert settings.release_sha is None
 
 
 @pytest.mark.unit

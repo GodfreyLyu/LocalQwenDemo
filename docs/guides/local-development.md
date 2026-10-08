@@ -2,8 +2,7 @@
 
 For current local deployment, use the [Helm workflow](minikube-demo.md).
 Use this guide to develop and test locally. For published deployments, follow the
-[Helm release guide](helm-release.md). Existing Kustomize deployments use the separate
-[legacy guide](minikube-legacy.md).
+[Helm release guide](helm-release.md) or [GitOps guide](gitops.md).
 
 [Documentation index](../README.md) · Run commands from the repository root unless shown otherwise. Check each section's side effects before running it.
 

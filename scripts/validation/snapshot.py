@@ -12,6 +12,8 @@ from validation.resources import require
 def validate_tree(root):
     manifest = json.loads((root / "release.json").read_text())
     modern = manifest.get("schemaVersion") == 3
+    # Historical format-1/2 Helm snapshots may contain the former installer files.
+    # This only validates old artifact contents; no retired executable is imported or run.
     allowed = {
         "README.md",
         "release.json",

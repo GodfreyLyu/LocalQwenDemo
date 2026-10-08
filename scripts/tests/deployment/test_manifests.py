@@ -1,38 +1,28 @@
-"""Offline regression tests; these are never evidence of real-model acceptance."""
+"""Helm rendering, container hardening and actual DynamoDB image permissions."""
 
 import json
-import subprocess
-import sys
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
-import deployment.legacy.runtime as demo  # noqa: E402
-import deployment.legacy.verify as acceptance  # noqa: E402
 import pytest
-import yaml
+from deployment.common import acceptance
+from validation.constants import MINIKUBE_VALUES
+from validation.helm import render
 
 from scripts.tests.support.deployment import permission_bits, resource
 from scripts.tests.support.paths import ROOT
 
 
+@pytest.fixture(scope="module")
+def resources():
+    return render(ROOT, [ROOT / MINIKUBE_VALUES])
+
+
 @pytest.mark.integration
-@pytest.mark.requires_kubectl
+@pytest.mark.requires_helm
 @pytest.mark.contract
-@pytest.mark.parametrize("render_path", ["overlay", "deployment"])
-def test_openmp_setting_is_backend_only_and_preserves_inference_contract(render_path):
-    if render_path == "overlay":
-        rendered = list(
-            yaml.safe_load_all(
-                subprocess.run(
-                    ["kubectl", "kustomize", str(ROOT / "deploy/kustomize/overlays/minikube")],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                ).stdout
-            )
-        )
-    else:
-        rendered = demo.render(8080)
+def test_inference_configuration_stays_in_backend_config(resources):
+    rendered = resources
     cfg = resource(rendered, "ConfigMap", "review-config")["data"]
     pod = resource(rendered, "Deployment", "review-backend")["spec"]["template"]["spec"]
     backend = next(c for c in pod["containers"] if c["name"] == "review-backend")
@@ -65,9 +55,9 @@ def test_openmp_setting_is_backend_only_and_preserves_inference_contract(render_
 
 
 @pytest.mark.integration
-@pytest.mark.requires_kubectl
+@pytest.mark.requires_helm
 @pytest.mark.contract
-def test_overlay_preserves_product_contract_and_has_no_cloud_resources(resources):
+def test_chart_preserves_product_contract_and_has_no_cloud_resources(resources):
     cfg = resource(resources, "ConfigMap", "review-config")["data"]
     assert (
         cfg.items()
@@ -97,7 +87,7 @@ def test_overlay_preserves_product_contract_and_has_no_cloud_resources(resources
         "PersistentVolumeClaim",
     }
     assert all(r["kind"] in allowed for r in resources)
-    assert all(r["metadata"]["namespace"] == demo.NAMESPACE for r in resources)
+    assert all(r["metadata"]["namespace"] == "review-validation" for r in resources)
     serialized = json.dumps(resources)
     for forbidden in ("gp3", "ebs.csi", "169.254.170.23", "10.74.0.0", "arn:aws:", "REPLACE_"):
         assert forbidden not in serialized
@@ -111,7 +101,7 @@ def test_overlay_preserves_product_contract_and_has_no_cloud_resources(resources
 
 
 @pytest.mark.integration
-@pytest.mark.requires_kubectl
+@pytest.mark.requires_helm
 def test_all_application_containers_remain_hardened_and_single_replica(resources):
     for deployment in (r for r in resources if r["kind"] == "Deployment"):
         assert deployment["spec"]["replicas"] == 1
@@ -130,12 +120,14 @@ def test_all_application_containers_remain_hardened_and_single_replica(resources
     assert backend["securityContext"]["runAsUser"] == 10001
     assert backend["containers"][0]["resources"]["limits"]["memory"] == "6Gi"
     for init in backend["initContainers"]:
+        if init["name"] != "volume-permissions":
+            continue
         assert init["securityContext"]["capabilities"]["add"] == ["CHOWN", "FOWNER"]
         assert "os.chown" in init["args"][0] and "rmtree" not in init["args"][0]
 
 
 @pytest.mark.integration
-@pytest.mark.requires_kubectl
+@pytest.mark.requires_helm
 @pytest.mark.contract
 def test_dynamodb_effective_identity_can_traverse_the_actual_image_startup_path(resources):
     image = json.loads(
@@ -174,7 +166,7 @@ def test_dynamodb_effective_identity_can_traverse_the_actual_image_startup_path(
 
 
 @pytest.mark.integration
-@pytest.mark.requires_kubectl
+@pytest.mark.requires_helm
 @pytest.mark.security
 def test_dynamodb_permission_init_is_idempotent_and_changes_only_volume_root(resources):
     pod = resource(resources, "Deployment", "review-dynamodb")["spec"]["template"]["spec"]
@@ -218,7 +210,7 @@ def test_dynamodb_permission_init_is_idempotent_and_changes_only_volume_root(res
 
 
 @pytest.mark.integration
-@pytest.mark.requires_kubectl
+@pytest.mark.requires_helm
 @pytest.mark.security
 def test_nginx_preserves_paths_origin_cookie_and_headers(resources):
     nginx = next(
@@ -239,75 +231,22 @@ def test_nginx_preserves_paths_origin_cookie_and_headers(resources):
 
 
 @pytest.mark.integration
-@pytest.mark.requires_kubectl
-def test_network_policy_allows_only_local_dependencies(resources):
-    back = resource(resources, "NetworkPolicy", "review-backend")["spec"]
-    front = resource(resources, "NetworkPolicy", "review-frontend")["spec"]
-    db = resource(resources, "NetworkPolicy", "review-dynamodb")["spec"]
-    assert back["ingress"][0]["from"] == [
-        {"podSelector": {"matchLabels": {"app": "review-frontend"}}}
-    ]
-    assert back["egress"][2]["to"] == [{"podSelector": {"matchLabels": {"app": "review-dynamodb"}}}]
-    assert front["ingress"] == []
-    assert front["egress"][0]["to"] == [{"podSelector": {"matchLabels": {"app": "review-backend"}}}]
-    assert db["egress"] == []
-    assert back["egress"][1]["ports"] == [{"port": 443, "protocol": "TCP"}]
-
-
-@pytest.mark.integration
-@pytest.mark.requires_kubectl
-def test_port_override_and_unique_loaded_images():
-    images = {
-        "review-backend": "review-backend:unique-123",
-        "review-frontend": "review-frontend:unique-123",
-    }
-    rendered = demo.render(8099, images)
-    assert (
-        resource(rendered, "ConfigMap", "review-config")["data"]["ALLOWED_ORIGIN"]
-        == "http://localhost:8099"
-    )
-    for deployment in (r for r in rendered if r["kind"] == "Deployment"):
-        pod = deployment["spec"]["template"]["spec"]
-        for container in pod.get("initContainers", []) + pod["containers"]:
-            if container["image"].startswith("review-"):
-                assert container["image"] in images.values()
-                assert container["imagePullPolicy"] == "Never"
-
-
-@pytest.mark.integration
-@pytest.mark.requires_kubectl
+@pytest.mark.requires_helm
 @pytest.mark.contract
-def test_minikube_manifest_contract():
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/validate_manifests.py")],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert "Validated 17 minikube resources" in result.stdout
+def test_kubernetes_config_map_values_load_from_environment(monkeypatch, resources):
+    from app.config import Settings
 
-
-@pytest.mark.integration
-@pytest.mark.requires_kubectl
-def test_cold_wait_also_updates_probe_budget():
-    value = resource(demo.render(8080, cold_timeout=7200), "Deployment", "review-backend")
-    assert value["spec"]["progressDeadlineSeconds"] >= 7200
-    assert (
-        value["spec"]["template"]["spec"]["containers"][0]["startupProbe"]["failureThreshold"]
-        == 720
-    )
-
-
-@pytest.mark.integration
-@pytest.mark.requires_kubectl
-@pytest.mark.contract
-def test_existing_storage_class_override_is_rendered_without_components():
-    resources = demo.render(8080, storage_class="existing-local")
-    assert all(
-        r["spec"]["storageClassName"] == "existing-local"
-        for r in resources
-        if r["kind"] == "PersistentVolumeClaim"
-    )
-    assert not any(
-        r["kind"] in {"StorageClass", "DaemonSet", "CustomResourceDefinition"} for r in resources
-    )
+    config = resource(resources, "ConfigMap", "review-config")["data"]
+    for key, value in config.items():
+        monkeypatch.setenv(key, value)
+    settings = Settings(signing_secret="test-secret-" * 4)
+    assert settings.dynamodb_endpoint_url == "http://review-dynamodb:8000"
+    assert settings.environment == "local"
+    assert settings.cookie_secure is False
+    assert settings.model_inference_concurrency == 1
+    assert settings.ollama_model == "qwen3:1.7b"
+    assert settings.model_context_tokens == 4096
+    assert settings.model_max_output_tokens == 384
+    assert settings.inference_timeout_seconds == 300
+    assert settings.data_dir == Path("/data")
+    assert settings.release_sha is None

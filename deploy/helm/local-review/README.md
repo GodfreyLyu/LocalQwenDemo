@@ -68,4 +68,3 @@ are retained on Helm uninstall. To reuse storage, set the three
 
 The Chart has deterministic templates and can also be rendered by Argo CD. Choose
 one manager for each deployment; Argo CD instances are not Helm releases.
-`scripts/helm_deploy.py` is retained only as a legacy alternative.
