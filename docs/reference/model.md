@@ -129,7 +129,7 @@ Run the optional real-service smoke test with an installed local model:
 
 ```bash
 cd backend
-OLLAMA_BASE_URL=http://localhost:11434 RUN_REAL_MODEL=1 .venv/bin/pytest tests/test_real_model.py -v
+OLLAMA_BASE_URL=http://localhost:11434 RUN_REAL_MODEL=1 .venv/bin/pytest tests/inference/test_real_model.py -v
 ```
 
 Its reduced 64-token budget permits a controlled quality rejection and does not prove

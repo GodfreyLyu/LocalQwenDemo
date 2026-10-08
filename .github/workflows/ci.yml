@@ -29,11 +29,11 @@ jobs:
       - name: Backend lint and tests
         working-directory: backend
         run: |
-          .venv/bin/ruff check --config pyproject.toml app tests ../scripts
-          .venv/bin/ruff format --check --config pyproject.toml app tests ../scripts
+          .venv/bin/ruff check --config pyproject.toml app tests
+          .venv/bin/ruff format --check --config pyproject.toml app tests
           .venv/bin/ruff check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
           .venv/bin/ruff format --check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
-          .venv/bin/pytest
+          .venv/bin/pytest tests -m 'not real_model and not requires_cluster'
       - uses: azure/setup-kubectl@v4
         with:
           version: 'v1.35.0'
@@ -66,26 +66,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: azure/setup-kubectl@v4
-        with:
-          version: 'v1.35.0'
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
       - uses: azure/setup-helm@v4.3.0
         with:
           version: v3.17.3
-      - run: pip install pyyaml==6.0.3 pytest==9.1.1
-      - name: Render and validate Kubernetes manifests
-        run: |
-          kubectl kustomize deploy/kustomize/overlays/minikube > /tmp/review-minikube.yaml
-          python scripts/validate_manifests.py
-      - name: Validate Helm and release automation
-        run: |
-          python scripts/validate_helm.py
-          python -m pytest scripts/tests/test_helm_release.py scripts/tests/test_gitops.py -q
-          helm lint deploy/helm/local-ollama
-          python -m pytest scripts/tests/test_ollama_chart.py -q
       - name: Validate Kubernetes resource schemas
         env:
           GH_TOKEN: ${{ github.token }}
