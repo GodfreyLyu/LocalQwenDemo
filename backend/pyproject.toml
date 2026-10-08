@@ -23,11 +23,6 @@ dev = ["httpx>=0.28,<1", "pytest>=8.4,<10", "ruff>=0.12,<1", "moto[dynamodb]>=5,
 [tool.setuptools.packages.find]
 include = ["app*"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q"
-markers = ["real_model: opt-in inference using the configured local Ollama service"]
-
 [tool.ruff]
 target-version = "py312"
 line-length = 100
@@ -36,4 +31,5 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+# Keep test-helper imports classified consistently from the repo root and backend/.
+known-first-party = ["app", "backend"]

@@ -279,7 +279,7 @@ python scripts/validate_helm.py --snapshot
 ```
 
 On main, run `python scripts/validate_helm.py` and
-`python -m pytest scripts/tests/test_helm_release.py -q`. These render the local
+`python -m pytest scripts/tests/release -q`. These render the local
 profile, explicitly enabled network policies and operation without a
 cluster. CI also validates Kubernetes schemas for these profiles.
 

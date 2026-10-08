@@ -9,32 +9,99 @@ model download or real inference. Operational acceptance requires separate autho
 
 ## Strategy and discovery
 
-Backend pytest discovers `backend/tests`; it does not implicitly cover `scripts/tests`.
-`scripts/check.sh` explicitly calls the shared script gate. Most inference tests use
-model doubles; the real-model smoke test is opt-in and normally skipped. A skip is not
-a real-model success. No test may weaken ownership or security just to pass.
+The repository-root `pytest.ini` owns discovery, import paths and marker registration
+for both Python suites. A bare `backend/.venv/bin/pytest` from the repository root
+collects `backend/tests` and `scripts/tests`. Pass a directory explicitly for a focused
+run; this also applies when invoking pytest from `backend`. Imports use importlib mode with namespace-package resolution, so domain directories
+may reuse basenames and multiprocessing workers can import their test doubles.
 
-### Package migration checks
+Tests stay with their owning components and are grouped by domain:
 
-Backend tests retain their component-based layout under `backend/tests`. Application
-implementations now live in `app.api`, `app.inference` and `app.persistence`; tests
-replace dependencies at those canonical locations (including monkeypatch strings).
-Limiter tests exercise `app.rate_limit.RateLimiter`, and model-identity tests verify Ollama provenance without contacting a service.
+```text
+backend/tests/
+  api/          # Authentication, review workflows, health, logging and HTTP contracts
+  core/         # Configuration and rate limiting
+  inference/    # Prompts/output, Ollama transport, coordinator and opt-in model smoke
+  persistence/  # SQLite, local DynamoDB transport and startup
+  support.py    # Model double and API helpers; fixtures live in conftest.py
+scripts/tests/
+  deployment/   # Rendering, preflight, lifecycle, ownership, state and recovery
+  release/      # Planning, publishing, GitOps, chart and target contracts
+  inference/    # Ollama runtime doubles and separate chart tests
+  evaluation/   # Evaluator behavior using model doubles
+  persistence/  # Local users initializer
+  tooling/      # Public CLI compatibility and package dependency boundaries
+  support/      # Shared paths, deployment helpers, release helpers and Ollama double
+frontend/src/
+  tests/        # Authentication, reviews, history, runtime and Markdown behavior
+  test-support/ # Shared workspace responses and editor double
+frontend/e2e/   # Real browser/API with fake inference and Moto accounts
+```
 
-Script checks cover the local harness, users initializer and evaluator after their
-imports were updated. Remote command strings use the canonical inference package. The
-evaluator fingerprints the relocated implementation files rather than the legacy facade.
-Browser regression tests use the fake-model harness to start the same application
-factory, with isolated accounts and history. Historical reports retain the source paths
-from their original revisions.
+Each Python test has exactly one primary level marker. Choose it by the boundary the
+test verifies, not by its filename or by whether any mock is present:
+
+| Marker | Boundary |
+| --- | --- |
+| `unit` | Isolated logic with controlled collaborators |
+| `component` | Collaborating application modules with external-service doubles; API tests may use temporary SQLite internally |
+| `integration` | Real storage, filesystem, process, socket or CLI boundary under test |
+| `e2e` | Reserved for complete deployed journeys; current browser tests use Playwright's separate runner |
+
+Dependency markers are additive: `requires_helm`, `requires_kubectl`, `requires_git`,
+`loopback`, `real_model` and `requires_cluster`. `loopback` means test-owned sockets;
+`requires_kubectl` can mean offline rendering or a test-owned HTTP API, not a live
+cluster. `security`, `contract` and `recovery` are cross-cutting concern markers and
+can coexist with any primary level. Unknown markers fail collection.
+
+Examples from the repository root:
+
+```bash
+# Fast logic checks; does not execute Helm, kubectl, browsers or real inference.
+backend/.venv/bin/pytest -m unit
+# All API behavior, or security checks across both Python suites.
+backend/.venv/bin/pytest backend/tests/api
+backend/.venv/bin/pytest -m 'security and not real_model and not requires_cluster'
+# All Python tests that do not need a real model or live cluster.
+backend/.venv/bin/pytest -m 'not real_model and not requires_cluster'
+# A focused subset without local CLI/socket dependencies.
+backend/.venv/bin/pytest -m 'not requires_helm and not requires_kubectl and not requires_git and not loopback and not real_model and not requires_cluster'
+```
+
+The real-model smoke remains opt-in through `RUN_REAL_MODEL=1`; the ordinary check
+scripts also exclude `real_model` and `requires_cluster` explicitly, even if an operator
+has exported that variable. Skipped or deselected inference tests are not model passes.
+No test may weaken ownership or security just to pass.
+
+### Shared fixtures and migration
+
+`backend/tests/conftest.py` owns the application factory; ordinary helpers are imported
+from `backend.tests.support`, never from `conftest`. Release fixtures live in
+`scripts/tests/release/conftest.py`, and release helpers in `scripts.tests.support.release`.
+Tests must not import helpers or fixtures from another `test_*.py` module.
+
+Every test under `scripts/tests/deployment` receives an isolated `LOCAL_QWEN_STATE_HOME`
+from that directory's autouse fixture. This isolation no longer depends on a filename
+prefix. Shared repository paths come from `scripts.tests.support.paths`. Deployment tests also
+bind the legacy operation context explicitly. Tests import canonical packages such as
+`deployment.helm.session`, `release.publisher` and `evaluation.runner`; only public
+entry compatibility tests import or execute the old wrappers. See the
+[script package map](../reference/scripts.md#organization-and-dependency-boundaries).
+
+When moving tests, compare collected test names and parameter IDs before and after the
+move, not just totals. The classification migration preserves 239 backend, 511 script,
+30 Vitest and 6 Playwright cases, including the opt-in model smoke. The script package
+refactor adds 13 tooling compatibility and boundary cases. Historical reports
+retain their original source paths and do not describe the current directory layout.
 
 ## Test matrix
 
 | Surface | Entry | What it establishes |
 | --- | --- | --- |
-| Backend | `cd backend && .venv/bin/pytest` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/context/startup/logging contracts; Moto accounts and model doubles |
+| Backend | `backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/context/startup/logging contracts; Moto accounts and model doubles |
 | Local transport | Backend local-DynamoDB tests | Missing/remote endpoints rejected; SDK host credentials/profiles/metadata/proxies cannot replace local transport |
 | Minikube | `scripts/check_minikube_demo.sh` | Real offline Kustomize render, profile/state/ownership, migration, image proof, forwarding, undeploy and lost-state recovery; simulated cluster APIs and real loopback fixtures |
+| Release and charts | Shared script gate | Helm rendering, GitOps, snapshot/provenance and simulated publishing with local Git remotes |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |
 | Evaluator | Shared script gate | Model doubles, report states, privacy and fixed synthetic-suite contracts; no model load |
 | Frontend | `npm --prefix frontend test` | UI/API handling and rendering with test doubles |
@@ -55,7 +122,7 @@ that calls cannot fall back to real cloud services.
 After installing the [development dependencies](../guides/local-development.md):
 
 ```bash
-(cd backend && .venv/bin/pytest)
+backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'
 npm --prefix frontend test
 scripts/check_scripts.sh
 ```
@@ -63,8 +130,8 @@ scripts/check_scripts.sh
 ## Local complete check
 
 Install the Python 3.12 virtual environment from the dev lock, the editable backend
-package and Node 24/npm dependencies. The gate also requires kubectl for offline
-rendering and permission to bind temporary loopback test sockets. These checks need no
+package and Node 24/npm dependencies. The gate also requires Git, Helm and kubectl
+for local repositories and offline rendering and permission to bind temporary loopback test sockets. These checks need no
 Docker daemon, Minikube cluster, cloud account or infrastructure providers. Installing
 dependencies requires network access, but the tests do not download weights or images.
 
@@ -73,13 +140,21 @@ bash scripts/check.sh
 ```
 
 This runs Ruff lint/format, backend pytest, frontend lint/Vitest/build, Shell syntax,
-all maintained script regressions and manifest validation. It fails on the first failed
+all maintained script regressions (including release, GitOps and Ollama charts),
+manifest validation and Helm lint/render validation. It fails on the first failed
 stage. It never builds container images, deploys, migrates actual state or invokes real
 inference. Do not export `RUN_REAL_MODEL=1` during routine checks.
 
+Browser checks remain a separate entry point: `npm --prefix frontend run test:e2e`.
+They are not part of `scripts/check.sh`. Real-model quality evaluation and cluster
+acceptance below are separate from both offline and fake-model browser checks.
+
 The `Quality checks` workflow runs on pull requests to `main`, manual dispatch and
-calls from other workflows. It runs the offline checks and fake-model browser suite,
-plus Helm, release-automation and Kubernetes schema checks.
+calls from other workflows. It uses the same `scripts/check_scripts.sh` entry point
+for every script regression and offline configuration check, and separately runs the
+fake-model browser suite.
+Its `configuration` job adds Kubernetes schema checks using a downloaded, verified
+Linux tool; that network-dependent CI check is outside the local offline gate.
 
 After a merge to `main`, `Release candidate` reruns quality checks, builds changed
 backend, frontend and Ollama images, and publishes them to GHCR. It proposes a reviewed

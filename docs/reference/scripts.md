@@ -2,13 +2,50 @@
 
 Use this catalog to check command requirements and side effects. Set up the [local environment](../guides/local-development.md) and the tools listed below. Run examples from the repository root, invoking Python files through `backend/.venv/bin/python`. Shell entries are executable.
 
+## Organization and dependency boundaries
+
+Public file paths remain stable for workflows, Playwright and operator commands.
+Root Python files and `release/{publish,snapshot,migrate,bootstrap}.py` delegate to
+package implementations; new code imports the packages rather than these wrappers.
+Internal Python imports use `scripts/` as their import root, configured by pytest or
+the public entry. Run the public files below instead of executing implementation files.
+
+```text
+scripts/
+  checks/                 # all, scripts, deployment and CI schema gates
+  dev/                    # Local API harness and users initialization
+  deployment/
+    common/               # Target, forwarding, queue guard, acceptance, files, units, IPv4
+    helm/                 # CLI, session, build, diagnostics, lifecycle and verification
+    legacy/               # Explicit Kustomize compatibility/recovery and old installer
+  validation/             # Resource invariants, snapshots, Helm and GitOps validation
+  release/                # Snapshot generation, publishing, migration and GitHub requests
+  evaluation/             # CLI, configuration, metrics, quality, reports and worker supervision
+  tests/                  # Domain regressions and cross-domain tooling contracts
+  tooling_paths.py        # Checkout paths and backend import preparation
+```
+
+`deployment/common` does not import either deployment implementation. Helm imports
+legacy only when dispatching the explicit `legacy` command. Shared helpers receive
+command builders, environments or executors from their callers; target ownership and
+release-specific deletion rules remain in their owning modules. Legacy helpers obtain
+an explicitly scoped operation context from `legacy/context.py`; they do not import the
+CLI or discover another target. The context still holds the existing legacy runtime
+state, so this is not a new concurrent multi-target deployment API.
+
+Helm and GitOps validators share `validation/resources.py`; snapshot orchestration
+lives in `validation/snapshot.py`. Neither validator imports the other's CLI.
+Release commands share GitHub request encoding in `release/github.py`, while callers
+retain their own transport and failure policies. Evaluator reports fingerprint all
+implementation modules as well as the public entry and shared path bootstrap.
+
 ## Local commands and checks
 
 | Entry / invocation | Inputs, options and environment | Dependencies | Output, generated files and effects |
 | --- | --- | --- | --- |
-| `bash scripts/check.sh` | No options; do not export `RUN_REAL_MODEL=1` for routine checks | Python dev lock, npm dependencies, kubectl | Lint/format, backend tests, frontend lint/tests/build, local script regressions, minikube structural checks; caches and `frontend/dist`; fail-fast nonzero; no install/build-image/deploy |
-| `scripts/check_scripts.sh` | No options; calls the focused entry below, the evaluator double-only tests, local initializer tests and actual manifest validation | Python dev lock, Bash, Python 3, kubectl | Shell syntax includes all maintained entry points; temporary test files/loopback children only; no real cloud/cluster writes |
-| `scripts/check_minikube_demo.sh` | `REVIEW_PYTHON` overrides default `backend/.venv/bin/python` | Ruff, pytest, HTTPX, PyYAML, kubectl | Lint/format and all Python minikube test files; real offline render and loopback socket/process tests; no cluster |
+| `bash scripts/check.sh` | No options; do not export `RUN_REAL_MODEL=1` for routine checks | Python dev lock, npm dependencies, Git, kubectl, Helm | Lint/format, backend tests, frontend lint/tests/build, local script regressions, manifest and Helm structural checks; caches and `frontend/dist`; fail-fast nonzero; no install/build-image/deploy |
+| `scripts/check_scripts.sh` | `REVIEW_PYTHON` overrides the default interpreter; runs all script domains, manifest validation and Helm checks | Python dev lock, Bash, Git, kubectl, Helm | Shell syntax includes all maintained entry points; temporary test files/loopback children only; no real cloud/cluster writes |
+| `scripts/check_minikube_demo.sh` | `REVIEW_PYTHON` overrides default `backend/.venv/bin/python` | Ruff, pytest, HTTPX, PyYAML, kubectl, Helm | Lint/format and all tests under `scripts/tests/deployment`; real offline render and loopback socket/process tests; no cluster |
 | `backend/.venv/bin/python scripts/local_demo.py --fake-model` | `--fake-model` opt-in; **default uses real model**; `--port` default 8000; `--data-dir` default `.local/demo` | Dev lock; model client lock and local Ollama when real | Loopback API; Moto accounts reset and random signing key changes on restart; persistent SQLite in data dir; real mode uses `--ollama-base-url` (default localhost:11434) and uses Ollama tokenization |
 | `backend/.venv/bin/python scripts/init_local_users.py` | No CLI parser/options; required explicit `DYNAMODB_ENDPOINT_URL`; only loopback with an explicit port allowed; fixed dummy credentials | boto3, running DynamoDB Local | Describes and idempotently creates `llm-review-users`; **local database write**. Do not invoke with `--help`: it is not a help-capable script |
 | `backend/.venv/bin/python scripts/validate_manifests.py` | No CLI parser/options; minikube overlay fixed relative to script root | PyYAML, kubectl | Offline `kubectl kustomize`, assert resource/security/model contracts; console only. `--help` would still execute validation |
@@ -20,8 +57,7 @@ Test fixtures are covered in [testing](../testing/README.md#mock-boundaries-and-
 `backend/.venv/bin/python scripts/evaluate_model.py` creates only a plan by default,
 without source or model output. Choose `--dry-run` or `--run-real-model`; these options
 are mutually exclusive. Select cases with `--case
-all|hello_world|average|square|first_item|sql_injection|prompt_injection` and an
-existing cache with `--cache-dir HF_HOME`. Add `--review-in-terminal` to view synthetic
+all|hello_world|average|square|first_item|sql_injection|prompt_injection`. Add `--review-in-terminal` to view synthetic
 output privately and record human judgments. Use `--ollama-base-url`, `--ollama-model-digest`, `--max-output-tokens` and
 `--timeout-seconds` to match the application configuration. No arbitrary source option exists.
 
@@ -40,7 +76,17 @@ entry.
 
 ## Minikube public entry
 
-`scripts/minikube_demo.sh legacy COMMAND [OPTIONS]` resolves the checkout from its own path and execs `minikube_demo.py` using `REVIEW_PYTHON` or the backend virtual environment. The Python file may also be invoked directly; both entries use the same CLI. Operational commands require macOS/Linux, Python dev dependencies, local Docker, minikube and kubectl. Help parses before discovery; `stop` prints advice and performs no external operations.
+`scripts/minikube_demo.sh COMMAND --profile NAME` resolves the checkout from its own
+path and executes `minikube_helm.py` using `REVIEW_PYTHON` or the backend virtual
+environment. This is the maintained Helm CLI, implemented in `deployment/helm/cli.py`.
+It offers `init`, `doctor`, `up`, `status`, `logs`, `port-forward`, `verify`, `undeploy`
+and `rollback`; see the [Helm deployment guide](../guides/minikube-demo.md).
+
+### Explicit legacy entry
+
+`scripts/minikube_demo.sh legacy COMMAND [OPTIONS]` dispatches to the legacy runtime.
+Direct `python scripts/minikube_demo.py COMMAND` remains a legacy compatibility entry.
+The following command table and options describe this legacy path. Operational commands require macOS/Linux, Python dev dependencies, local Docker, minikube and kubectl. Help parses before discovery; `stop` prints advice and performs no external operations.
 
 | Command | Preconditions and actual effects |
 | --- | --- |
@@ -83,50 +129,35 @@ acceptance](../guides/minikube-legacy.md) for the detailed procedure.
 
 Lost-state recovery additionally requires `--expect-cluster-uid`, `--expect-namespace-uid` and `--expect-owner`; `--restore-frontend` is a separate identity-protected restoration action. Recovery never imports state automatically. Read the [lost-state recovery procedure](../operations/minikube-lost-state-recovery.md) before using these options.
 
-Internal modules have no standalone CLI:
+Legacy implementation responsibilities:
 
-| Module | Responsibility / callers |
+| Package module | Responsibility |
 | --- | --- |
-| `minikube_ollama.py` | Resolve the host endpoint inside the verified node, reject unsafe/ambiguous addresses, build exact IPv4 `/32` TCP 11434 egress; no standalone CLI or model execution |
-| `minikube_target.py` | `connected_target` selects/verifies home/profile/API/cluster UID; temporary kubeconfig is removed on exit. `deployment_requirements` enforces hard constraints; `preflight` measures advisory capacity; fingerprints support image reuse |
-| `minikube_state.py` | Validate owner/plan/deployment/attempt consistency; preserve prior reports; bind source, local Docker image and loaded CRI image proof. Lazy `api()` resolves the active CLI's selected target |
-| `minikube_verify.py` | Called under the CLI lock after target/ownership guards; validates state/images, exercises real HTTP/inference, restarts idle owned workloads, records bounded evidence. No UI automation |
-| `minikube_store.py` | Private shared state paths, target-wide locks, checked atomic import and missing-namespace history recovery |
-| `minikube_undeploy.py` | Safe resource inventory, queue/admission fencing, UID/version-conditional deletion and recoverable cleanup journal |
-| `minikube_recovery.py` | Lost-state preview, strict UID ownership chains, PV policy inspection, confirmed namespace cleanup and independent recovery journal |
-| `minikube_demo.py` | CLI orchestration, safe subprocess boundary, resource ownership, atomic state writes, bounded forwarding, deployment stages and replica restoration |
+| `legacy/cli.py` | Parse legacy arguments, choose the target, acquire its lock and dispatch |
+| `legacy/runtime.py` | Safe subprocess/resource operations and existing runtime state |
+| `legacy/context.py` | Bind and restore the operation context used by helpers |
+| `legacy/target.py`, `capacity.py`, `build.py` | Discovery, mandatory requirements, advisory resource budgets and image reuse |
+| `legacy/workflow.py` | Deployment stages and replica restoration |
+| `legacy/state.py`, `store.py` | Ownership/image evidence, private paths, target locks and imports |
+| `legacy/verify.py` | Real acceptance orchestration under target and ownership guards |
+| `legacy/ollama.py` | Node-side host resolution and exact `/32` egress |
+| `legacy/undeploy.py`, `recovery.py` | Queue fencing, identity-conditional deletion and recovery journals |
+| `legacy/helm_deploy.py` | Earlier direct Helm installer retained through `scripts/helm_deploy.py` |
 
-```mermaid
-flowchart TD
-  SH[minikube_demo.sh] --> CLI[minikube_demo.py main]
-  CLI --> Target[minikube_target.connected_target]
-  Target --> Selection[Profile + Docker loopback + API UID]
-  Lock --> Doctor[doctor / deployment_plan]
-  Doctor --> Checks[Target requirements and preflight]
-  CLI --> Lock[Target lock + ownership guards]
-  Lock --> Up[up / deploy_application]
-  Up --> State[minikube_state: archive and image proof]
-  Up --> Init[init_local_users.py through owned forward]
-  Lock --> Verify[minikube_verify.verify]
-  Verify --> Valid[minikube_state.verify_state / verify_images]
-  Verify --> HTTP[Owned forward + HTTP acceptance]
-  HTTP --> Restart[restart_idle + persistence checks]
-  Lock --> Import[minikube_store: import-state]
-  Lock --> Cleanup[minikube_undeploy: undeploy]
-  Lock --> Read[status / logs / port-forward]
-```
-
-The CLI selects the target before running a command. Diagnostics, import and cleanup use
-the same target lock across checkouts. `up` uses mandatory checks independently of
-`doctor`'s diagnostic verdict. All sibling modules share the selected CLI state; they do
-not discover an alternate target.
+The CLI selects the target before running a command. Diagnostics, import and cleanup
+use the same target lock across checkouts. `up` enforces mandatory checks independently
+of `doctor`'s diagnostic verdict. The `minikube_*.py` helper files at the root are import
+compatibility wrappers; all implementation changes belong in these packages.
 
 ## Verification entry chain
 
 `scripts/check.sh` runs backend lint/tests, frontend lint/tests/build, then
-`scripts/check_scripts.sh`. The script gate syntax-checks Shell entries, runs all
-minikube test modules, runs the evaluator/local-initializer regression suites and
-validates the actual minikube render. Tests use temporary state, API doubles and
+`scripts/check_scripts.sh`. These delegate to `checks/all.sh` and `checks/scripts.sh`.
+The focused deployment entry delegates to `checks/deployment.sh`; the Linux CI schema
+entry delegates to `checks/schema.sh`. Script lint runs once in the script gate,
+including shared code and tests. The script gate recursively syntax-checks Shell files, runs all
+deployment, release/GitOps, inference, evaluator and local-initializer tests, then
+validates the actual minikube render and both Helm charts. Tests use temporary state, API doubles and
 loopback servers; no real cluster or model is needed.
 
 Browser tests are separate locally; CI also runs them with the fake-model harness.

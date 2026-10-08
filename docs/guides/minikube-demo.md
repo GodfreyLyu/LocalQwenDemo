@@ -203,7 +203,7 @@ entry point.
 ```bash
 scripts/check_minikube_demo.sh
 backend/.venv/bin/python scripts/validate_helm.py
-backend/.venv/bin/python -m pytest scripts/tests/test_helm_release.py -q
+backend/.venv/bin/python -m pytest scripts/tests/release -q
 ```
 
 These checks use test doubles and local Helm rendering. They do not deploy, build
