@@ -1,12 +1,12 @@
 {
   "schemaVersion": 3,
-  "sourceSha": "77f286bba7bb8027874eb1c463d7513c386e2539",
+  "sourceSha": "f86521f4665cd8e7ee2865a6b037d04551e67710",
   "repository": "GodfreyLyu/LocalQwenDemo",
   "inputs": {
     "backend": "3a350d9108edf6e8d369c762fdad434b9898c60e0b7b1a3efe7dfe4b41aa7cc3",
     "frontend": "45f67bbc875e1f91ac07b80154b8c2ec34931cf44c98908eeddb116d3d4f251b",
     "ollama": "f041dc402fcaa346bca837eb11bcc552b38866f0d60521846d5b081fb6817c62",
-    "deployment": "eec1db6b34fa4c53990f1f58af5aaf65bd3ccc7fb639662a43f2b9c07c1fafc2"
+    "deployment": "f9e32d01da7e8b2fb332fb9cec25c4209040eebb3ee12cafe3fd541e4dcf0b40"
   },
   "images": {
     "backend": {
@@ -26,15 +26,15 @@
     }
   },
   "candidate": {
-    "version": "0.1.3-rc.11",
-    "branch": "release-candidate/0.1.3-rc.11",
-    "runId": "37720467173",
-    "runNumber": 11,
-    "baseSha": "f7809ed8221daddeaffd3a0f35ee613551d3bf4a"
+    "version": "0.1.3-rc.12",
+    "branch": "release-candidate/0.1.3-rc.12",
+    "runId": "37771785217",
+    "runNumber": 12,
+    "baseSha": "26805a974ede61513e47c70303f479995775bd7f"
   },
   "chartVersions": {
-    "local-review": "0.1.3-rc.11",
+    "local-review": "0.1.3-rc.12",
     "local-ollama": "0.1.1"
   },
-  "chartVersion": "0.1.3-rc.11"
+  "chartVersion": "0.1.3-rc.12"
 }
