@@ -31,4 +31,5 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+# Keep test-helper imports classified consistently from the repo root and backend/.
+known-first-party = ["app", "backend"]
