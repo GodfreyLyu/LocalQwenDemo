@@ -9,15 +9,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from deployment.common.network import private_ipv4
 from deployment.common.resources import parse_quantity
-
-
-def private_host(value):
-    try:
-        return private_ipv4(value)
-    except ValueError:
-        raise ValueError("Ollama host must resolve to one private IPv4 address") from None
 
 
 def quantity(value):
@@ -91,20 +83,6 @@ class Target:
     def object(self, kind, name):
         result = self.kubectl("get", kind, name, "--ignore-not-found", "-o", "json")
         return json.loads(result.stdout) if result.stdout.strip() else None
-
-    def ollama_ip(self):
-        output = run(
-            "docker",
-            "exec",
-            self.node,
-            "getent",
-            "ahostsv4",
-            "host.minikube.internal",
-            timeout=15,
-        ).stdout
-        addresses = {private_host(line.split()[0]) for line in output.splitlines() if line.strip()}
-        require(len(addresses) == 1, "Ollama host resolution is missing or ambiguous")
-        return addresses.pop()
 
 
 @contextlib.contextmanager
@@ -230,5 +208,5 @@ def check_ownership(resource, release, namespace):
         and annotations.get("meta.helm.sh/release-namespace") == namespace
         and metadata.get("labels", {}).get("app.kubernetes.io/managed-by") == "Helm",
         f"Existing {resource['kind']}/{metadata['name']} is not owned by this Helm release. "
-        "Follow the Kustomize migration guide; automatic takeover is disabled.",
+        "Inspect the resource manager; automatic takeover is disabled.",
     )

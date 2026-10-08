@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-This runbook covers application startup and recovery for legacy Kustomize deployments.
+This runbook covers application startup and recovery for Helm and Argo CD deployments.
 For Helm lifecycle operations, use the [Helm guide](../guides/helm-release.md); for
 Argo CD, use the [GitOps guide](../guides/gitops.md).
 Start with read-only diagnostics on an explicitly selected profile. Inspection does not
@@ -12,18 +12,18 @@ reports, including failed and incomplete results.
 ## Health and startup
 
 ```bash
-scripts/minikube_demo.sh legacy status --profile minikube
-scripts/minikube_demo.sh legacy logs --profile minikube
-scripts/minikube_demo.sh legacy doctor --profile minikube
+scripts/minikube_demo.sh status --profile minikube
+scripts/minikube_demo.sh logs --profile minikube
+scripts/minikube_demo.sh doctor --profile minikube
 ```
 
-These commands check ownership and use the selected target's private kubeconfig
+These local Helm commands check ownership and use the selected target's private kubeconfig
 with an explicit context and namespace. Do not print kubeconfig, acceptance accounts,
 Secret contents, complete environment dumps, user history bodies or raw exception strings.
 
 `/health/live` is available during loading. `/health/ready` remains 503 until storage,
-accounts and the startup-validated model are ready. The default cold deployment budget
-is 3600 seconds and warm budget 600 seconds; the whole-review inference timeout remains
+accounts and the startup-validated model are ready. The local Helm CLI deployment timeout defaults to 3900 seconds and its warm verification
+budget to 600 seconds; the whole-review inference timeout remains
 300 seconds. A longer startup allowance does not change inference parameters.
 
 ### Temporary account-store connection failures
@@ -81,16 +81,16 @@ These logs omit exception text, endpoints, credentials and account data.
 | No running profile or API unavailable | Start/fix the cluster yourself, then rerun diagnostics. The script never starts or recreates a cluster. |
 | Pending backend, resource warnings | Inspect actual allocatable, requests/limits and usage, host swap, Docker capacity and disk. Do not treat unavailable metrics as sufficient capacity. |
 | `Unable to access jarfile DynamoDBLocal.jar` | Verify the pinned image and effective identity. The minikube configuration uses image UID 1000, group/fsGroup 10001 and a root-only volume-permission initializer limited to the PVC root. Do not recursively change data permissions or replace the PVC. |
-| Model download finishes but startup fails | Check safe startup stage/error metrics and every required indexed shard, including broken links/readability/structure. A 100% progress indicator is not a complete cache. Preserve valid blobs, partial downloads and the cache PVC. |
+| Model download finishes but startup fails | Check Ollama service readiness, the selected model digest and safe startup errors. A completed download alone does not prove the backend can use the service. Preserve Ollama model storage. |
 | Download service error | Verify Ollama service availability and the selected model digest/context. Only Ollama downloads model files; preserve its model PVC during repair. |
 | Account dependency unavailable | Confirm explicit local endpoint, inert credentials, disabled SDK metadata/shared configuration and ACTIVE table/schema. The initializer is idempotent and refuses remote endpoints or schema replacement. |
 | 415, 403 or 401 | POST/PUT/PATCH require JSON; Origin must exactly match localhost and authenticated writes require the session's CSRF token. Sign in normally; never bypass media-type/auth/CSRF checks. |
 | `inference_timeout` | Retain the failed review and wait for draining. Correlate one container's measured CPU/memory deltas and section timings; do not blindly retry or tune parameters. |
 | `inference_stuck` | The native generation did not drain within the existing bound. Liveness becomes false. Inspect before any separately authorized workload recovery; never start a second model process. |
 | Port binding failure | Inspect the reported errno/category. Permission restrictions are not proof of occupation; a later successful bind does not establish earlier state. Never kill an unknown listener. |
-| Missing/incomplete deployment record or changed fingerprint | Finish a normal owned up; do not fabricate expected images, fingerprints, ports or success fields. |
-| Checkout changed | Reuse shared state, or import a trusted old state copy. The path itself does not confer ownership. |
-| Unknown ownership | Refuse adoption. If all state is lost and all data may be abandoned, use the separate recovery preview; unknown resources still block deletion. |
+| Missing local build/acceptance evidence | Inspect Helm release state and rerun the applicable local build or acceptance workflow; do not fabricate success fields. |
+| Checkout changed | Helm release state remains in the cluster. Use the same private state root for local evidence. |
+| Unknown ownership | Inspect the resource manager and release identity. Automatic takeover is disabled; unknown resources block namespace deletion. |
 
 ## Backup and recovery
 
@@ -105,39 +105,31 @@ After process interruption, queued jobs recover and stale running jobs receive a
 the existing retry allowance. Readiness does not prove that historical accounts/results
 survived; persistence acceptance is separate.
 
-## Shared state and cleanup
+## Helm and GitOps recovery and cleanup
 
-Use the maintained [state import and normal undeploy procedure](../guides/minikube-legacy.md#undeploy-and-recovery).
-
-```bash
-scripts/minikube_demo.sh legacy import-state --profile minikube --from-state /path/to/old/checkout
-scripts/minikube_demo.sh legacy undeploy --profile minikube
-```
-
-Import is appropriate only when a trusted old copy exists. Default undeploy removes
-owned runtime resources but preserves the three PVCs, signing Secret and recovery
-information. It checks readiness and queue state, then pauses the owned frontend. It
-reserves SQLite writes to block concurrent submissions before deleting verified
-resources with identity preconditions. A queued, running, draining or unmeasurable
-inference prevents cleanup.
-
-For deliberate full data removal under trusted state:
+For local source deployments, use the [local Helm lifecycle](../guides/minikube-demo.md).
+For published Helm releases, use [status, uninstall and rollback](../guides/helm-release.md#status-uninstall-and-rollback).
+Local CLI evidence is stored under `helm-v1/`; Helm release state is authoritative.
+Missing local evidence does not authorize resource adoption or deletion.
 
 ```bash
-scripts/minikube_demo.sh legacy undeploy --profile minikube \
-  --purge-data --confirm-data-loss local-review-demo
+scripts/minikube_demo.sh status --profile minikube
+scripts/minikube_demo.sh undeploy --profile minikube
 ```
 
-Normal purge retains the namespace. With lost state, use the separate
-[lost-state recovery procedure](minikube-lost-state-recovery.md): explicit target identities,
-a read-only preview, complete resource enumeration and separate deletion confirmation.
-It never manufactures owner state or adopts unknown resources. Partial failure retains
-recovery evidence; no finalizer is removed and no unfinished cleanup is called successful.
-PVC removal does not prove backing data erasure.
+The local CLI's normal undeploy retains PVCs and the signing Secret. Its mutation path
+checks release ownership, fences admissions and requires an idle backend. Purge needs
+explicit `--purge-data --confirm-data-loss NAMESPACE`; external claims and unknown
+resources are not silently removed. Inspect failed Helm operations and storage errors
+before repeating the same command. Never remove finalizers merely to force success.
 
-The script cannot intercept manual minikube shutdown. If cleanup is wanted before stopping
-the cluster, successfully complete the chosen cleanup first, then manage the cluster
-yourself, considering other projects. Do not delete state files or data to silence errors.
+For Argo CD, correct or revert the reviewed GitOps source and inspect reconciliation
+through the [GitOps guide](../guides/gitops.md). Do not run the Helm CLI against
+Argo-owned resources. Keep retained PVCs and external Secrets explicit when planning
+application removal; PVC removal does not establish backing-data erasure.
+
+The operator manages cluster shutdown. Preserve failed operation evidence and backups;
+do not delete local state, release Secrets or application data to silence errors.
 
 ## Success criteria
 

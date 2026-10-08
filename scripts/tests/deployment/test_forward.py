@@ -9,7 +9,6 @@ import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
-import deployment.legacy.runtime as d  # noqa: E402
 import pytest
 from deployment.common import forward as transport
 
@@ -87,7 +86,7 @@ def unrelated_listener():
 @pytest.fixture
 def harness(monkeypatch):
     """Replace kubectl with a real loopback test child; track and reap only owned processes."""
-    state = SimpleNamespace(processes=[], mode="normal", before_spawn=None)
+    state = SimpleNamespace(processes=[], mode="normal", before_spawn=None, start_timeout=10)
 
     def command(*args):
         assert args[:3] == ("port-forward", "--address=127.0.0.1", "service/review-frontend")
@@ -100,7 +99,9 @@ def harness(monkeypatch):
         state.processes.append(proc)
         return proc
 
-    monkeypatch.setattr(d, "kargs", command)
+    state.forward = lambda *args: transport.forward(
+        *args, command=command, env=None, start_timeout=state.start_timeout
+    )
     monkeypatch.setattr(transport.subprocess, "Popen", spawn)
     yield state
     for proc in state.processes:
@@ -126,8 +127,8 @@ def test_free_port_probe_releases_its_socket():
 @pytest.mark.loopback
 def test_unknown_listener_is_rejected_and_unaffected(unrelated_listener, harness):
     proc, port = unrelated_listener
-    with pytest.raises(d.DemoError, match=rf"address_in_use; errno={errno.EADDRINUSE}"):
-        with d.forward("review-frontend", 8080, port):
+    with pytest.raises(transport.DemoError, match=rf"address_in_use; errno={errno.EADDRINUSE}"):
+        with harness.forward("review-frontend", 8080, port):
             pytest.fail("An unrelated listener must never be used")
     assert not harness.processes
     assert proc.poll() is None
@@ -149,7 +150,7 @@ def test_binding_errors_keep_only_safe_errno(monkeypatch, number, reason):
     sock.__enter__.return_value = sock
     sock.bind.side_effect = OSError(number, "raw-output-must-stay-private")
     monkeypatch.setattr(transport.socket, "socket", Mock(return_value=sock))
-    with pytest.raises(d.DemoError) as error:
+    with pytest.raises(transport.DemoError) as error:
         transport.port_available(8080)
     assert f"{reason}; errno={number} ({errno.errorcode[number]})" in str(error.value)
     assert "raw-output" not in str(error.value)
@@ -160,7 +161,7 @@ def test_binding_errors_keep_only_safe_errno(monkeypatch, number, reason):
 @pytest.mark.loopback
 def test_owned_forward_rebuilds_same_port_after_active_close(harness):
     port = free_port()
-    with d.forward("review-frontend", 8080, port):
+    with harness.forward("review-frontend", 8080, port):
         exchange(port)  # Read EOF before closing: the server actively closes this connection.
     assert harness.processes[0].poll() is not None
     with socket.socket() as plain:
@@ -168,7 +169,7 @@ def test_owned_forward_rebuilds_same_port_after_active_close(harness):
             plain.bind(("127.0.0.1", port))
         assert error.value.errno == errno.EADDRINUSE
     assert transport.port_available(port) is True
-    with d.forward("review-frontend", 8080, port):
+    with harness.forward("review-frontend", 8080, port):
         exchange(port)
     assert len(harness.processes) == 2
     assert all(proc.poll() is not None and proc.stdout.closed for proc in harness.processes)
@@ -185,8 +186,8 @@ def test_race_after_probe_rejects_child_failure_without_touching_winner(harness)
             winner.listen()
 
         harness.before_spawn = occupy
-        with pytest.raises(d.DemoError, match="startup_failed.*address_in_use"):
-            with d.forward("review-frontend", 8080, port):
+        with pytest.raises(transport.DemoError, match="startup_failed.*address_in_use"):
+            with harness.forward("review-frontend", 8080, port):
                 pytest.fail("A successful probe is not successful forwarding")
         with socket.create_connection(("127.0.0.1", port), timeout=2):
             connection, _ = winner.accept()
@@ -199,10 +200,10 @@ def test_race_after_probe_rejects_child_failure_without_touching_winner(harness)
 @pytest.mark.parametrize("mode", ["exit", "silent", "false_announcement"])
 def test_startup_failure_is_bounded_and_output_is_withheld(harness, monkeypatch, mode):
     harness.mode = mode
-    monkeypatch.setattr(d, "FORWARD_START_TIMEOUT", 0.3)
+    harness.start_timeout = 0.3
     started = time.monotonic()
-    with pytest.raises(d.DemoError) as error:
-        with d.forward("review-frontend", 8080, free_port()):
+    with pytest.raises(transport.DemoError) as error:
+        with harness.forward("review-frontend", 8080, free_port()):
             pytest.fail("An unconfirmed listener must not be yielded")
     assert time.monotonic() - started < 3
     assert "raw-output" not in str(error.value)
@@ -216,16 +217,16 @@ def test_spawn_failure_keeps_safe_errno(harness, monkeypatch):
     monkeypatch.setattr(
         transport.subprocess, "Popen", Mock(side_effect=OSError(errno.EACCES, "private output"))
     )
-    with pytest.raises(d.DemoError, match=rf"process_start_failed; errno={errno.EACCES}"):
-        with d.forward("review-frontend", 8080, free_port()):
+    with pytest.raises(transport.DemoError, match=rf"process_start_failed; errno={errno.EACCES}"):
+        with harness.forward("review-frontend", 8080, free_port()):
             pytest.fail("A failed spawn cannot be ready")
 
 
 @pytest.mark.integration
 @pytest.mark.loopback
 def test_owned_process_exit_is_failure(harness):
-    with pytest.raises(d.DemoError, match="exited unexpectedly"):
-        with d.forward("review-frontend", 8080, free_port()):
+    with pytest.raises(transport.DemoError, match="exited unexpectedly"):
+        with harness.forward("review-frontend", 8080, free_port()):
             harness.processes[0].terminate()
             harness.processes[0].wait(timeout=5)
 
@@ -237,7 +238,7 @@ def test_cleanup_on_body_failure_only_stops_owned_process(unrelated_listener, ha
     unrelated, port = unrelated_listener
     harness.mode = mode
     with pytest.raises(RuntimeError, match="offline body failure"):
-        with d.forward("review-frontend", 8080, free_port()):
+        with harness.forward("review-frontend", 8080, free_port()):
             raise RuntimeError("offline body failure")
     assert harness.processes[0].poll() is not None
     assert harness.processes[0].stdout.closed

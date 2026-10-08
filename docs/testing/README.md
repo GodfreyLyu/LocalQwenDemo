@@ -25,7 +25,7 @@ backend/tests/
   persistence/  # SQLite, local DynamoDB transport and startup
   support.py    # Model double and API helpers; fixtures live in conftest.py
 scripts/tests/
-  deployment/   # Rendering, preflight, lifecycle, ownership, state and recovery
+  deployment/   # Helm rendering/lifecycle, ownership, state and shared process guards
   release/      # Planning, publishing, GitOps, chart and target contracts
   inference/    # Ollama runtime doubles and separate chart tests
   evaluation/   # Evaluator behavior using model doubles
@@ -82,17 +82,16 @@ Tests must not import helpers or fixtures from another `test_*.py` module.
 
 Every test under `scripts/tests/deployment` receives an isolated `LOCAL_QWEN_STATE_HOME`
 from that directory's autouse fixture. This isolation no longer depends on a filename
-prefix. Shared repository paths come from `scripts.tests.support.paths`. Deployment tests also
-bind the legacy operation context explicitly. Tests import canonical packages such as
+prefix. Shared repository paths come from `scripts.tests.support.paths`. Tests import canonical packages such as
 `deployment.helm.session`, `release.publisher` and `evaluation.runner`; only public
 entry compatibility tests import or execute the old wrappers. See the
 [script package map](../reference/scripts.md#organization-and-dependency-boundaries).
 
 When moving tests, compare collected test names and parameter IDs before and after the
-move, not just totals. The classification migration preserves 239 backend, 511 script,
-30 Vitest and 6 Playwright cases, including the opt-in model smoke. The script package
-refactor adds 13 tooling compatibility and boundary cases. Historical reports
-retain their original source paths and do not describe the current directory layout.
+move, not just totals. Retiring Kustomize removes its dedicated tests; shared forwarding,
+SQLite admission fencing, acceptance and image-permission coverage remains in the Helm
+suite. The rendered ConfigMap-to-Settings test lives there too, where Helm is available.
+Historical reports retain their original paths and counts.
 
 ## Test matrix
 
@@ -100,18 +99,18 @@ retain their original source paths and do not describe the current directory lay
 | --- | --- | --- |
 | Backend | `backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/context/startup/logging contracts; Moto accounts and model doubles |
 | Local transport | Backend local-DynamoDB tests | Missing/remote endpoints rejected; SDK host credentials/profiles/metadata/proxies cannot replace local transport |
-| Minikube | `scripts/check_minikube_demo.sh` | Real offline Kustomize render, profile/state/ownership, migration, image proof, forwarding, undeploy and lost-state recovery; simulated cluster APIs and real loopback fixtures |
+| Minikube | `scripts/check_minikube_demo.sh` | Helm lifecycle, resource ownership, forwarding, queue fencing, storage retention and purge; simulated cluster APIs and real loopback fixtures |
 | Release and charts | Shared script gate | Helm rendering, GitOps, snapshot/provenance and simulated publishing with local Git remotes |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |
 | Evaluator | Shared script gate | Model doubles, report states, privacy and fixed synthetic-suite contracts; no model load |
 | Frontend | `npm --prefix frontend test` | UI/API handling and rendering with test doubles |
-| Manifest invariants | `backend/.venv/bin/python scripts/validate_manifests.py` | Actual minikube render: model/resources/security/three PVCs/local dependency settings |
+| Manifest invariants | `backend/.venv/bin/python scripts/validate_helm.py` | Helm-rendered model/resources/security/PVC/local dependency contracts |
 | Browser harness | `npm --prefix frontend run test:e2e` | Real local browser/API/SQLite with deterministic fake model and Moto; not real-model minikube acceptance |
 
 ## Suite ownership
 
 Tests stay with their components. Script tests use private temporary state and fake
-API fixtures; the shared minikube lock is tested across processes/checkouts. Real socket
+API fixtures. Real socket
 fixtures test port conflicts, owned-process cleanup and conditional kubectl DELETE
 transport against loopback servers. They must never discover or modify a live cluster.
 Local database tests use AWS SDK/Moto interfaces to emulate the protocol and check

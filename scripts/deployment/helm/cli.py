@@ -1,4 +1,4 @@
-"""Build and manage Helm releases on an existing Minikube; use legacy for recovery."""
+"""Build and manage Helm releases on an existing Minikube."""
 
 import argparse
 import re
@@ -47,12 +47,6 @@ def parser():
 
 
 def main():
-    if sys.argv[1:2] == ["legacy"]:
-        import deployment.legacy.runtime as minikube_demo
-
-        sys.argv.pop(1)
-        minikube_demo.main()
-        return
     args = parser().parse_args()
     require(
         re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,51}[a-z0-9])?", args.release), "Invalid release name."

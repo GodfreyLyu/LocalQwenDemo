@@ -75,9 +75,8 @@ The [deployment guide](docs/guides/helm-release.md) documents configuration,
 installation, upgrades, status, rollback and data retention. Argo CD renders the same
 Charts from the approved release branch. Each deployment must have only one manager.
 
-The previous [deployment diagram](docs/assets/deployment-management.png) and
-[legacy Minikube guide](docs/guides/minikube-legacy.md) describe the retained
-legacy scripts. Those scripts must not manage a Helm-owned deployment.
+The optional [local Helm CLI](docs/guides/minikube-demo.md) builds source images for
+a Docker-driver Minikube. Argo CD deployments are managed through GitOps.
 
 ## Quick start
 
@@ -125,7 +124,6 @@ also requires actual application images.
 | Architecture and design      | [Architecture](docs/reference/architecture.md), [security](docs/reference/security.md)                                                     | Request flow, queue lifecycle, storage and trust boundaries                           |
 | Development and testing      | [Local development](docs/guides/local-development.md), [testing](docs/testing/README.md)                                                   | Setup, fake-model/Compose tools, offline gates and real acceptance boundaries         |
 | Deployment and operations    | [Helm lifecycle](docs/guides/helm-release.md#status-uninstall-and-rollback), [observability runbook](docs/operations/observability.md) | Helm status, rollback, retained storage and diagnostics                       |
-| Legacy script recovery       | [Startup and cleanup](docs/operations/recovery-and-cleanup.md), [lost-state recovery](docs/operations/minikube-lost-state-recovery.md)     | Failure investigation and distinct data-preserving/destructive cleanup paths          |
 | Reference                    | [Documentation index](docs/README.md#reference)                                                                                            | API, model, CLI, logging and resource contracts                                       |
 | Historical validation        | [Dated reports](docs/reports/README.md)                                                                                                    | Original environments, measured results and limitations; no current acceptance claims |
 
@@ -144,7 +142,7 @@ bash scripts/check.sh
 ```
 
 The checks use test doubles for the model and cluster, temporary loopback fixtures, and
-offline Kustomize rendering. They do not download weights, build container images or
+offline Helm rendering. They do not download weights, build container images or
 deploy. Browser tests use a separate fake-model harness; real inference and environment
 acceptance are opt-in operations. See [testing](docs/testing/README.md) for
 prerequisites and coverage limits.

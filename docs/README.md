@@ -15,10 +15,8 @@ For GPU inference inside an existing krunkit cluster, see the
 | Try the application                    | [Local Helm workflow](guides/minikube-demo.md), [release Helm guide](guides/helm-release.md)             | Prepare Secrets and environment values, install with Helm, and open the UI                     |
 | Understand the design                  | [Architecture](reference/architecture.md), [security](reference/security.md)                        | Follow jobs through one backend process and understand persistence and trust boundaries      |
 | Develop or contribute                  | [Local development](guides/local-development.md), [testing](testing/README.md)                      | Set up tools, use fake-model or Compose development, and choose offline checks               |
-| Move a legacy script deployment       | [Shared state and import](guides/minikube-legacy.md#state-and-ownership-protection)                   | Reuse trusted user-level state without treating paths or old images as ownership/build proof |
 | Investigate a failure                  | [Troubleshooting](operations/recovery-and-cleanup.md), [observability](operations/observability.md) | Inspect safe evidence before changing workloads, retrying inference or deleting anything     |
 | Remove a Helm deployment              | [Helm lifecycle](guides/helm-release.md#status-uninstall-and-rollback)                                           | Uninstall with Helm while retaining PVCs and the external signing Secret                      |
-| Recover legacy script state           | [Lost-state recovery](operations/minikube-lost-state-recovery.md)                                   | Preview independently verified resources; cleanup requires deliberate data abandonment       |
 | Validate results                       | [Testing and acceptance](testing/README.md), [model evaluation](testing/model-evaluation.md)        | Separate offline doubles, real reviews, persistence, full verify and browser acceptance      |
 | Review previous observations           | [Dated reports](reports/README.md)                                                                  | Inspect original environment, date, outcome and limitations; not current acceptance proof    |
 
@@ -39,10 +37,9 @@ For GPU inference inside an existing krunkit cluster, see the
 - **README:** overview, diagrams and quick start.
 - **`guides/`:** setup and deployment workflows. The Helm guide covers standard
   installation, environment values and release operations. The Minikube guide
-  covers the local Helm CLI; the separate legacy guide retains Kustomize recovery.
-- **`operations/`:** symptom-driven investigation and exceptional recovery. Lost-state
-  cleanup has its own guide because its evidence and data-loss requirements differ from
-  normal undeploy. The observability runbook applies the logging reference to investigations.
+  covers the local Helm CLI.
+- **`operations/`:** symptom-driven investigation, Helm/GitOps recovery and storage
+  retention. The observability runbook applies the logging reference to investigations.
 - **`reference/`:** behavior, defaults and design explanations. Update the
   relevant reference when an API, configuration or behavior changes.
 - **`testing/`:** check entry points, test-double boundaries, opt-in evaluation and the

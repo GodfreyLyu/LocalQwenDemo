@@ -21,10 +21,9 @@ manager; do not use them to upgrade Argo-owned resources.
 
 ## Deploy with standard Helm commands
 
-Application deployment uses Helm and kubectl directly. Python, PyYAML and
-`scripts/helm_deploy.py` are not deployment prerequisites. The old wrapper remains
-for compatibility, but is not needed by this workflow. Terraform may provision the
-cluster separately; this Chart does not create a cluster or install Argo CD.
+Application deployment uses Helm and kubectl directly. Python and PyYAML are not
+deployment prerequisites. Terraform may provision the cluster separately; this Chart
+does not create a cluster or install Argo CD.
 
 ### Prerequisites and target selection
 
@@ -199,37 +198,6 @@ Argo CD uses Helm to render resources and owns their synchronization; its instan
 are not ordinary Helm releases. Use one manager for each deployment, and validate
 PVC deletion/retention behavior before enabling automatic pruning. Installing
 Argo CD and transferring ownership are outside this Helm setup.
-
-## Existing Kustomize deployment migration
-
-The legacy Kustomize scripts remain available during transition. They must never
-manage workloads already transferred to Helm. Standard Helm ownership checks
-reject resources owned by another manager; do not bypass them with takeover flags.
-
-1. Record the old profile, namespace, ownership state and signing Secret; take
-   consistent backups of SQLite and DynamoDB while workloads are stopped. A PVC
-   is persistence, not a backup.
-2. Use the existing owned `scripts/minikube_demo.sh legacy undeploy --profile NAME` flow without
-   `--purge-data`. It retains the three PVCs and signing Secret.
-3. Supply the retained claims explicitly:
-
-   ```yaml
-   persistence:
-     history:
-       existingClaim: review-history
-     modelCache:
-       existingClaim: review-model-cache
-     dynamodb:
-       existingClaim: review-dynamodb
-   signingSecret:
-     existingSecret: review-secrets
-   ```
-
-4. Install the reviewed Helm release with the same profile/namespace and this
-   values file. No PVC adoption or key rotation is required. Keep the overrides
-   on subsequent upgrades; the Chart will not manage external claims.
-5. Verify login/history preservation and a complete review, then use Helm tooling
-   for that deployment. Retain old ownership records for recovery evidence.
 
 ## Status, uninstall and rollback
 

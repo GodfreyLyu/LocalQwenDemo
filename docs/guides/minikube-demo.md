@@ -6,8 +6,8 @@ standard Helm. The application Chart is the same one used by
 [direct Helm deployment](helm-release.md). The script does not start, resize or
 delete clusters, install Argo CD, discover host IPs, or operate on Argo CD instances.
 
-Old Kustomize deployments use the explicit `legacy` entry described in
-[minikube-legacy.md](minikube-legacy.md). There is no automatic ownership takeover.
+This CLI manages Helm-owned resources only. Foreign ownership markers and resources
+without a matching release are rejected; there is no automatic ownership takeover.
 
 ## Prerequisites
 
@@ -176,7 +176,7 @@ report with remaining PV names and a nonzero exit. It never strips finalizers,
 rewrites provisioner identity or removes node directories. Resolve the reported
 storage issue and repeat the same cleanup command.
 
-## State and legacy commands
+## State and ownership
 
 Private records live under the configured state root's `helm-v1/` subtree, keyed
 by cluster UID, profile/home, namespace and release. `--state-root` or
@@ -184,19 +184,9 @@ by cluster UID, profile/home, namespace and release. `--state-root` or
 are locally locked. Independent Helm commands should not run concurrently with a
 CLI mutation or verification.
 
-A namespace identity change archives stale Helm records. Old Kustomize ownership
-records remain untouched in their original directories and are not adopted.
-The legacy entry is explicit:
-
-```bash
-scripts/minikube_demo.sh legacy inspect-target --profile minikube
-scripts/minikube_demo.sh legacy undeploy --profile minikube
-```
-
-Use these only for legacy resources, never for a Helm release. The older
-`scripts/helm_deploy.py` is deprecated; it shares target/ownership helpers but is
-not called by this local workflow. Standard Helm remains the published-release
-entry point.
+A namespace identity change archives stale Helm records. Local records are build and
+acceptance evidence; the Helm release remains authoritative for lifecycle operations.
+Argo CD applications must be managed through their GitOps source.
 
 ## Offline verification
 

@@ -201,18 +201,15 @@ history/queue/sessions, the backend model cache and DynamoDB Local accounts. Oll
 has its own model PVC. See the [Helm guide](../guides/helm-release.md) and
 [GitOps guide](../guides/gitops.md) for ownership and storage retention.
 
-`deploy/kustomize/overlays/minikube` remains available for legacy deployments. Its
-helpers verify profile/home/cluster identity, use a private kubeconfig and shared
-operation lock, and enforce namespace UID and random ownership markers. Source
-fingerprints, image tags and image IDs bind records to the deployed build.
-[State import and cleanup](../guides/minikube-legacy.md#state-and-ownership-protection)
-work across checkout moves. Legacy commands must not manage Helm or Argo CD resources.
+The optional local Helm CLI verifies the selected Docker-driver profile and uses a
+private kubeconfig and operation lock. Local build and acceptance evidence is keyed
+by cluster, namespace and release; it does not replace Helm release state.
 Readiness and acceptance have independent reports.
 
 ## Observability flow
 
-The backend emits allowlisted JSON events to stderr. The `logs` command filters these
-again for operator inspection. No cloud collector, metrics exporter or automated alarm
+The backend emits allowlisted JSON events to stderr. The Helm CLI `logs` command
+reads the selected backend container's logs. No cloud collector, metrics exporter or automated alarm
 service is installed. [The log contract](observability.md) and [local runbook](../operations/observability.md)
 define safe correlation, timing boundaries and unknown measurements.
 
@@ -257,6 +254,6 @@ Use these sources when auditing or changing the design:
 | Inference and model/context verification | [ollama.py](../../backend/app/inference/ollama.py) |
 | Prompt, output and generation policy | [prompts.py](../../backend/app/inference/prompts.py), [review_output.py](../../backend/app/inference/review_output.py), [generation.py](../../backend/app/inference/generation.py) |
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |
-| Deployment composition                               | [Minikube overlay](../../deploy/kustomize/overlays/minikube/kustomization.yaml)                  |
+| Deployment composition                               | [Application Chart](../../deploy/helm/local-review/Chart.yaml)                  |
 
 The [script reference](scripts.md) maps shared-state, target, deployment and cleanup modules.

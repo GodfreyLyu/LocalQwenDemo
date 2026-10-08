@@ -1,7 +1,7 @@
 """Local image builds and standard Helm lifecycle for an existing Minikube cluster.
 
 Helm owns application resources. Local records are build/acceptance evidence, never
-an alternative release database. Use the explicit `legacy` entry for Kustomize recovery.
+an alternative release database. Helm and Argo CD each retain their own resource ownership.
 """
 
 import contextlib
@@ -317,7 +317,7 @@ class Session:
         if ns:
             require(
                 not ns["metadata"].get("annotations", {}).get("local-review-demo/owner"),
-                "Legacy namespace; use legacy migration/recovery, not automatic takeover.",
+                "Namespace has a foreign ownership marker; automatic takeover is disabled.",
             )
         else:
             self.target.kubectl(

@@ -399,10 +399,34 @@ def test_destructive_and_target_validation_precedes_connection(monkeypatch, args
 
 
 @pytest.mark.integration
-def test_shell_routes_new_and_legacy_help_without_cluster():
-    for args, expected in [(["--help"], "--release"), (["legacy", "--help"], "recover-cleanup")]:
-        output = subprocess.check_output([str(ROOT / "scripts/minikube_demo.sh"), *args], text=True)
-        assert expected in output
+def test_shell_routes_helm_help_without_cluster():
+    output = subprocess.check_output([str(ROOT / "scripts/minikube_demo.sh"), "--help"], text=True)
+    assert "--release" in output
+    assert "legacy" not in output
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+def test_legacy_command_is_rejected_before_connection(monkeypatch):
+    monkeypatch.setattr(
+        sys, "argv", ["minikube_helm.py", "legacy", "status", "--profile", "minikube"]
+    )
+    monkeypatch.setattr(cli, "connect", lambda *a: pytest.fail("must not connect"))
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2
+
+
+@pytest.mark.integration
+@pytest.mark.security
+def test_init_rejects_retired_namespace_owner_without_mutation(session):
+    namespace(session)
+    session.target.objects["namespace", session.namespace]["metadata"]["annotations"][
+        "local-review-demo/owner"
+    ] = "retired-owner"
+    with pytest.raises(ValueError, match="foreign ownership"):
+        session.init()
+    assert not session.target.objects.get(("secret", "review-secrets"))
 
 
 @pytest.mark.integration
@@ -631,7 +655,7 @@ def test_helm_acceptance_reports_real_review_and_persistence_separately(
 
 
 @pytest.mark.integration
-def test_partial_legacy_workloads_are_not_reported_as_uninstalled(session, monkeypatch):
+def test_unmanaged_workloads_are_not_reported_as_uninstalled(session, monkeypatch):
     session.init()
     session.target.objects["deployment", "review-dynamodb"] = {
         "metadata": metadata("review-dynamodb")
