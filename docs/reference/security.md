@@ -14,7 +14,13 @@ Login/registration have per-IP and per-normalized-identifier sliding-window limi
 
 ## Data and model boundaries
 
-Source and review text are private per user and stored in SQLite on a local persistent volume. Sessions use that same volume; account/password records use a separate DynamoDB Local volume. Encryption at rest is not provided or verified by this project. Database queries are parameterized, and user identity always comes from the verified session. Source files are not created. Source text is never passed to a shell, interpreter, compiler, agent, or external inference API.
+Source and review text are private per user and stored in SQLite on a local persistent
+volume. Sessions use that same volume; account and password records use a separate
+DynamoDB Local volume. This project does not provide or verify encryption at rest.
+Database queries are parameterized, and user identity comes from the verified session.
+The backend sends source text to the configured local Ollama service for review. It
+never creates source files or passes that text to a shell, interpreter, compiler,
+agent, or cloud inference API.
 
 Input is bounded by HTTP bytes, characters, and model prompt tokens. Output token count, queue size, retry count, and inference concurrency are bounded. The model has no tools. Prompt injection can still influence review quality; model text is always untrusted.
 
@@ -25,8 +31,9 @@ chain-of-thought. Backend code inserts the fixed Markdown headings, but every re
 body remains model-generated. When a section reaches its token limit, post-processing
 may remove only the unfinished text after the last complete terminator. It cannot add or
 rewrite a conclusion. If no complete boundary exists, the response is rejected. Sampling
-uses an ephemeral SHA-256-derived seed per source and section inside an isolated CPU RNG
-context; neither the seed nor a source hash is logged or persisted. The validator
+uses a stable SHA-256-derived seed for each model digest, language, source, and section.
+The backend sends the seed to Ollama with the request. Neither the seed nor a source
+hash is logged or persisted. The validator
 rejects empty bodies, unexpected reserved headings and capped bodies with no complete
 terminator. It also rejects results that lack a recognizable link to a source
 identifier. Each rejection returns a fixed public error without saving or logging the
@@ -37,14 +44,17 @@ React Markdown skips raw HTML, applies `rehype-sanitize`, and does not load imag
 
 ## Network and containers
 
-The default entry binds loopback on the host through the verified minikube API. All
-application resources are namespaced and privately owned; the cluster itself need not
-belong to this project. The scripts never install or alter CNI/storage components.
-NetworkPolicy denies traffic by default and permits only the frontend/backend/account,
-DNS and public HTTPS model-download paths in the rendered manifest. Policy enforcement
-depends on the existing CNI: a YAML policy is not proof of working network isolation.
-Link-local metadata is excluded; standard NetworkPolicy cannot restrict download HTTPS
-to Hugging Face by domain. Source text is not sent with model-download requests.
+The documented access path uses a host loopback port-forward. Application resources
+are namespaced; the cluster can also host other workloads. The application deployment
+scripts do not install or change CNI or storage components.
+
+The default Chart enables NetworkPolicy, but `values-minikube.yaml` explicitly disables
+it. With policies enabled, the manifests permit frontend-to-backend traffic, backend
+access to DynamoDB Local, DNS, and the selected Ollama service on port 11434. The backend
+policy also retains public IPv4 HTTPS egress, excluding private and link-local ranges;
+it is not restricted to model registries. The backend no longer downloads model files.
+Policy enforcement depends on the CNI, and the independent Ollama Chart provides no
+network isolation of its own. Rendered policies alone do not prove isolation.
 
 DynamoDB Local has an explicit HTTP endpoint restricted to loopback with an explicit
 port, or the exact `review-dynamodb` service names on port 8000. Missing endpoints,
@@ -53,7 +63,11 @@ are rejected. boto3 uses a new session with literal `local` access/secret keys, 
 metadata, empty shared configuration and no proxy/SDK endpoint override. These inert
 credentials are protocol requirements, not permission to access a cloud account.
 
-Application containers run non-root, with read-only root filesystems, no added Linux capabilities, no privilege escalation, RuntimeDefault seccomp, and bounded resources. Writable backend locations are `/data`, `/models/huggingface`, and `/tmp`. Kubernetes system add-ons may require host privileges; these are separate from the hardened application namespace.
+Application service containers run as non-root with read-only root filesystems, dropped
+Linux capabilities, no privilege escalation, RuntimeDefault seccomp, and bounded
+resources. The optional volume-permission init containers run as root with `CHOWN` and
+`FOWNER` to prepare volume roots. Writable backend locations are `/data`,
+`/models/huggingface`, and `/tmp`. The platform device plugin has separate host privileges.
 
 ## Logging and secrets
 
@@ -73,12 +87,13 @@ contract](observability.md) for field definitions.
 
 Removed text, removed character counts, punctuation, request/response bodies, raw path/URL/query, source code, source-derived hashes, generation seeds, prompts, token IDs or generated token content, decoded model output, passwords, cookies, tokens, usernames, and full exception messages are excluded. API validation errors never echo raw input. Uvicorn and frontend access logging are disabled, to prevent arbitrary path/query values from entering logs. Unexpected model/storage messages are translated to fixed public errors.
 
-The deployment script creates a random signing Secret only when no owned signing Secret
-exists. Repeated up reuses it; cleanup preserves it by default. Namespace UID, ownership
-marker and per-resource checks prevent adoption of unknown Secrets. Secret values and
-arbitrary annotations are not returned by the ownership metadata projection. Shared
-state directories are mode 0700 and files mode 0600; private kubeconfig and acceptance
-credentials must never be published.
+The local Helm CLI's `init` command creates a random signing Secret only when the
+configured Secret is missing. An existing Secret is checked for a signing key of at
+least 32 characters and reused. `up` requires that Secret to exist; it does not create
+or rotate the key. Normal cleanup preserves it, and an explicit purge removes only
+Secrets marked as created by this CLI. Metadata and key-length checks do not print
+Secret values. Local state directories use mode 0700 and record files use mode 0600;
+keep private kubeconfigs and acceptance credentials out of published artifacts.
 
 Ignored files cover `.env`, local data/model caches, state/plans, credentials-shaped local configuration, build outputs, and editor files. No model weights or reference-project local state belong in version control. Local demo harness credentials are deliberately inert dummy strings and work only against emulated/local DynamoDB.
 

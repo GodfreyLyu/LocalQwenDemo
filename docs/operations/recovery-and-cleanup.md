@@ -17,7 +17,16 @@ scripts/minikube_demo.sh logs --profile minikube
 scripts/minikube_demo.sh doctor --profile minikube
 ```
 
-These local Helm commands check ownership and use the selected target's private kubeconfig
+These commands are for the optional Docker-driver Helm CLI. For standard Helm or Argo CD
+deployments, including krunkit, inspect the workload directly with the correct context
+and namespace:
+
+```bash
+kubectl --context minikube -n local-review-demo get deployments,pods,pvc
+kubectl --context minikube -n local-review-demo logs deployment/review-backend -c review-backend --tail=100
+```
+
+The local Helm CLI commands check ownership and use the selected target's private kubeconfig
 with an explicit context and namespace. Do not print kubeconfig, acceptance accounts,
 Secret contents, complete environment dumps, user history bodies or raw exception strings.
 
@@ -86,7 +95,7 @@ These logs omit exception text, endpoints, credentials and account data.
 | Account dependency unavailable | Confirm explicit local endpoint, inert credentials, disabled SDK metadata/shared configuration and ACTIVE table/schema. The initializer is idempotent and refuses remote endpoints or schema replacement. |
 | 415, 403 or 401 | POST/PUT/PATCH require JSON; Origin must exactly match localhost and authenticated writes require the session's CSRF token. Sign in normally; never bypass media-type/auth/CSRF checks. |
 | `inference_timeout` | Retain the failed review and wait for draining. Correlate one container's measured CPU/memory deltas and section timings; do not blindly retry or tune parameters. |
-| `inference_stuck` | The native generation did not drain within the existing bound. Liveness becomes false. Inspect before any separately authorized workload recovery; never start a second model process. |
+| `inference_stuck` | The inference worker did not exit within the drain timeout. Liveness becomes false. Inspect the backend and Ollama separately before recovery; do not submit overlapping reviews. |
 | Port binding failure | Inspect the reported errno/category. Permission restrictions are not proof of occupation; a later successful bind does not establish earlier state. Never kill an unknown listener. |
 | Missing local build/acceptance evidence | Inspect Helm release state and rerun the applicable local build or acceptance workflow; do not fabricate success fields. |
 | Checkout changed | Helm release state remains in the cluster. Use the same private state root for local evidence. |

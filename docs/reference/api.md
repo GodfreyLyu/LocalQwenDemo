@@ -19,7 +19,8 @@ Request/response bodies use JSON, except that successful logout returns **204 wi
 
 Registration/login body: `{"login_id":"reviewer","password":"a-long-example-password"}`.
 Identifiers are trimmed and converted to lowercase. They must be 3–100 characters long
-and may contain ASCII letters, digits, `.`, `_`, `@`, `+` and `-`. Passwords must be
+and must start with an ASCII letter or digit. The remaining characters may also
+include `.`, `_`, `@`, `+` and `-`. Passwords must be
 12–128 characters long and are not normalized.
 
 Successful authentication sets the session cookie and returns `login_id`, `csrf_token`, `expires_at` (Unix seconds), and `source_max_chars`. The browser keeps the CSRF token in memory and restores it through `/auth/me`; it never stores the session token in local storage.
@@ -43,8 +44,11 @@ Submission body:
 `language` defaults to `auto`; any valid short language hint is accepted. `client_request_id` is optional; the server generates a UUID if omitted. Browsers generate and retain it for uncertain-delivery retries. The response contains `review_id`, `status`, and `client_request_id`. An idempotent response may already be completed or failed.
 
 The default source limit is 12,000 characters. Each of the three complete section
-prompts, including instructions, must fit within 2,048 tokens. The character limit and
-token limit are enforced independently. Oversized HTTP bodies are rejected at 128 KiB
+prompts, including instructions, must fit within 2,048 tokens. The character limit is
+checked before admission. The worker checks actual prompt token counts reported by
+Ollama after submission; a token-limit failure marks the accepted job as failed with
+`token_limit`, rather than returning HTTP 422 from the submission request.
+Oversized HTTP bodies are rejected at 128 KiB
 before JSON parsing. Nothing is compiled, parsed as an executable language, or saved as
 a source file.
 
@@ -81,7 +85,7 @@ Errors use:
 | 404     | Missing review or review owned by another account                         |
 | 409     | Existing login identifier; conflicting idempotency payload; active review |
 | 413/415 | Body too large / non-JSON write                                           |
-| 422     | Blank/oversized source, token limit, invalid UUID or credentials format   |
+| 422     | Blank/oversized source, invalid language hint, UUID or credentials format |
 | 429     | Login/submission rate limit or full queue; includes Retry-After           |
 | 503     | Model loading/draining, storage failure, unavailable account service      |
 
@@ -98,10 +102,15 @@ The existing `/health/live` and `/health/ready` HTTP status and body contracts a
   the existing logging/test `ENVIRONMENT` setting implies a deployment environment.
 - `inference_mode`: `real` for the Ollama adapter, `simulated` for an
   explicitly marked fixture, otherwise `unknown`. Deployment environment does not select inference.
-- `model_id`, `model_revision`, `model_source`, `device`: configured pinned identity and
-  `cpu` for the built-in real adapter; `Simulated model`, `fixture-v1`, `test_fixture`
-  and null device for the deterministic adapter. Unrecognized adapters expose null identity,
-  `unknown` source and null device. No model weights are loaded by this endpoint.
+- `model_id`, `model_revision`, `model_source`, `device`: the selected Ollama tag,
+  observed digest, `ollama_api`, and observed placement (`cpu`, `gpu`, `mixed`, or null).
+  Placement comes from startup or the last successful review, not live GPU monitoring.
+  The deterministic adapter returns `Simulated model`, `fixture-v1`, `test_fixture`,
+  and a null device. Unrecognized adapters expose null identity, `unknown` source,
+  and a null device. This endpoint does not load model weights.
+- `inference_backend`, `quantization`: the Ollama adapter also returns `ollama` and
+  the observed quantization, which may be null before loading. These fields are absent
+  for simulated or unrecognized adapters.
 - `service_status`, `accepting_submissions`: reuse the coordinator and SQLite readiness
   check. Shutdown is reported as `shutting_down`. Readiness permits an attempt; authentication,
   CSRF, rate, input, active-review and atomic queue-capacity checks still decide admission.

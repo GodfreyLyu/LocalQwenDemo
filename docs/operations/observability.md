@@ -2,8 +2,11 @@
 
 [Documentation index](../README.md) · [Safe log contract](../reference/observability.md)
 
-For local Helm deployments, start with `scripts/minikube_demo.sh status --profile
-minikube` and `scripts/minikube_demo.sh logs --profile minikube`. For Argo CD, inspect
+For Docker-driver deployments managed by the local Helm CLI, start with
+`scripts/minikube_demo.sh status --profile minikube` and
+`scripts/minikube_demo.sh logs --profile minikube`. For standard Helm deployments,
+use the explicit context and namespace commands in the
+[recovery runbook](recovery-and-cleanup.md#health-and-startup). For Argo CD, inspect
 Application sync/health and the selected Pod through the [GitOps guide](../guides/gitops.md).
 Confirm the context and namespace before interpreting results. No external monitoring
 service or automated repair is installed by this project.
@@ -31,7 +34,7 @@ healthy. Backend cgroup counters do not measure the independent Ollama process.
 
 ## Controlled measurements are separate work
 
-A real review changes history and consumes substantial CPU/RAM. Obtain authorization,
+A real review changes history and uses Ollama's CPU, GPU, and memory resources. Obtain authorization,
 confirm Ready, an empty queue and no draining inference, and submit once through normal
 authentication. Collect before/after counters from the same container, including the
 cancellation/drain interval. Calculate average cores from usage delta divided by wall

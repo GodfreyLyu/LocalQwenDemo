@@ -63,7 +63,12 @@ and malformed metadata fail without retry. It never switches adapters automatica
   over historical CPU runs.
 - Existing quality gates passed; human review of generated findings is still needed.
 
-## Reproduce
+## Original reproduction procedure
+
+These commands and paths belong to the recorded revision. The `--model-backend` flag
+and legacy verification module have since been removed. For the current deployment,
+follow the [Helm guide](../guides/helm-release.md) and
+[model reference](../reference/model.md).
 
 Start native Ollama with the pinned model and a bind address reachable from minikube.
 From the repository root:

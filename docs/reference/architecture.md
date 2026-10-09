@@ -4,8 +4,8 @@
 
 ## Request flow
 
-The [homepage diagrams](../../README.md#architecture) show the application inside minikube
-and its host-side management tools. React executes in the browser; Nginx serves its static
+The [architecture overview](../../README.md#architecture) describes the application in
+Minikube and its deployment tools. React executes in the browser; Nginx serves its static
 bundle and provides the same-origin API proxy. The background coordinator and one-thread
 inference executor run within the FastAPI process.
 
@@ -15,9 +15,9 @@ inference executor run within the FastAPI process.
    `ReviewInput`; the session dependency verifies the signed cookie, account, Origin
    and CSRF token. The user ID comes only from this authenticated session.
 2. The review route obtains a typed `ReviewService` dependency. Its `submit` method
-   checks blank/character input, coordinator readiness, token bounds and the per-user
-   submission rate limit, in that order. These checks also apply to idempotent retries,
-   preserving the existing admission policy.
+   checks for blank or oversized input, coordinator readiness, and the per-user
+   submission rate limit, in that order. These checks also apply to idempotent retries.
+   Exact token counts are checked later in the worker, using Ollama's response.
 3. `Store.create_review` uses **one `BEGIN IMMEDIATE` transaction** for the existing-key
    lookup, payload conflict check, total/queued capacity checks, active-user check and
    insert. Same-key/same-input retries return the existing row before capacity checks.
@@ -150,7 +150,7 @@ normal processing or draining without hiding the last operational state.
 
 | State | Ready (while not closing) | Live | Next behavior |
 | --- | --- | --- | --- |
-| `model_loading` | false | true | Initialize storage/accounts, recover queue, load and validate model |
+| `model_loading` | false | true | Initialize storage/accounts, recover the queue, and verify the selected model through Ollama |
 | `ready` | true | true | Claim and execute jobs serially |
 | `inference_draining` | false | true | Wait for the timed-out executor future; never start another job |
 | `inference_stuck` | false | false | Stop claiming jobs; late thread exit cannot restore readiness |
@@ -161,18 +161,20 @@ inference stopped cooperatively, succeeded late or failed. The stored job remain
 with a timeout; a late result does not replace it. Shutdown sets `closing`, clears
 readiness through the property, signals the stop event and waits for a bounded grace
 period before cancelling the coordinator task. Loading or draining finishing during
-shutdown cannot reopen admission. Cancellation cannot kill native inference; process
-termination is still the final bound.
+shutdown cannot reopen admission. Python cannot forcibly stop a stuck worker thread;
+process termination is the final local bound. The Ollama adapter normally cancels its
+HTTP operation and closes the connection, while Ollama handles remote generation cleanup.
 
 ## Design tradeoffs and scaling boundary
 
 The implementation deliberately has one Uvicorn process, one coordinator and one
-inference executor thread. This bounds model memory and serializes CPU inference;
+inference executor thread. This limits the application to one active review at a time;
 HTTP handlers and database operations can still execute in worker threads. It is
 appropriate for a local demonstration, not a multi-worker deployment guarantee.
 `MODEL_INFERENCE_CONCURRENCY=1` is validated, and deployment starts Uvicorn with one
-worker and one replica. Increasing Uvicorn workers would instantiate more models,
-coordinators and limiters; the in-process constraint would no longer be global.
+worker and one replica. Increasing Uvicorn workers would create more Ollama clients,
+coordinators and limiters, allowing concurrent inference requests and conflicting
+queue recovery across processes.
 
 SQLite keeps queue admission, idempotency, history and session revocation together with
 short transactions and no separate broker. WAL supports concurrent readers, while writes
@@ -215,7 +217,11 @@ define safe correlation, timing boundaries and unknown measurements.
 
 ## Frontend task status
 
-The result panel reports submission, queueing, execution and terminal task states separately from service readiness. It does not display a time estimate or progress percentage. Real-model execution includes a brief CPU timing explanation; simulated execution is explicitly labeled. These display choices do not change the 300-second minikube inference timeout or the frozen-request retry used when delivery is uncertain.
+The result panel shows submission, queueing, execution, and final task states separately
+from service readiness. It does not display a time estimate or progress percentage.
+During real inference, it explains that Ollama response time depends on code length and
+machine load. Simulated results are labeled explicitly. These messages do not change
+the 300-second deployment timeout or the retry behavior for an unconfirmed submission.
 
 ## Implementation map
 
@@ -223,7 +229,7 @@ The package layout follows existing responsibilities with one level of grouping:
 
 ```text
 backend/app/
-  main.py, config.py, domain.py, errors.py
+  main.py, config.py, model_config.py, domain.py, errors.py
   review_service.py, coordinator.py, health.py, rate_limit.py, logging.py, startup.py
   api/
     routes/                   # auth, reviews, health, runtime HTTP endpoints
@@ -231,8 +237,7 @@ backend/app/
   inference/
     model.py, ollama.py, prompts.py, generation.py, review_output.py, identity.py
   persistence/
-    storage.py, users.py, local_dynamodb.py, users_startup.py
-  model.py, auth.py           # explicit legacy exports only
+    storage.py, users.py, local_dynamodb.py, users_startup.py, initialize_users.py
 ```
 
 The root owns application assembly, business coordination and shared diagnostics.

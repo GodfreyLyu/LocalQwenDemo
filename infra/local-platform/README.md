@@ -38,8 +38,8 @@ terraform -chdir=infra/local-platform/terraform/platform validate
 terraform -chdir=infra/local-platform/terraform/platform plan
 ```
 
-The existing local `terraform.tfvars` uses the `minikube` context. On another machine,
-copy `terraform.tfvars.example` and adjust it before the first run. Both providers
+The defaults and `terraform.tfvars.example` use the `minikube` context. Copy the example
+to your local `terraform.tfvars` and adjust it before the first run. Both providers
 explicitly use the same kubeconfig and context. They do not rely on `kubectl config
 current-context` or automatically read `KUBECONFIG`. The scripts use `KUBE_CONFIG_PATH`
 to select one kubeconfig file, defaulting to `$HOME/.kube/config`. If you change this

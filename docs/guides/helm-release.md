@@ -1,6 +1,6 @@
 # Helm releases and GitHub Actions
 
-`main` owns application source, Dockerfiles, `deploy/helm/local-review`, deployment
+`main` owns application source, Dockerfiles, both Charts under `deploy/helm`, deployment
 tools and workflows. `deployment-release` contains reviewed deployment snapshots.
 Do not merge main into deployment-release or edit generated values there: change
 the source Chart in main and review the generated release PR.
@@ -22,15 +22,18 @@ manager; do not use them to upgrade Argo-owned resources.
 ## Deploy with standard Helm commands
 
 Application deployment uses Helm and kubectl directly. Python and PyYAML are not
-deployment prerequisites. Terraform may provision the cluster separately; this Chart
+deployment prerequisites. Start the cluster separately with Minikube. The repository's
+Terraform module manages platform resources in that existing cluster; this Chart
 does not create a cluster or install Argo CD.
 
 ### Prerequisites and target selection
 
 Use Helm 3.17+ or Helm 4, kubectl and an already running Kubernetes cluster (Kubernetes
->=1.30). The provided environment profile targets a single-node Minikube with the Docker
-driver and the `standard` StorageClass. Start with 4 CPUs and 8 GiB of cluster memory,
-leaving additional host capacity for Docker and the independent Ollama release. The old
+>=1.30). The provided values use Minikube's `standard` StorageClass and work with
+standard Helm on krunkit or Docker-driver clusters. The independent GPU Ollama image
+requires ARM64 krunkit; the optional local image-build CLI requires the Docker driver.
+Start with 4 CPUs and 8 GiB of cluster memory, leaving additional host capacity for
+the VM and independent Ollama release. The old
 2 CPU / 4 GiB cluster setting is too small for the current application requests and
 Kubernetes components. Three PVCs request 23 GiB in total; also allow disk space for
 images and model downloads.
@@ -239,17 +242,25 @@ changes; verify compatibility before deploying earlier application code.
 
 ## Verification
 
-Deployment needs only Helm/kubectl. The optional CI checks additionally use
-Python and PyYAML:
+Deployment needs only Helm and kubectl. Python validation runs from a **main source
+checkout** with the development environment installed. Release snapshots contain no
+Python scripts. To check an approved snapshot, point the source validator at its
+separate checkout:
 
 ```bash
-python scripts/validate_helm.py --snapshot
+backend/.venv/bin/python scripts/validate_helm.py \
+  --root /path/to/deployment-release-checkout --snapshot
 ```
 
-On main, run `python scripts/validate_helm.py` and
-`python -m pytest scripts/tests/release -q`. These render the local
-profile, explicitly enabled network policies and operation without a
-cluster. CI also validates Kubernetes schemas for these profiles.
+To check the main source Charts and release tooling, run:
+
+```bash
+backend/.venv/bin/python scripts/validate_helm.py
+backend/.venv/bin/python -m pytest scripts/tests/release -q
+```
+
+These checks render the local profile and variants with network policies enabled,
+and test release behavior without a cluster. CI also validates Kubernetes schemas.
 
 Source CI also checks source Chart variants, configuration rollouts, PVC retention,
 single-worker constraints, cumulative changes, image reuse/provenance, malformed

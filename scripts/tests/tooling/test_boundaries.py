@@ -38,8 +38,6 @@ def test_shared_modules_do_not_import_command_or_legacy_layers():
         ["validate_helm.py"],
         ["release/publish.py"],
         ["release/snapshot.py"],
-        ["release/migrate.py"],
-        ["release/bootstrap.py"],
     ],
     ids=lambda command: "-".join(command),
 )

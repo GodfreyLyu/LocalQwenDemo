@@ -38,10 +38,10 @@ is separate; the krunkit platform provides its own startup helper.
 ## Performance and availability
 
 The following historical measurements describe the Transformers CPU path; they are
-not Ollama GPU benchmarks. Real BF16 CPU inference is slow and host-dependent.
-The fixed model, 2 model threads,
-`OMP_NUM_THREADS=2`, 384-token total budget and 300-second whole-review timeout are not
-adapted automatically to make acceptance pass. The successful historical B measurement
+not Ollama GPU benchmarks. Those runs used a fixed model, BF16 CPU inference, two
+model threads, a 384-token total budget, and a 300-second whole-review timeout.
+The B run added `OMP_NUM_THREADS=2`; the other inference settings stayed fixed.
+The successful historical B measurement
 ran under different host swap pressure from A. Neither run proves hardware-accelerated
 BF16 execution or repeatable performance. The comparison does not isolate the cause of
 the improvement or measure this checkout's performance.
