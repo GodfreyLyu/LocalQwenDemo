@@ -9,7 +9,7 @@ self-approval. The `deployment-release` branch also requires no approvals. It st
 requires the `deployment/snapshot` check and an up-to-date PR, and administrators must
 follow the same rules.
 
-After merge, `Release candidate` rechecks the exact main commit, builds changed
+After merge, `Prepare release` rechecks the exact main commit, builds changed
 backend/frontend images for amd64+arm64 and Ollama for arm64, and pushes to GHCR.
 Ollama's image contains the Vulkan runtime, not model weights. Every deployment
 uses a digest. Unchanged components reuse both their digest and original source
@@ -27,29 +27,16 @@ Merging the reviewed deployment PR updates the desired state Argo CD watches. CI
 kubeconfig or Minikube access, so it cannot verify GPU readiness. A successful image
 build is not evidence of working GPU inference.
 
-## One-time repository migration
+## Repository release state
 
-1. Merge the implementation PR to main after `main-ci` succeeds.
-2. Using a maintainer's GitHub CLI identity with workflow permissions, run:
+This repository already has an initialized `deployment-release` branch and uses
+format-3 snapshots. Its one-time bootstrap and workflow migration tools have been
+retired; normal releases use **Prepare release** on main, followed by review and
+merge after `deployment/snapshot` succeeds. Historical migration tools remain in Git
+history for reference.
 
-   ```bash
-   python3 scripts/release/migrate.py
-   ```
-
-   Review and merge this separate PR to deployment-release. It removes exactly
-   `.github/workflows/deployment-validation.yml`; it does not alter images or workload
-   configuration. The trusted validator on main checks that the PR uses the current
-   base, has a single parent and deletes only that file. It then reports the
-   `deployment/snapshot` result. The ordinary Actions token cannot modify workflow
-   files, so this step cannot be hidden in image publication. Existing migration PRs are
-   reused, never force-pushed.
-3. Run **Release candidate** on main. The first main run may have stopped at this
-   migration prerequisite; start a fresh run after the migration PR merges.
-4. Review the three-image candidate and merge only after `deployment/snapshot`.
-
-New repositories use `scripts/release/bootstrap.py`, which creates only a README on the
-initial deployment branch. The generator removes legacy scripts and docs when generating
-format-3 snapshots. Release files are limited to the two Helm Charts, `deploy/argocd`,
+The generator removes obsolete scripts and docs when generating snapshots.
+Release files are limited to the two Helm Charts, `deploy/argocd`,
 pinned values, `release.json` and a short README. The root `release-values.yaml` is
 retained for existing Helm commands and is checked to be identical to local-review's
 Chart-local `values-release.yaml`.
@@ -70,7 +57,8 @@ of merged branches. Do not use administrator merges to bypass either PR gate.
 
 Terraform owns the platform namespaces, device plugin and optional Argo CD Helm
 release. Enable `argocd_enabled = true` in your ignored platform terraform.tfvars,
-then run init, plan and apply as documented in the platform README. Argo CD uses
+then run init, plan and apply as documented in the
+[platform README](../../infra/local-platform/README.md). Argo CD uses
 the pinned Chart 10.9.6, ClusterIP access and annotation-based resource tracking.
 ApplicationSets, Dex and notifications are disabled for the local cluster.
 
@@ -82,8 +70,9 @@ For public packages, no image pull Secret is needed. Verify GHCR package visibil
 before the first sync; repository visibility alone does not set package visibility.
 
 Use a separate checkout of the **approved format-3 deployment-release snapshot**.
-For a fresh installation, create local-inference and local-review-demo namespaces
-and prepare the stable review-secrets Secret as described in helm-release.md.
+For a fresh installation, create the `local-inference` and `local-review-demo` namespaces
+and prepare the stable `review-secrets` Secret as described in the
+[Helm guide](helm-release.md#one-time-namespace-and-secret-preparation).
 The limited AppProject intentionally cannot create cluster-scoped resources.
 
 ```bash
@@ -121,11 +110,13 @@ workload kinds. Routine application sync cannot modify the GPU plugin or Argo CD
 
 ## Verification, storage and ownership
 
-The Ollama Application skips Helm test hooks and enables a separate `PostSync` Job. It
-calls the Service to generate text and verify the model, digest and full GPU residency
-using the runtime's existing checks. It does not request a second GPU slot. A failed Job
-fails sync; readiness continuously checks the resident model. Standard Helm installs
-still support `helm test` and do not render the Argo Job unless enabled explicitly. See
+The Ollama Application skips Helm test hooks and enables a separate `PostSync` Job when
+model bootstrap is enabled. The Job calls the Service to generate text and verify the
+bootstrap model, digest, and full GPU placement. It does not request a second GPU slot.
+A failed Job fails sync. Service readiness checks the process and API after initial
+preparation; it does not require a fixed model to remain loaded or on the GPU. The
+review backend separately validates its selected model. Standard Helm installs support
+`helm test` and do not render the Argo Job unless enabled explicitly. See
 [Argo Helm hooks](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/).
 
 All four PVCs have the Helm keep annotation and the Argo `Prune=false,Delete=false`

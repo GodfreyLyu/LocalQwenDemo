@@ -164,7 +164,7 @@ A additionally had two sampling gaps; B did not.
 
 The evidence supports retaining the OpenMP setting: the model, image and resources were
 unchanged, CPU cost per token fell substantially, observed thread turnover nearly
-disappeared, and the same quality gate passed. They do **not** identify a particular
+disappeared, and the same quality gate passed. These results do **not** identify a particular
 BF16 kernel, prove the exact library creating A's threads, or establish how much of the
 latency reduction came from OpenMP versus host pressure. Actual accelerated BF16
 dispatch remains `not_measured`; no profiler or additional inference was run.

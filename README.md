@@ -4,8 +4,9 @@ PR-gated image builds and Argo CD: [GitOps guide](docs/guides/gitops.md).
 Standard Helm deployment: [guide](docs/guides/helm-release.md).
 
 GPU inference inside krunkit Minikube is available as an [independent Ollama Helm
-release](deploy/helm/local-ollama/README.md), with a retained model PVC. The service
-becomes ready only after GPU inference has been verified. The application defaults to
+release](deploy/helm/local-ollama/README.md), with a retained model PVC. Readiness checks
+the process and API after initial model preparation; GPU inference is verified separately
+by `helm test` or the Argo CD PostSync Job. The application defaults to
 this release at `http://review-ollama.local-inference.svc.cluster.local:11434`.
 
 **A local LLM code-review service with in-cluster Ollama inference and standard Helm deployment to an existing Minikube cluster.**
@@ -30,7 +31,7 @@ are also available.
   review. It reports that it is not ready during this wait.
 - **Private accounts and history:** password hashing, signed sessions, exact Origin and
   CSRF checks protect access. History is scoped to the authenticated account.
-- **Verified model identity:** Startup verifies the selected Ollama model's digest, capability and
+- **Verified model identity:** startup verifies the selected Ollama model's digest, capability and
   context; saved reviews retain the actual model digest.
 - **Reviewed Helm releases:** CI builds images and proposes immutable deployment
   snapshots; approved releases install with standard Helm commands and explicit
@@ -46,7 +47,8 @@ service, not a validated highly available or publicly exposed production platfor
 
 The backend's single executor calls
 `review-ollama.local-inference.svc.cluster.local:11434`. Ollama owns a separate model
-PVC and performs inference in the cluster. Ollama owns tokenization; the backend selects its model through configuration.
+PVC, tokenizes requests, and performs inference in the cluster. The backend selects
+the model through configuration.
 The [historical diagram](docs/assets/application-architecture.png) depicts the removed
 in-process CPU implementation; see the [current request flow](docs/reference/architecture.md).
 

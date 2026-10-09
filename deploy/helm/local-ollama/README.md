@@ -38,8 +38,9 @@ The image pins the base digest and the Ollama/Mesa package versions; other OS
 dependencies still resolve from Fedora repositories. The complete installed RPM
 list is embedded at `/etc/ollama-image-packages.txt`. For registry-based delivery,
 publish a tested image and set `image.repository` plus `image.digest`; do not
-reuse a mutable tag for changed runtime code. Image publishing is separate from
-this Chart and the application's existing release pipeline.
+reuse a mutable tag for changed runtime code. The repository's release workflow builds
+and publishes this image alongside the application images; the Chart itself does not
+publish images.
 
 For an offline install, set `model.pullIfMissing=false` in a local values file and use
 that file on every upgrade. Install without `--wait`. Then copy a complete Ollama model
@@ -92,8 +93,8 @@ The recommended release/namespace above gives:
 http://review-ollama.local-inference.svc.cluster.local:11434
 ```
 
-Build a backend image from this checkout so it accepts Kubernetes Service DNS.
-Keep the application's normal namespace, stable signing Secret and image values.
+Use a backend image from the current source or an approved release snapshot.
+Keep the application's namespace, stable signing Secret, and image values.
 Add this environment overlay after `values-minikube.yaml`:
 
 ```bash
@@ -144,7 +145,8 @@ With Minikube's `standard` StorageClass, this also deletes the stored model data
 
 The main release workflow builds this image for linux/arm64 after PR checks and
 merge, publishes a GHCR digest, and includes this Chart in the reviewed deployment
-snapshot. Argo CD uses values-release.yaml plus values-argocd.yaml; its PostSync
-Job verifies bootstrap-model GPU inference through the Service when bootstrap is enabled. The Job is disabled for normal
-Helm installs, where helm test remains available. See the
+snapshot. Argo CD uses `values-release.yaml` plus `values-argocd.yaml`. When bootstrap
+is enabled, its PostSync Job verifies GPU inference for the bootstrap model through
+the Service. The Job is disabled for normal Helm installs, where `helm test` remains
+available. See the
 [GitOps guide](../../../docs/guides/gitops.md) for first installation and migration.

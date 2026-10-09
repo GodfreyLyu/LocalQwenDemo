@@ -39,12 +39,15 @@ Startup diagnostics distinguish Ollama capability/context verification,
 startup generation validation and final storage checks. Safe
 stage/error-type/status/errno fields never expose raw exception text or URLs.
 
-Generation metrics record generation and first-content time for each fixed section,
-plus input/generated token counts. Preparation and PyTorch thread fields are null. First-token
-time is included in generation duration; do not add it again. Missing sections remain
-unmeasured. Ollama placement is observed through `/api/ps` at startup or the last successful review.
+Generation metrics record generation and time to first content for each fixed section,
+plus input and output token counts. Preparation and PyTorch thread fields are null.
+Time to first content is included in generation duration; do not add it again. Missing
+sections remain unmeasured. Ollama placement is observed through `/api/ps` at startup
+or the last successful review.
 
-For a separately authorized single review, bind cgroup measurements to the same Pod UID,
+To measure inference resource use, collect counters from the Ollama container. Backend
+counters measure the API, queue, and HTTP client, not the model server. For a separately
+authorized single review, bind cgroup measurements to the same Pod UID,
 container ID/start time and image. Divide the change in CPU usage by elapsed wall time
 to obtain average cores used. Divide CPU seconds by generated tokens to measure CPU cost
 per token for that request. Cumulative throttling ratios and `throttled_usec` are not

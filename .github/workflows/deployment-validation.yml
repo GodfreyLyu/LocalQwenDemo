@@ -1,4 +1,4 @@
-name: Deployment validation
+name: Validate release snapshot
 on:
   workflow_call:
     inputs:
@@ -16,49 +16,55 @@ permissions:
   statuses: write
 jobs:
   snapshot:
+    name: Validate snapshot
     runs-on: ubuntu-latest
     steps:
-      - name: Validate input
+      - name: Check snapshot SHA
         env:
           SNAPSHOT_SHA: ${{ inputs.snapshot-sha }}
         run: '[[ "$SNAPSHOT_SHA" =~ ^[a-f0-9]{40}$ ]]'
-      - uses: actions/checkout@v6
+      - name: Check out validator
+        uses: actions/checkout@v6
         with:
           ref: main
           path: validator
           fetch-depth: 0
-      - uses: actions/checkout@v6
+      - name: Check out snapshot
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.snapshot-sha }}
           path: snapshot
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - uses: azure/setup-helm@v4.3.0
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.0
         with:
           version: v3.17.3
-      - run: pip install pyyaml==6.0.3
-      - name: Verify immutable head and current release base
+      - name: Install PyYAML
+        run: pip install pyyaml==6.0.3
+      - name: Verify candidate commit
         id: verify
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ inputs.snapshot-sha }}
         run: python validator/scripts/release/publish.py verify --root validator --candidate-sha "$CANDIDATE_SHA"
-      - name: Validate snapshot using trusted main code
+      - name: Check snapshot configuration
         if: steps.verify.outputs.migration != 'true'
         run: python validator/scripts/validate_helm.py --root snapshot --snapshot
-      - name: Validate Kubernetes resource schemas
+      - name: Check Kubernetes schemas
         if: steps.verify.outputs.migration != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash validator/scripts/check_helm_schema.sh snapshot
-      - name: Recheck candidate provenance after validation
+      - name: Recheck candidate commit
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ inputs.snapshot-sha }}
         run: python validator/scripts/release/publish.py verify --root validator --candidate-sha "$CANDIDATE_SHA"
-      - name: Record status on the exact candidate commit
+      - name: Report snapshot status
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}

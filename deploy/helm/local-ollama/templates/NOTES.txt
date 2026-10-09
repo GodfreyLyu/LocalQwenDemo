@@ -1,8 +1,13 @@
 Ollama API: http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:11434
-Ready means the pinned model generated text and reports full GPU loading.
+Ready means initial preparation is complete and the Ollama process and API are available.
+It does not verify GPU placement or require a model to remain loaded.
 
-Verify real inference:
+{{ if .Values.model.bootstrap }}
+Verify inference and GPU placement for the bootstrap model:
   helm test {{ .Release.Name }} --kube-context <context> -n {{ .Release.Namespace }} --logs
+{{ else }}
+Model bootstrap is disabled. Install and verify your chosen model through Ollama.
+{{ end }}
 
 Inspect:
   kubectl --context <context> -n {{ .Release.Namespace }} exec deployment/{{ .Release.Name }} -c ollama -- ollama ps

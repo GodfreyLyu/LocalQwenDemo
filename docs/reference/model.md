@@ -12,7 +12,7 @@ Direct host development explicitly overrides the URL to `http://localhost:11434`
 in `.env.example`; cluster DNS is intended for Pods. The backend accepts local and
 fully qualified cluster Service HTTP endpoints on port 11434, and disables proxy
 environment variables and redirects.
-`OLLAMA_MODEL_DIGEST` optionally pins a manifest digest; the maintained overlay pins
+`OLLAMA_MODEL_DIGEST` optionally pins a manifest digest; the maintained Chart pins
 `sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7`.
 The loaded digest is checked before every section and after each review to reject changed tags.
 Do not retag/delete a model while reviews are running; drain the queue before switching.
@@ -164,7 +164,7 @@ describe the removed Transformers implementation, not current Ollama performance
 
 3. Apply through the existing Helm/GitOps release path. ConfigMap checksum changes
    restart the backend; environment settings are read once, not hot-reloaded.
-   No backend rebuild is needed for subsequent model changes after this code ships.
+   Changing the selected model does not require a backend image rebuild.
 4. Confirm `/health/ready` and `/api/v1/runtime`, then run a representative review.
    Output format/semantic quality still depends on the selected model. Capability
    and context checks do not establish review quality or adequate GPU memory.

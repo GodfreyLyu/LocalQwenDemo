@@ -1,11 +1,16 @@
 # Script catalog and call chains
 
-Use this catalog to check command requirements and side effects. Set up the [local environment](../guides/local-development.md) and the tools listed below. Run examples from the repository root, invoking Python files through `backend/.venv/bin/python`. Shell entries are executable.
+Start with the [entry point guide](../../scripts/README.md) to see which scripts run
+automatically, which you can run manually, and which are internal modules. This reference
+covers their dependencies and effects. Set up the
+[local environment](../guides/local-development.md) and the tools listed below. Run
+examples from the repository root, using `backend/.venv/bin/python` for Python files
+and `bash` for shell scripts.
 
 ## Organization and dependency boundaries
 
 Public file paths remain stable for workflows, Playwright and operator commands.
-Root Python files and `release/{publish,snapshot,migrate,bootstrap}.py` delegate to
+Root Python files and `release/{publish,snapshot}.py` delegate to
 package implementations; new code imports the packages rather than these wrappers.
 Internal Python imports use `scripts/` as their import root, configured by pytest or
 the public entry. Run the public files below instead of executing implementation files.
@@ -15,10 +20,10 @@ scripts/
   checks/                 # all, scripts, deployment and CI schema gates
   dev/                    # Local API harness and users initialization
   deployment/
-    common/               # Target, forwarding, queue guard, acceptance, files and units
+    common/               # Target, forwarding, queue guard, acceptance, files and resources
     helm/                 # CLI, session, build, diagnostics, lifecycle and verification
   validation/             # Resource invariants, snapshots, Helm and GitOps validation
-  release/                # Snapshot generation, publishing, migration and GitHub requests
+  release/                # Snapshot generation, publishing and GitHub requests
   evaluation/             # CLI, configuration, metrics, quality, reports and worker supervision
   tests/                  # Domain regressions and cross-domain tooling contracts
   tooling_paths.py        # Checkout paths and backend import preparation
@@ -41,7 +46,7 @@ implementation modules as well as the public entry and shared path bootstrap.
 | `bash scripts/check.sh` | No options; do not export `RUN_REAL_MODEL=1` for routine checks | Python dev lock, npm dependencies, Git, kubectl, Helm | Lint/format, backend tests, frontend lint/tests/build, local script regressions, Helm structural checks; caches and `frontend/dist`; fail-fast nonzero; no install/build-image/deploy |
 | `scripts/check_scripts.sh` | `REVIEW_PYTHON` overrides the default interpreter; runs all script domains, Helm validation | Python dev lock, Bash, Git, kubectl, Helm | Shell syntax includes all maintained entry points; temporary test files/loopback children only; no real cloud/cluster writes |
 | `scripts/check_minikube_demo.sh` | `REVIEW_PYTHON` overrides default `backend/.venv/bin/python` | Ruff, pytest, HTTPX, PyYAML, kubectl, Helm | Lint/format and all tests under `scripts/tests/deployment`; real offline render and loopback socket/process tests; no cluster |
-| `backend/.venv/bin/python scripts/local_demo.py --fake-model` | `--fake-model` opt-in; **default uses real model**; `--port` default 8000; `--data-dir` default `.local/demo` | Dev lock; model client lock and local Ollama when real | Loopback API; Moto accounts reset and random signing key changes on restart; persistent SQLite in data dir; real mode uses `--ollama-base-url` (default localhost:11434) and uses Ollama tokenization |
+| `backend/.venv/bin/python scripts/local_demo.py --fake-model` | `--fake-model` opt-in; **default uses real model**; `--port` default 8000; `--data-dir` default `.local/demo` | Development dependencies; running local Ollama for real inference | Loopback API; Moto accounts reset and random signing key changes on restart; persistent SQLite in data dir; real mode uses `--ollama-base-url` (default localhost:11434) and uses Ollama tokenization |
 | `backend/.venv/bin/python scripts/init_local_users.py` | No CLI parser/options; required explicit `DYNAMODB_ENDPOINT_URL`; only loopback with an explicit port allowed; fixed dummy credentials | boto3, running DynamoDB Local | Describes and idempotently creates `llm-review-users`; **local database write**. Do not invoke with `--help`: it is not a help-capable script |
 
 Test fixtures are covered in [testing](../testing/README.md#mock-boundaries-and-fixture-maintenance). Scripts return nonzero on failed assertions/subcommands; aggregate gates stop on first failure rather than silently skipping missing tools.
@@ -55,7 +60,10 @@ all|hello_world|average|square|first_item|sql_injection|prompt_injection`. Add `
 output privately and record human judgments. Use `--ollama-base-url`, `--ollama-model-digest`, `--max-output-tokens` and
 `--timeout-seconds` to match the application configuration. No arbitrary source option exists.
 
-Plans require the Python dev environment; real execution requires HTTP client packages and a running Ollama 0.24.0+ service. Host `.env`/model overrides are ignored. No Hugging Face tokenizer is used; HTTP inference uses the explicitly configured local service.
+Plans require the Python development environment. Real execution also requires Ollama
+0.24.0 or newer with the selected model installed; no extra Python model packages are
+needed. The evaluator ignores `.env` and ambient model settings. It sends requests to
+the explicitly configured Ollama service, which handles tokenization.
 
 The fixed input is `scripts/evaluation/fixtures-v1.json`; output is a new private `.local/model-evaluations/<time>-run-<random>/report.json`. Default mode creates only reports and reads local Git/dependency metadata. Real mode invokes the independent Ollama service, uses one owned supervised HTTP client worker and never downloads, installs, starts services or touches AWS/cluster resources. Model output is neither logged nor exported by default.
 
@@ -92,8 +100,9 @@ purge remains explicit. Argo CD instances must be managed through their GitOps s
 
 ## Verification entry chain
 
-`scripts/check.sh` runs backend lint/tests, frontend lint/tests/build, then
-`scripts/check_scripts.sh`. These delegate to `checks/all.sh` and `checks/scripts.sh`.
+`scripts/check.sh` delegates to `checks/all.sh`, which runs backend lint/tests,
+frontend lint/tests/build, and then `checks/scripts.sh`. The standalone
+`scripts/check_scripts.sh` entry also delegates to `checks/scripts.sh`.
 The focused deployment entry delegates to `checks/deployment.sh`; the Linux CI schema
 entry delegates to `checks/schema.sh`. Script lint runs once in the script gate,
 including shared code and tests. The script gate recursively syntax-checks Shell files, runs all

@@ -1,7 +1,7 @@
 # Documentation
 
 LocalQwenDemo runs code review using Ollama for both production and evaluation. The
-[project homepage](../README.md) provides an overview, diagrams and a quick start. The
+[project homepage](../README.md) provides an overview and a quick start. The
 operator manages the cluster lifecycle and external services. Standard Helm commands
 manage application resources using reviewed release values and environment settings.
 
@@ -26,15 +26,15 @@ For GPU inference inside an existing krunkit cluster, see the
 | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | Component boundaries, queue lifecycle and persistent data                           | [Architecture](reference/architecture.md)                       |
 | Endpoints, request bodies, authentication and error responses                       | [API](reference/api.md)                                         |
-| Pinned model, defaults versus minikube settings, cache validation and quality gates | [Model](reference/model.md)                                     |
+| Model identity, runtime and deployment defaults, startup checks and quality rules | [Model](reference/model.md)                                     |
 | Cookie/CSRF, history isolation, local transport and container controls              | [Security](reference/security.md)                               |
-| CLI options, dependencies, side effects and internal call chains                    | [Scripts](reference/scripts.md)                                 |
+| Manual and automatic entry points, options, dependencies and call chains | [Script entry points](../scripts/README.md), [script reference](reference/scripts.md) |
 | Safe event fields and measurement semantics                                         | [Observability](reference/observability.md)                     |
 | CPU/memory/disk budgets and availability limits                                     | [Resources and limitations](reference/costs-and-limitations.md) |
 
 ## How these documents fit together
 
-- **README:** overview, diagrams and quick start.
+- **README:** overview and quick start.
 - **`guides/`:** setup and deployment workflows. The Helm guide covers standard
   installation, environment values and release operations. The Minikube guide
   covers the local Helm CLI.
@@ -56,5 +56,5 @@ quality or live cleanup.
 Repository source, manifests, CLI help and tests define current behavior.
 Retired cloud deployment records remain in Git history. Private state, credentials,
 user histories, weights and runtime logs remain outside Git. DynamoDB Local retains SDK names but requires
-explicit local endpoints and invalid credentials, with metadata/shared-configuration
-fallback disabled.
+explicit local endpoints and dummy credentials. SDK metadata and shared-configuration
+fallback are disabled.

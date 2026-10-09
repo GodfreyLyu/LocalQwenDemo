@@ -10,7 +10,10 @@ Use this guide to develop and test locally. For published deployments, follow th
 
 Use this guide for a loopback development environment. Start with the [fake-model quick start](#test-harness) for UI/API work; use the real-model path only when inference is needed.
 
-Use Python 3.12 and Node 24; Docker is needed only for persistent DynamoDB Local. Install dependencies from the lockfiles as shown in the root README. Routine API tests do not need the optional model dependencies.
+Use Python 3.12 and Node 24. Docker is needed only for persistent DynamoDB Local.
+Install the Python dependencies as shown below and the frontend dependencies with
+`npm --prefix frontend ci`. Ollama manages model weights and tokenization, so no
+additional Python model packages are needed for real inference.
 
 The frontend uses a same-origin Vite proxy for `/api` and `/health`; do not call port 8000 directly from browser code. Open `http://localhost:5173` rather than `127.0.0.1:5173`, because origin matching is exact.
 
@@ -64,17 +67,20 @@ backend/.venv/bin/python -m pip install -r backend/requirements-dev.lock
 backend/.venv/bin/python -m pip install --no-deps -e backend
 ```
 
-If `.local/backend-venv-broken` already exists, choose a different backup name. Real-model weights stored under `.local/models/huggingface` are separate from the virtual environment and are not removed by this procedure. Reinstall the optional model dependencies only when real inference is needed.
+If `.local/backend-venv-broken` already exists, choose a different backup name. Ollama's
+model store and any retained legacy files under `.local/models/huggingface` are separate
+from the virtual environment and are not affected by this procedure.
 
 ## Persistent local accounts and real inference
 
-These steps start a persistent local Docker service, create its accounts table, write local configuration and install model packages. They do not create AWS resources. Existing data and `.env` must be retained. From the project root:
+These steps start DynamoDB Local, create its accounts table if needed, and copy the
+example configuration only if `.env` does not exist. They preserve existing data and
+configuration and do not create AWS resources. Run them from the repository root:
 
 ```bash
 docker compose up -d dynamodb
 DYNAMODB_ENDPOINT_URL=http://127.0.0.1:8001 backend/.venv/bin/python scripts/init_local_users.py
 test -f backend/.env || cp backend/.env.example backend/.env
-backend/.venv/bin/python -m pip install -r backend/requirements-model.lock
 ```
 
 Replace `SIGNING_SECRET` in the ignored `.env` with a random value of at least 32 characters. Generate it locally with `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'`. Do not commit it. The loopback-only `COOKIE_SECURE=false` setting permits HTTP development; normal Origin, HttpOnly, SameSite and CSRF protections remain enabled.
@@ -109,7 +115,11 @@ Open `http://localhost:5173`. This deterministic fixture does not establish real
 quality or minikube acceptance. Use a separate `--data-dir` when existing harness data
 must be preserved.
 
-For real inference with emulated accounts (no Docker), install the optional model dependencies shown above, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository root. Start local Ollama with the pinned model first; the harness defaults to `http://localhost:11434` and accepts `--ollama-base-url`. Model selection and generation settings are configurable; see the model reference.
+For real inference with emulated accounts, start local Ollama with the selected model
+installed, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository
+root. Docker is not needed. The harness defaults to `http://localhost:11434` and accepts
+`--ollama-base-url`. For backend and Helm model settings, see the
+[model reference](../reference/model.md).
 
 `scripts/local_demo.py --fake-model` uses Moto's DynamoDB API emulation and a deterministic model fixture, bound only to loopback. It creates no AWS resources. Accounts reset on harness restart, so a newly registered user with the same login may not be able to access old history. For persistent accounts use DynamoDB Local above. Omit `--fake-model` to test the actual model with emulated accounts.
 
@@ -132,7 +142,7 @@ the request. This keeps stores and settings separate across app instances.
 | `logging.py` | Structured logging and field allowlists |
 | `coordinator.py` | Serial queue processing, persistence and timeout draining |
 | `review_service.py`, `api/dependencies.py`, `domain.py` | Admission policy, typed HTTP dependencies and internal record/result types |
-| `inference/model.py`, `inference/generation.py` | Model loading, tokenization, serial inference, sampling policy and metrics |
+| `inference/model.py`, `inference/ollama.py`, `inference/generation.py` | Model interface, Ollama transport, sampling policy and metrics |
 | `inference/prompts.py`, `inference/review_output.py` | Pure prompt construction and output normalization/validation |
 | `persistence/storage.py`, `persistence/users.py` | SQLite history/sessions and local DynamoDB accounts |
 

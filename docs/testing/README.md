@@ -26,7 +26,7 @@ backend/tests/
   support.py    # Model double and API helpers; fixtures live in conftest.py
 scripts/tests/
   deployment/   # Helm rendering/lifecycle, ownership, state and shared process guards
-  release/      # Planning, publishing, GitOps, chart and target contracts
+  release/      # Planning, publishing, GitOps and chart contracts
   inference/    # Ollama runtime doubles and separate chart tests
   evaluation/   # Evaluator behavior using model doubles
   persistence/  # Local users initializer
@@ -73,7 +73,7 @@ scripts also exclude `real_model` and `requires_cluster` explicitly, even if an 
 has exported that variable. Skipped or deselected inference tests are not model passes.
 No test may weaken ownership or security just to pass.
 
-### Shared fixtures and migration
+### Shared fixtures and test organization
 
 `backend/tests/conftest.py` owns the application factory; ordinary helpers are imported
 from `backend.tests.support`, never from `conftest`. Release fixtures live in
@@ -84,7 +84,7 @@ Every test under `scripts/tests/deployment` receives an isolated `LOCAL_QWEN_STA
 from that directory's autouse fixture. This isolation no longer depends on a filename
 prefix. Shared repository paths come from `scripts.tests.support.paths`. Tests import canonical packages such as
 `deployment.helm.session`, `release.publisher` and `evaluation.runner`; only public
-entry compatibility tests import or execute the old wrappers. See the
+entry compatibility tests import or execute the entry point wrappers. See the
 [script package map](../reference/scripts.md#organization-and-dependency-boundaries).
 
 When moving tests, compare collected test names and parameter IDs before and after the
@@ -155,7 +155,7 @@ fake-model browser suite.
 Its `configuration` job adds Kubernetes schema checks using a downloaded, verified
 Linux tool; that network-dependent CI check is outside the local offline gate.
 
-After a merge to `main`, `Release candidate` reruns quality checks, builds changed
+After a merge to `main`, `Prepare release` reruns quality checks, builds changed
 backend, frontend and Ollama images, and publishes them to GHCR. It proposes a reviewed
 deployment snapshot; Argo CD reconciles approved snapshots in the cluster. CI does not
 access the cluster or establish real-model acceptance. See the [GitOps guide](../guides/gitops.md).
@@ -163,9 +163,11 @@ access the cluster or establish real-model acceptance. See the [GitOps guide](..
 ## Explicit real-model smoke and quality evaluation
 
 The opt-in [model smoke](../reference/model.md) and [fixed-suite evaluator](model-evaluation.md)
-load real weights and consume CPU/RAM. Keep model, prompts, BF16, threads, generation
-parameters, budgets and quality rules fixed. Evaluation plans are `not_run`; they are
-not successful reviews. The default gate does not run real inference.
+call the configured Ollama service, which loads model weights and uses CPU, GPU, and
+memory resources as available. For comparable runs, keep the model digest, quantization,
+prompts, sampling settings, budgets, quality rules, and service configuration fixed.
+Evaluation plans have status `not_run`; they are not successful reviews. The default
+check suite does not run real inference.
 
 ## Authorized environment acceptance
 
