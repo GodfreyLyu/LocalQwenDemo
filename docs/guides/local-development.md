@@ -1,8 +1,9 @@
 # Local development
 
-For current local deployment, use the [Helm workflow](minikube-demo.md).
-Use this guide to develop and test locally. For published deployments, follow the
-[Helm release guide](helm-release.md) or [GitOps guide](gitops.md).
+Use this guide to run the frontend and backend directly for development and testing.
+For a cluster deployment, follow the [Helm release guide](helm-release.md) or
+[GitOps guide](gitops.md). The [Minikube development CLI](minikube-demo.md) is an
+optional way to build and deploy local source on a Docker-driver cluster.
 
 [Documentation index](../README.md) · Run commands from the repository root unless shown otherwise. Check each section's side effects before running it.
 
@@ -11,9 +12,13 @@ Use this guide to develop and test locally. For published deployments, follow th
 Use this guide for a loopback development environment. Start with the [fake-model quick start](#test-harness) for UI/API work; use the real-model path only when inference is needed.
 
 Use Python 3.12 and Node 24. Docker is needed only for persistent DynamoDB Local.
-Install the Python dependencies as shown below and the frontend dependencies with
-`npm --prefix frontend ci`. Ollama manages model weights and tokenization, so no
-additional Python model packages are needed for real inference.
+Ollama manages model weights and tokenization, so no additional Python model packages
+are needed for real inference. Install the Python dependencies in the next section
+and the frontend dependencies with:
+
+```bash
+npm --prefix frontend ci
+```
 
 The frontend uses a same-origin Vite proxy for `/api` and `/health`; do not call port 8000 directly from browser code. Open `http://localhost:5173` rather than `127.0.0.1:5173`, because origin matching is exact.
 
@@ -25,10 +30,25 @@ The backend requires Python `>=3.12,<3.13`. On macOS, install a persistent Pytho
 
 ```bash
 brew install python@3.12
+```
+
+```bash
 REVIEW_PYTHON_BASE="$(brew --prefix python@3.12)/bin/python3.12"
+```
+
+```bash
 "${REVIEW_PYTHON_BASE}" --version
+```
+
+```bash
 "${REVIEW_PYTHON_BASE}" -m venv backend/.venv
+```
+
+```bash
 backend/.venv/bin/python -m pip install -r backend/requirements-dev.lock
+```
+
+```bash
 backend/.venv/bin/python -m pip install --no-deps -e backend
 ```
 
@@ -38,8 +58,17 @@ In IDEA, open the project Python Interpreter settings, add a local existing inte
 
 ```bash
 source backend/.venv/bin/activate
+```
+
+```bash
 which python
+```
+
+```bash
 python --version
+```
+
+```bash
 python -c 'import sys; print(sys.executable)'
 ```
 
@@ -53,23 +82,25 @@ whether `backend/.venv/bin/python` points into `/private/tmp`. Rebuild the envir
 with a persistent interpreter; editing `pyvenv.cfg` or individual symlinks does not make
 a virtual environment portable.
 
-From the repository root, deactivate the broken environment, retain an ignored local backup, and recreate the same `backend/.venv` path:
+From the repository root, deactivate the broken environment and keep an ignored local
+backup. If `.local/backend-venv-broken` already exists, choose a different backup name
+before running the move:
 
 ```bash
 deactivate 2>/dev/null || true
-mkdir -p .local
-mv backend/.venv .local/backend-venv-broken
-
-brew install python@3.12
-REVIEW_PYTHON_BASE="$(brew --prefix python@3.12)/bin/python3.12"
-"${REVIEW_PYTHON_BASE}" -m venv backend/.venv
-backend/.venv/bin/python -m pip install -r backend/requirements-dev.lock
-backend/.venv/bin/python -m pip install --no-deps -e backend
 ```
 
-If `.local/backend-venv-broken` already exists, choose a different backup name. Ollama's
-model store and any retained legacy files under `.local/models/huggingface` are separate
-from the virtual environment and are not affected by this procedure.
+```bash
+mkdir -p .local
+```
+
+```bash
+mv backend/.venv .local/backend-venv-broken
+```
+
+Repeat the [Python environment setup](#python-312-virtual-environment) to recreate
+`backend/.venv` and install its dependencies. Ollama's model store and application
+data outside the virtual environment are not affected.
 
 ## Persistent local accounts and real inference
 
@@ -79,21 +110,41 @@ configuration and do not create AWS resources. Run them from the repository root
 
 ```bash
 docker compose up -d dynamodb
+```
+
+```bash
 DYNAMODB_ENDPOINT_URL=http://127.0.0.1:8001 backend/.venv/bin/python scripts/init_local_users.py
+```
+
+```bash
 test -f backend/.env || cp backend/.env.example backend/.env
 ```
 
-Replace `SIGNING_SECRET` in the ignored `.env` with a random value of at least 32 characters. Generate it locally with `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'`. Do not commit it. The loopback-only `COOKIE_SECURE=false` setting permits HTTP development; normal Origin, HttpOnly, SameSite and CSRF protections remain enabled.
+Replace `SIGNING_SECRET` in the ignored `.env` with a random value of at least
+32 characters. Generate it locally, copy it into `.env`, and do not commit it:
 
-Start the backend from its own directory so the settings file and relative data/cache paths resolve correctly:
+```bash
+backend/.venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
+
+The loopback-only `COOKIE_SECURE=false` setting permits HTTP development; Origin,
+HttpOnly, SameSite and CSRF protections remain enabled.
+
+Start Ollama with `qwen3:1.7b` installed. Then start the backend from its own
+directory so the settings file and relative data paths resolve correctly:
 
 ```bash
 cd backend
-AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local .venv/bin/uvicorn app.main:create_app \
-  --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
 ```
 
-These literal dummy credentials are only for loopback DynamoDB Local. The runtime accepts no regional/cloud endpoint and disables host SDK profiles, metadata, shared configuration and proxy fallback. Run `npm --prefix frontend run dev` in a separate terminal from the project root. Check readiness with `curl -i http://127.0.0.1:8000/health/ready`; start Ollama with `qwen3:1.7b` installed first. Ollama owns tokenization; no backend tokenizer download is required.
+```bash
+.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
+```
+
+The runtime uses dummy credentials for DynamoDB Local and disables host SDK profiles,
+metadata, shared configuration and proxy fallback. It rejects cloud endpoints.
+Run `npm --prefix frontend run dev` in a separate terminal from the project root, then
+check readiness with `curl -i http://127.0.0.1:8000/health/ready`.
 
 DynamoDB Local persists to a Docker volume. The local Compose service intentionally runs as root only to initialize/write that named development volume; minikube application containers are non-root. `docker compose down` keeps local accounts. `docker compose down -v` deletes them and is destructive.
 
@@ -107,13 +158,17 @@ backend/.venv/bin/python scripts/local_demo.py --fake-model
 ```
 
 ```bash
-npm --prefix frontend ci
 npm --prefix frontend run dev
 ```
 
-Open `http://localhost:5173`. This deterministic fixture does not establish real-model
-quality or minikube acceptance. Use a separate `--data-dir` when existing harness data
-must be preserved.
+Open `http://localhost:5173`. The harness uses Moto to emulate DynamoDB and creates
+no AWS resources. Accounts reset on restart, while review history stays on disk.
+Registering the same login again creates a different account and does not restore
+access to that history. Use a separate `--data-dir` to keep test runs apart; use
+DynamoDB Local above when accounts need to persist.
+
+The fake model returns deterministic output for UI/API checks. It does not establish
+real-model quality or Minikube acceptance.
 
 For real inference with emulated accounts, start local Ollama with the selected model
 installed, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository
@@ -121,41 +176,20 @@ root. Docker is not needed. The harness defaults to `http://localhost:11434` and
 `--ollama-base-url`. For backend and Helm model settings, see the
 [model reference](../reference/model.md).
 
-`scripts/local_demo.py --fake-model` uses Moto's DynamoDB API emulation and a deterministic model fixture, bound only to loopback. It creates no AWS resources. Accounts reset on harness restart, so a newly registered user with the same login may not be able to access old history. For persistent accounts use DynamoDB Local above. Omit `--fake-model` to test the actual model with emulated accounts.
-
 ## Success criteria and tests
 
 ### Backend code map
 
-The Uvicorn entry point remains `app.main:create_app`. The factory sets up application
-state, middleware, error handlers and routers. Each router reads its app's state from
-the request. This keeps stores and settings separate across app instances.
-
-| Module under `backend/app` | Responsibility |
-| --- | --- |
-| `main.py` | Application construction and coordinator lifecycle |
-| `api/routes/auth.py`, `api/routes/reviews.py`, `api/routes/health.py` | Account, review and health endpoints |
-| `api/schemas.py`, `api/auth.py` | Request validation and session/CSRF checks |
-| `rate_limit.py` | Shared per-application admission quotas, independent of HTTP/authentication |
-| `health.py`, `api/routes/runtime.py`, `inference/identity.py` | Readiness observation, runtime HTTP presentation and typed adapter identity |
-| `api/middleware.py`, `api/http_errors.py` | Bounded request bodies, response headers and safe error responses |
-| `logging.py` | Structured logging and field allowlists |
-| `monitoring.py`, `api/routes/metrics.py` | Per-application Prometheus metrics and read-only collection |
-| `coordinator.py` | Serial queue processing, persistence and timeout draining |
-| `review_service.py`, `api/dependencies.py`, `domain.py` | Admission policy, typed HTTP dependencies and internal record/result types |
-| `inference/model.py`, `inference/ollama.py`, `inference/generation.py` | Model interface, Ollama transport, sampling policy and metrics |
-| `inference/prompts.py`, `inference/review_output.py` | Pure prompt construction and output normalization/validation |
-| `persistence/storage.py`, `persistence/users.py` | SQLite history/sessions and local DynamoDB accounts |
-
-Transport regression tests also cover chunked body limits and disconnects. API tests
-cover separate application instances, and model tests cover failures before generation
-as well as partial-generation diagnostics.
+The Uvicorn entry point is `app.main:create_app`. Its factory gives each application
+instance its own settings and stores. See the
+[implementation map](../reference/architecture.md#implementation-map) for module
+responsibilities and the [testing guide](../testing/README.md) for test coverage.
 
 ### Canonical imports and compatibility
 
-Use `app.api.*`, `app.inference.*` and `app.persistence.*` for moved implementations.
-The startup command remains `app.main:create_app`; package discovery already includes
-`app*`. `app.inference.model` defines the injected protocol, and `app.inference.ollama` supplies the real adapter.
+Use `app.api.*`, `app.inference.*` and `app.persistence.*` for their respective
+implementations. `app.inference.model` defines the model protocol, and
+`app.inference.ollama` supplies the real adapter.
 
 ### Optional interface documentation
 
@@ -181,8 +215,8 @@ With the fake harness, the API must report ready, registration/login must work i
 For a broken interpreter, use the recovery section above. For a 403 response, open
 `http://localhost:5173` exactly as written. If a port is occupied, stop only a process
 you own. For model-loading failures, follow
-[troubleshooting](../operations/recovery-and-cleanup.md) to inspect the pinned cache and
-safe startup events. Preserve partial downloads and existing data.
+[troubleshooting](../operations/recovery-and-cleanup.md) to inspect Ollama availability,
+the selected model and safe startup events. Preserve partial downloads and existing data.
 
 ## Dependency maintenance
 
@@ -198,10 +232,9 @@ the direct-start `.env.example` and the local harness use `development`. Existin
 when using that startup method. Unconfigured deployments display “Environment unknown”.
 This setting changes only display metadata, not model selection or runtime policy.
 
-The fake harness visibly reports simulated inference. Its newly completed records have
-fixture provenance. Neither real nor simulated mode displays a time estimate. The centered
-account form and compact workbench status strip share the same light styling. “About this
-instance” holds model provenance, processing and storage details; actionable service
-problems stay visible beside the status strip. Local accounts isolate review histories.
+The fake harness labels its inference and completed reviews as simulated. Neither mode
+displays a time estimate. “About this instance” shows model, processing and storage
+details; service problems stay visible beside the status strip. Local accounts isolate
+review histories.
 The runtime endpoint's exact semantics and backward-compatibility limits are documented
-in the [API reference](../reference/api.md#read-only-instance-runtime).
+in the [API reference](../reference/api.md#instance-runtime).

@@ -34,3 +34,4 @@ deploy/generated/
 *.egg-info/
 *.tsbuildinfo
 *-backend.hcl
+AGENTS.md

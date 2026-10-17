@@ -1,60 +1,51 @@
 # Documentation
 
-LocalQwenDemo runs code review using Ollama for both production and evaluation. The
-[project homepage](../README.md) provides an overview and a quick start. The
-operator manages the cluster lifecycle and external services. Standard Helm commands
-manage application resources using reviewed release values and environment settings.
-
-For GPU inference inside an existing krunkit cluster, see the
-[independent Ollama Helm deployment](../deploy/helm/local-ollama/README.md).
+LocalQwenDemo uses Ollama for code review and model evaluation. Start with the
+[project overview](../README.md) if you are new to the application, or choose a guide
+below for your task.
 
 ## Choose a reading path
 
-| I want to…                             | Read                                                                                                | Purpose                                                                                      |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Try the application                    | [Local Helm workflow](guides/minikube-demo.md), [release Helm guide](guides/helm-release.md)             | Prepare Secrets and environment values, install with Helm, and open the UI                     |
-| Understand the design                  | [Architecture](reference/architecture.md), [security](reference/security.md)                        | Follow jobs through one backend process and understand persistence and trust boundaries      |
-| Develop or contribute                  | [Local development](guides/local-development.md), [testing](testing/README.md)                      | Set up tools, use fake-model or Compose development, and choose offline checks               |
-| Investigate a failure                  | [Troubleshooting](operations/recovery-and-cleanup.md), [observability](operations/observability.md) | Inspect safe evidence before changing workloads, retrying inference or deleting anything     |
-| Remove a Helm deployment              | [Helm lifecycle](guides/helm-release.md#status-uninstall-and-rollback)                                           | Uninstall with Helm while retaining PVCs and the external signing Secret                      |
-| Validate results                       | [Testing and acceptance](testing/README.md), [model evaluation](testing/model-evaluation.md)        | Separate offline doubles, real reviews, persistence, full verify and browser acceptance      |
-| Review previous observations           | [Dated reports](reports/README.md)                                                                  | Inspect original environment, date, outcome and limitations; not current acceptance proof    |
+| I want to… | Read |
+| --- | --- |
+| Set up a krunkit GPU cluster | [Local platform](../infra/local-platform/README.md) |
+| Deploy reviewed releases with Argo CD | [GitOps guide](guides/gitops.md) |
+| Install a release with Helm | [Helm release guide](guides/helm-release.md) |
+| Deploy the independent inference service | [Ollama Chart](../deploy/helm/local-ollama/README.md) |
+| Build source images on Docker-driver Minikube | [Local Helm workflow](guides/minikube-demo.md) |
+| Develop the application | [Local development](guides/local-development.md) |
+| Run checks or evaluate the model | [Testing](testing/README.md), [model evaluation](testing/model-evaluation.md) |
+| Investigate a failure or remove a deployment | [Recovery and cleanup](operations/recovery-and-cleanup.md) |
+| Use dashboards, alerts and logs | [Observability runbook](operations/observability.md) |
+| Review earlier measurements | [Dated reports](reports/README.md) |
 
 ## Reference
 
-| Contract                                                                            | Main reference                                                  |
-| ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Component boundaries, queue lifecycle and persistent data                           | [Architecture](reference/architecture.md)                       |
-| Endpoints, request bodies, authentication and error responses                       | [API](reference/api.md)                                         |
-| Model identity, runtime and deployment defaults, startup checks and quality rules | [Model](reference/model.md)                                     |
-| Cookie/CSRF, history isolation, local transport and container controls              | [Security](reference/security.md)                               |
-| Manual and automatic entry points, options, dependencies and call chains | [Script entry points](../scripts/README.md), [script reference](reference/scripts.md) |
-| Safe event fields and measurement semantics                                         | [Observability](reference/observability.md)                     |
-| CPU/memory/disk budgets and availability limits                                     | [Resources and limitations](reference/costs-and-limitations.md) |
+| Topic | Main reference |
+| --- | --- |
+| Components, request flow, queue lifecycle and storage | [Architecture](reference/architecture.md) |
+| Endpoints, authentication and error responses | [API](reference/api.md) |
+| Model identity, settings, startup checks and output checks | [Model](reference/model.md) |
+| Sessions, CSRF, history isolation and container controls | [Security](reference/security.md) |
+| Script entry points, options and dependencies | [Script guide](../scripts/README.md) |
+| Metrics, log fields and measurement limits | [Observability](reference/observability.md) |
+| CPU, memory, disk and availability limits | [Resources and limitations](reference/costs-and-limitations.md) |
 
-## How these documents fit together
+## Keeping documentation current
 
-- **README:** overview and quick start.
-- **`guides/`:** setup and deployment workflows. The Helm guide covers standard
-  installation, environment values and release operations. The Minikube guide
-  covers the local Helm CLI.
-- **`operations/`:** symptom-driven investigation, Helm/GitOps recovery and storage
-  retention. The observability runbook applies the logging reference to investigations.
-- **`reference/`:** behavior, defaults and design explanations. Update the
-  relevant reference when an API, configuration or behavior changes.
-- **`testing/`:** check entry points, test-double boundaries, opt-in evaluation and the
-  evidence required for each acceptance claim.
-- **`reports/` and `evidence/`:** dated observations and original sanitized measurements.
-  Preserve their outcomes and limitations. Old results do not validate new code or
-  replace current operating instructions.
+The root README provides an overview. Guides explain setup and deployment;
+operations pages cover investigation and recovery; references describe behavior and
+settings. Testing pages explain what each check verifies. Keep detailed instructions
+in the relevant page and link to it from other documents.
 
-Run commands from the checkout root unless stated otherwise. `doctor` reads live
-diagnostics. Commands such as `up`, `verify`, cleanup and real-model evaluation can
-change resources or data. Offline tests do not verify the current cluster, real-model
-quality or live cleanup.
+Reports and evidence files preserve dated observations. Their results apply to the
+recorded revision and environment, so retain their outcomes and limitations when
+updating current instructions. Retired deployment procedures remain in Git history.
 
-Repository source, manifests, CLI help and tests define current behavior.
-Retired cloud deployment records remain in Git history. Private state, credentials,
-user histories, weights and runtime logs remain outside Git. DynamoDB Local retains SDK names but requires
-explicit local endpoints and dummy credentials. SDK metadata and shared-configuration
-fallback are disabled.
+Run commands from the checkout root unless stated otherwise. Some commands, including
+`up`, `verify`, cleanup and real-model evaluation, change resources or data; their
+individual guides explain the effects. Offline checks do not validate the running
+cluster or real-model output.
+
+Use source, manifests, CLI help and tests to check documented behavior. Keep private
+state, credentials, user histories, weights and runtime logs outside Git.

@@ -7,12 +7,13 @@ the source Chart in main and review the generated release PR.
 
 ## Automated release flow
 
-PRs to main must pass `main-ci` before merging; no separate approval is required. After
-the merge, the release workflow rechecks main and builds images for any changed backend,
+The repository's protection configuration requires `main-ci` before merging to main,
+with no required review approvals. After the merge, the release workflow rechecks
+main and builds images for any changed backend,
 frontend or Ollama components. It publishes those images to GHCR and proposes an
 immutable deployment snapshot with their digests. A reviewed deployment PR updates Argo
-CD's desired state. See [the GitOps guide](gitops.md) for migration, branch protection,
-Argo bootstrap, GPU acceptance and storage/ownership rules.
+CD's desired state. See [the GitOps guide](gitops.md) for branch protection, Argo
+bootstrap, GPU acceptance and storage ownership.
 
 Format-3 snapshots contain two Charts and their pinned values, Argo Applications,
 release metadata and a short README. They contain no source, build workflows or
@@ -32,30 +33,45 @@ Use Helm 3.17+ or Helm 4, kubectl and an already running Kubernetes cluster (Kub
 >=1.30). The provided values use Minikube's `standard` StorageClass and work with
 standard Helm on krunkit or Docker-driver clusters. The independent GPU Ollama image
 requires ARM64 krunkit; the optional local image-build CLI requires the Docker driver.
-Start with 4 CPUs and 8 GiB of cluster memory, leaving additional host capacity for
-the VM and independent Ollama release. The old
-2 CPU / 4 GiB cluster setting is too small for the current application requests and
-Kubernetes components. Three PVCs request 23 GiB in total; also allow disk space for
-images and model downloads.
+For the default application resource settings, start with 4 CPUs and 8 GiB of cluster
+memory. Check available capacity for Ollama, platform services and the host before
+installing. The application requests 23 GiB across three PVCs; Ollama adds a 4 GiB PVC.
+Allow additional disk space for images and any monitoring storage. The
+`values-minikube-ollama.yaml` overlay offers smaller backend resource settings when
+inference runs in the independent Ollama service.
 
 Run from a separate checkout of the **approved `deployment-release` branch**,
 using a new namespace for the first Helm installation:
 
 ```bash
-export REVIEW_CONTEXT=tf-lab
+export REVIEW_CONTEXT=minikube
+```
+
+```bash
 export REVIEW_NAMESPACE=local-review-helm
+```
+
+```bash
 kubectl config get-contexts "$REVIEW_CONTEXT"
+```
+
+```bash
 kubectl --context "$REVIEW_CONTEXT" get nodes
+```
+
+```bash
 kubectl --context "$REVIEW_CONTEXT" get storageclass standard
 ```
 
-Replace `tf-lab` with your existing kubeconfig context. Every cluster command
-below specifies the target; none switches the global context. Add an explicit
+Replace `minikube` if your cluster uses a different kubeconfig context. Every cluster
+command below specifies the target; none switches the global context. Add an explicit
 `--kubeconfig /path/to/config` to Helm and kubectl if needed. Do not reuse a
 namespace containing resources managed by the old deployment scripts.
 
-Install the [independent Ollama release](../../deploy/helm/local-ollama/README.md)
+Install the [published Ollama release](../../deploy/helm/local-ollama/README.md#install-a-published-release)
 first, as `review-ollama` in `local-inference`, serving the pinned `qwen3:1.7b` model.
+Use the snapshot's Ollama `values-release.yaml`. Private images need a pull Secret
+in `local-inference` as well as the separate application namespace.
 The default endpoint is `http://review-ollama.local-inference.svc.cluster.local:11434`.
 The application Chart connects to this Service; it does not install Ollama itself. The
 application validates its selected model digest, capabilities and context at startup.
@@ -70,20 +86,27 @@ kubectl --context "$REVIEW_CONTEXT" create namespace "$REVIEW_NAMESPACE"
 ```
 
 Create the signing Secret once, with a stable `SIGNING_SECRET` of at least
-32 characters. This example generates a private temporary file, creates the
-Secret without putting the key on the command line, then removes the file:
+32 characters. Run these steps in the same terminal. `mktemp` creates a private
+temporary file so the generated key does not appear in the command or terminal output:
 
 ```bash
-(
-  set -eu
-  umask 077
-  review_secret_file="$(mktemp)"
-  trap 'rm -f "$review_secret_file"' EXIT
-  openssl rand -hex 32 > "$review_secret_file"
-  kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" \
-    create secret generic review-secrets \
-    --from-file="SIGNING_SECRET=$review_secret_file"
-)
+review_secret_file="$(mktemp)"
+```
+
+```bash
+openssl rand -hex 32 > "$review_secret_file"
+```
+
+After generation succeeds, create the Secret:
+
+```bash
+kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" create secret generic review-secrets --from-file="SIGNING_SECRET=$review_secret_file"
+```
+
+Remove the temporary file after the creation attempt, including if the command fails:
+
+```bash
+rm -f "$review_secret_file"
 ```
 
 Run this only for a new installation. `create` refuses to overwrite an existing
@@ -96,10 +119,7 @@ private Docker configuration file with valid GHCR credentials in its `auths` fie
 file that only references a local credential helper is insufficient:
 
 ```bash
-kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" \
-  create secret generic ghcr-pull \
-  --type=kubernetes.io/dockerconfigjson \
-  --from-file=.dockerconfigjson=/secure/path/ghcr-config.json
+kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" create secret generic ghcr-pull --type=kubernetes.io/dockerconfigjson --from-file=.dockerconfigjson=/secure/path/ghcr-config.json
 ```
 
 Public images do not require this Secret. Git repository credentials and image
@@ -118,7 +138,13 @@ every generated release snapshot. Copy it outside the checkout:
 
 ```bash
 mkdir -p "$HOME/.config/local-qwen"
+```
+
+```bash
 export REVIEW_VALUES="$HOME/.config/local-qwen/values-minikube.yaml"
+```
+
+```bash
 cp deploy/helm/local-review/values-minikube.yaml "$REVIEW_VALUES"
 ```
 
@@ -149,23 +175,17 @@ as the actual private host IPv4 `/32`. Helm does not discover host addresses.
 Inspect the approved configuration without contacting the cluster:
 
 ```bash
-helm lint ./deploy/helm/local-review \
-  -f release-values.yaml -f "$REVIEW_VALUES"
-helm template local-review ./deploy/helm/local-review \
-  --namespace "$REVIEW_NAMESPACE" \
-  -f release-values.yaml -f "$REVIEW_VALUES"
+helm lint ./deploy/helm/local-review -f release-values.yaml -f "$REVIEW_VALUES"
+```
+
+```bash
+helm template local-review ./deploy/helm/local-review --namespace "$REVIEW_NAMESPACE" -f release-values.yaml -f "$REVIEW_VALUES"
 ```
 
 Install or upgrade using the same inputs:
 
 ```bash
-helm upgrade --install local-review ./deploy/helm/local-review \
-  --kube-context "$REVIEW_CONTEXT" \
-  --namespace "$REVIEW_NAMESPACE" \
-  --create-namespace \
-  -f release-values.yaml \
-  -f "$REVIEW_VALUES" \
-  --wait --timeout 65m
+helm upgrade --install local-review ./deploy/helm/local-review --kube-context "$REVIEW_CONTEXT" --namespace "$REVIEW_NAMESPACE" --create-namespace -f release-values.yaml -f "$REVIEW_VALUES" --wait --timeout 65m
 ```
 
 Always pass both values files when upgrading to another approved snapshot. Helm does not
@@ -183,8 +203,7 @@ so upgrades briefly interrupt availability. Prefer upgrading when idle.
 Open the application with a foreground loopback port-forward:
 
 ```bash
-kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" \
-  port-forward --address 127.0.0.1 service/review-frontend 8080:8080
+kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" port-forward --address 127.0.0.1 service/review-frontend 8080:8080
 ```
 
 Visit **http://localhost:8080**, register/log in, and complete a real review.
@@ -206,11 +225,23 @@ Argo CD and transferring ownership are outside this Helm setup.
 
 ```bash
 helm status local-review --kube-context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE"
-helm history local-review --kube-context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE"
-kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" get pods,pvc
-kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" get events --sort-by=.metadata.creationTimestamp
+```
 
-# Only when you intend to uninstall:
+```bash
+helm history local-review --kube-context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE"
+```
+
+```bash
+kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" get pods,pvc
+```
+
+```bash
+kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" get events --sort-by=.metadata.creationTimestamp
+```
+
+When you intend to remove the application, uninstall the release:
+
+```bash
 helm uninstall local-review --kube-context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" --wait
 ```
 
@@ -225,8 +256,7 @@ For an immediate rollback of a Helm-managed release, inspect `helm history`, the
 replace `REVISION` with the chosen revision:
 
 ```bash
-helm rollback local-review REVISION --kube-context "$REVIEW_CONTEXT" \
-  -n "$REVIEW_NAMESPACE" --wait --timeout 65m
+helm rollback local-review REVISION --kube-context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" --wait --timeout 65m
 ```
 
 A Helm rollback restores the saved release configuration, not external Secret contents
@@ -248,23 +278,21 @@ Python scripts. To check an approved snapshot, point the source validator at its
 separate checkout:
 
 ```bash
-backend/.venv/bin/python scripts/validate_helm.py \
-  --root /path/to/deployment-release-checkout --snapshot
+backend/.venv/bin/python scripts/validate_helm.py --root /path/to/deployment-release-checkout --snapshot
 ```
 
 To check the main source Charts and release tooling, run:
 
 ```bash
 backend/.venv/bin/python scripts/validate_helm.py
+```
+
+```bash
 backend/.venv/bin/python -m pytest scripts/tests/release -q
 ```
 
-These checks render the local profile and variants with network policies enabled,
-and test release behavior without a cluster. CI also validates Kubernetes schemas.
-
-Source CI also checks source Chart variants, configuration rollouts, PVC retention,
-single-worker constraints, cumulative changes, image reuse/provenance, malformed
-digests, immutable version/retry behavior, failed-candidate preservation, stale
-base rejection, supersession and explicit target selection. Offline checks do not prove real model
-inference, multi-architecture image execution or the behavior of a particular CNI;
-those are separate environment acceptance checks.
+These checks cover Chart rendering, resource and storage constraints, and release
+generation and validation without a cluster. CI also validates Kubernetes schemas.
+See the [testing guide](../testing/README.md) for the full check suite. Real inference,
+image execution on each architecture and CNI enforcement need separate acceptance
+checks in the target environment.

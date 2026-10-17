@@ -21,16 +21,16 @@ inference executor run within the FastAPI process.
 3. `Store.create_review` uses **one `BEGIN IMMEDIATE` transaction** for the existing-key
    lookup, payload conflict check, total/queued capacity checks, active-user check and
    insert. Same-key/same-input retries return the existing row before capacity checks.
-   A duplicate with different input returns 409; no service-layer read/check/insert
-   sequence is used. Commit completes before the service emits its acceptance log.
+   A duplicate with different input returns 409. Commit completes before the service
+   emits its acceptance log.
 4. `CreateReviewResult` carries the row separately from `created` and the transaction's
    queue-depth snapshot. Only newly inserted reviews emit `review_submitted`.
    `ReviewAccepted` exposes three fields and the route returns 202 without waiting
    for inference. A storage failure never produces a successful acceptance response.
 5. The coordinator claims a queued review, persists its running state and sends it to
-   its sole inference executor. `OllamaModel` calls the configured local Ollama service once for each of the three
-   sections. Pure prompt and output rules live in `inference/prompts.py` and `inference/review_output.py`;
-   `inference/generation.py` owns sampling/seed/budget rules and safe metrics. One stop event and deadline bound all three sections; typed metrics record each call.
+   its sole inference executor. `OllamaModel` calls the configured local Ollama service
+   once for each section: Summary, Findings and Suggestions. All three calls share
+   one stop event and deadline; generation metrics record each call.
 6. The coordinator persists completion or a safe failure through `Store.finish`.
    The browser polls an owner-scoped detail query. `ReviewDetail` and `HistoryPage`
    allowlist public fields; list entries omit source/result bodies. Timestamps remain
@@ -51,10 +51,9 @@ each application instance. `api/dependencies.py` is the only route-facing adapte
 Request/app state to those typed dependencies. The service receives its Python
 dependencies explicitly and does not depend on HTTP Request or Response objects. Routes
 call `Store` directly for simple history and detail queries scoped to the authenticated
-user. An extra service layer would only forward those calls without adding policy.
-Canonical callers use `app.inference`, `app.persistence` and `app.api`.
+user. Callers use `app.inference`, `app.persistence` and `app.api`.
 `app.inference.model` contains the injected model protocol; `app.inference.ollama` is
-the only real adapter. The former `app.model` compatibility facade was removed.
+the only real adapter.
 
 ### Shared readiness and rate limits
 
@@ -62,44 +61,37 @@ Both `/health/ready` and `/api/v1/runtime` call the HTTP-independent
 `health.check_readiness`. Its immutable result carries the observed status and safe
 error code. The health route maps failures to HTTP 503; runtime keeps HTTP 200 for
 successful observations of an unavailable service and retains the same diagnostic
-error code. Runtime separately presents closing as `shutting_down`. No route calls
-another route or creates a throwaway HTTP response to discover its status.
+error code in request diagnostics. Runtime presents shutdown as `shutting_down`.
 
-The observation still calls SQLite `ping` only while the coordinator is ready; this
+The observation calls SQLite `ping` only while the coordinator is ready; this
 is a writable-store check that also removes expired sessions. Loading, draining and
-closing skip that check. The existing last operational status in a shutdown health
+closing skip that check. The last operational status in a shutdown health
 response is preserved even though its HTTP status is 503.
 
-`rate_limit.RateLimiter` is shared by authentication and review admission without
-pulling HTTP authentication code into the business service. The application factory
-still creates one limiter per app. A lock keeps quota checking and recording atomic
-across worker threads; rejected attempts do not consume quota. Callers import
-`app.rate_limit.RateLimiter` directly. Limits, windows, key eviction and error
-responses are unchanged.
+Authentication and review admission share one `rate_limit.RateLimiter` per app.
+A lock keeps quota checking and recording atomic across worker threads. Attempts
+rejected by the limiter do not consume quota; attempts that pass it do, even if a
+later check rejects them. See [security](security.md#authentication) for the limits.
 
 ## Boundaries
 
 The browser edits and displays text. The frontend serves the UI and proxies `/api/*`
 and `/health/*` to `review-backend:8000`, preserving normal Cookie, Origin and CSRF
-handling. The HTTP boundary validates the session/account, ReviewService applies admission
-policy, and Store checks idempotency while atomically persisting a queued review. The HTTP request ends before inference; the
-browser polls the persisted status and renders only sanitized completed Markdown.
+handling. The browser polls persisted review status and renders only sanitized
+completed Markdown.
 The cluster is accessed through an explicitly owned loopback forward, not a public ingress.
 
 One Uvicorn process and one background coordinator share a dedicated inference executor
 with one thread. Each review invokes that executor once to generate Summary, Findings
-and Suggestions in order. The sections share a 384-token deployment budget, split
-72/176/136, along with one deadline and one stop event. Generated text from one section
-is never used as an instruction for another. If an individual section reaches its fixed
-limit, the backend may delete only its incomplete trailing fragment after the last
-complete terminator. It never adds a continuation call or alters an earlier complete
-sentence or list item.
+and Suggestions in order. Generated text from one section is never used as an
+instruction for another. The [model reference](model.md#configuration-and-generation)
+defines the shared token budget, sampling policy, output validation and the limited
+removal of unfinished text when a section reaches its token limit.
 
 Ollama renders the selected model's native template and tokenizes each prompt. Requests
 set `think=false`, `truncate=false` and `shift=false`; the backend rejects unexpected
 thinking/tool output and checks actual prompt token counts before saving a result.
-Sampling settings are centralized and each section uses a stable digest-derived seed.
-See [model configuration](model.md) for budgets, startup checks and model switching.
+See [model configuration](model.md) for startup checks and model switching.
 
 DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_thread`; model execution never runs on the main event loop. One backend replica and the `Recreate` rollout strategy preserve this ownership. There is no HPA, distributed queue, conversational store, external LLM, or code execution path.
 
@@ -129,8 +121,9 @@ Sessions are signed opaque random tokens; only a SHA-256 token hash, user identi
 By default, the queue allows eight queued jobs plus one running job, with at most one active job per account. Admission and status transitions are persisted before HTTP acceptance or inference. History writes fail closed: no success is returned when storage fails.
 
 Before recovering the queue, startup checks the account store. It retries only
-explicitly allowed transport failures, within a 120-second budget. Each SDK call makes
-one attempt, and retries run serially with asynchronous waits capped at a fixed maximum.
+explicitly allowed transport failures, with a 120-second retry budget. Each SDK call
+makes one attempt, and retries run serially with waits of at most 10 seconds. An
+in-flight call is allowed to finish, so this is not a hard process deadline.
 Readiness stays false throughout. See [startup retry
 boundaries](../operations/recovery-and-cleanup.md#temporary-account-store-connection-failures).
 This does not retry other initialization stages or inference.
@@ -143,8 +136,8 @@ If the inference thread exits within the 30-second draining window, readiness re
 
 ### Coordinator states and shutdown
 
-`CoordinatorState` replaces separately mutable readiness/liveness flags. State
-changes go through `_transition`; `ready` and `live` are read-only properties.
+`CoordinatorState` determines readiness and liveness. State changes go through
+`_transition`; `ready` and `live` are read-only properties.
 `closing` is an independent lifecycle flag: shutdown can occur during loading,
 normal processing or draining without hiding the last operational state.
 
@@ -249,8 +242,6 @@ The root owns application assembly, business coordination and shared diagnostics
 `api` owns HTTP transport; `inference` owns model execution and pure generation rules;
 `persistence` owns local storage and account-store startup checks. `startup.py` stays
 at the root because it is shared safe diagnostics, not the account retry mechanism.
-No service/repository framework or additional business layer is introduced.
-
 
 Use these sources when auditing or changing the design:
 
@@ -267,4 +258,5 @@ Use these sources when auditing or changing the design:
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |
 | Deployment composition                               | [Application Chart](../../deploy/helm/local-review/Chart.yaml)                  |
 
-The [script reference](scripts.md) maps shared-state, target, deployment and cleanup modules.
+The [script guide](../../scripts/README.md#organization-and-dependency-boundaries)
+maps shared-state, target, deployment and cleanup modules.

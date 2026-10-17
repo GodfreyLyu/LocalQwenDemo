@@ -7,10 +7,34 @@ current Ollama deployment. The owner-supplied EKS observation below is separate 
 the local evaluations performed during the follow-up.
 
 The original six-case runner, exact inputs and executable semantic rules have not
-been recovered. See the [material audit](model-evaluation-materials-2026-09-25.md)
-for reproducibility limits and the [current model reference](../reference/model.md)
-for supported configuration. Retired cloud deployment records and general maintenance
-logs from the original mixed report remain available in Git history.
+been recovered. The audit findings below explain these reproducibility limits;
+see the [current model reference](../reference/model.md) for supported configuration.
+Retired cloud deployment records and general maintenance logs remain in Git history.
+
+## Reproducibility limits
+
+A read-only audit on 2026-09-25 checked project-local evaluation material and all
+17 Git commits reachable at that time. It ran no new real-model evaluation and found
+these gaps:
+
+- No exact original input was confirmed for any of the six cases, including the
+  full attack text for `prompt_injection`.
+- The six-case runner and executable semantic judgment rules were missing. The
+  expectations described below do not recover those rules.
+- The reports preserve model pins, budgets, timings and results, but not a complete
+  execution manifest or a confirmed runtime checkout for each run.
+- Generated output was inspected in memory and discarded. No saved output or record
+  of human judgments was found that would allow an independent semantic review.
+
+Two related implementation commits were found:
+`9eb7a788e23b7b457cdec3d4562b3f9aaec3e862` for the Qwen3 replacement and
+`da316f523775249f0a0272bf5ebfb4716ba6d5c5` for the output-tail change. Both are dated
+2026-09-12. They connect the reports to code changes, but do not establish the exact
+runner, working-tree changes or environment used for each evaluation.
+
+The [current evaluation fixtures](../testing/model-evaluation.md#acceptance-contract)
+were introduced as a new synthetic baseline on 2026-09-25. Matching case names do not
+make them the historical inputs. The measured outcomes below are retained as recorded.
 
 ## Qwen3 capped-section truncation follow-up
 

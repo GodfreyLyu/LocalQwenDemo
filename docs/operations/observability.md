@@ -28,7 +28,13 @@ Inspect discovery and reach the interfaces through loopback port-forwards:
 
 ```bash
 kubectl --context minikube -n monitoring get pods,pvc
+```
+
+```bash
 kubectl --context minikube -n local-review-demo get servicemonitor,prometheusrule
+```
+
+```bash
 kubectl --context minikube -n monitoring port-forward service/monitoring-grafana 3000:80
 ```
 
@@ -38,11 +44,17 @@ section timings, observed token rates and separately scoped backend/Ollama resou
 usage. API panels exclude health probes. Empty panels can mean no observations rather
 than a failure or zero latency. Percentiles need enough samples to be useful.
 
-In separate terminals, forward Prometheus on `9090:9090` using
-`service/monitoring-kube-prometheus-prometheus`, or Alertmanager on `9093:9093` using
-`service/monitoring-kube-prometheus-alertmanager`, both in the `monitoring` namespace.
-Alertmanager displays and groups alerts locally; external notification delivery is
-not configured.
+For Prometheus and Alertmanager access, use the port-forward commands in the
+[platform monitoring guide](../../infra/local-platform/README.md#monitoring).
+Alertmanager displays and groups alerts locally; external notifications are not configured.
+
+If Grafana probes report `connection refused`, inspect the `grafana` container's
+last termination reason and previous logs. `OOMKilled` means the process exceeded its
+container memory limit or encountered node memory pressure; extending probe delays
+does not fix it. Check node capacity and adjust Grafana resources in the platform's
+`values/monitoring.yaml`, then plan and apply with Terraform. Verify dashboard queries
+and restart counts after the rollout. Pod replacement discards Grafana UI edits;
+the provisioned dashboards and data sources are loaded again from ConfigMaps.
 
 If Grafana probes report `connection refused`, inspect the `grafana` container's
 last termination reason and previous logs. `OOMKilled` means the process exceeded its
@@ -95,10 +107,10 @@ rendered alert behavior and dashboard PromQL. Runtime acceptance separately veri
 target `UP`, dashboard discovery and metrics from an authorized normal review. Offline
 tests do not establish live scraping, CNI enforcement, resource fit or real inference.
 
-The Helm CLI returns the backend container's last 100 log lines; it does not apply a
-second field filter. The backend emits the structured safe events defined by the
-[log contract](../reference/observability.md). Inspect only the needed events and fields;
-do not export environment dumps, credentials, source text or unrelated raw output.
+The Helm CLI returns the backend container's last 100 log lines without further
+filtering. The backend emits the structured events defined by the
+[log contract](../reference/observability.md#safe-application-log-contract). Keep
+diagnostic exports limited to those fields; exclude credentials and user content.
 
 ## Correlate before drawing conclusions
 
@@ -109,14 +121,13 @@ section generation/first-content durations and token counts. Ollama owns inferen
 backend preparation/thread metrics are null.
 First-token time is part of generation time, not an extra phase to add again.
 
-Check available measurements of host memory pressure and swap, Docker limits, node
-allocatable resources and workload reservations. Also inspect metrics-server usage and
-the container's `cpu.stat` and `memory.events` counters. Unavailable measurements must
-stay `not_measured`; do not install collectors or change infrastructure to produce a
-pass. Memory below a limit and zero sampled OOM events do not prove the whole node was
-healthy. Backend cgroup counters do not measure the independent Ollama process.
+Check host memory pressure and swap, node allocatable resources and workload
+reservations, plus Docker limits for Docker-driver clusters. Where available, inspect
+metrics-server usage and the container's `cpu.stat` and `memory.events` counters.
+Record unavailable measurements as `not_measured`. Memory below a container limit and
+zero sampled OOM events do not establish that the whole node was healthy.
 
-## Controlled measurements are separate work
+## Controlled measurements
 
 A real review changes history and uses Ollama's CPU, GPU, and memory resources. Obtain authorization,
 confirm Ready, an empty queue and no draining inference, and submit once through normal
@@ -134,6 +145,6 @@ recording source, prompts, output text, passwords, Cookies or tokens.
 ## Next action
 
 Use [startup/recovery troubleshooting](recovery-and-cleanup.md) for failed dependencies,
-cache, storage or readiness. Do not automatically retry inference, raise timeouts, lower
+model storage or readiness. Do not automatically retry inference, raise timeouts, lower
 quality requirements, restart Pods or resize resources in response to a metric alone.
 Record the checks performed and remaining gaps in a separate dated, sanitized report.

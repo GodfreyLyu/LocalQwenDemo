@@ -102,9 +102,13 @@ The formatter may add only these fields:
 | `route` | Allowlisted FastAPI route template only; an unknown route is omitted |
 | `duration_ms`, `queue_wait_ms` | Non-negative integer milliseconds |
 | `queue_depth`, `generated_tokens`, `output_token_limit` | Bounded numeric counters |
+| `output_limit_reached` | Boolean indicating whether the observed total reached the output budget |
 | `error_code`, `outcome` | Fixed enums; unknown values become a safe fallback |
 | `validation_reason` | One of the fixed validation enums; an unknown value is omitted |
-| generation detail maps | Integer/boolean values under the three fixed section names only |
+| generation detail maps | Integer, boolean or null values under the three fixed section names only |
+| `worker_intraop_threads`, `worker_interop_threads` | Null for Ollama; inference threads are outside the backend |
+| `stage`, `exception_type`, `errno`, `http_status` | Allowlisted stage, bounded exception class name and numeric diagnostics; no exception message |
+| `startup_attempt`, `startup_wait_ms`, `startup_elapsed_ms` | Bounded startup retry counts and timings |
 
 HTTP duration and model generation duration use monotonic clocks. Queue wait and total
 review duration can span process restarts. They are calculated from stored UTC

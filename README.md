@@ -1,158 +1,137 @@
 # LocalQwenDemo
 
-PR-gated image builds and Argo CD: [GitOps guide](docs/guides/gitops.md).
-Standard Helm deployment: [guide](docs/guides/helm-release.md).
+A local code-review application with a React UI, FastAPI backend and Ollama inference.
+Paste a code snippet, receive a structured review, and revisit it in your account's
+history. Submitted code is treated as text: the application never executes it or sends
+it to a cloud inference API.
 
-Optional Prometheus/Grafana monitoring: [platform setup](infra/local-platform/README.md#monitoring)
-and [application dashboards and alerts](docs/operations/observability.md).
+The default deployment runs in Minikube, with an independent Ollama release serving
+`qwen3:1.7b` Q4_K_M at a pinned digest. Use Argo CD to follow reviewed releases, or
+install them with standard Helm commands. The GPU image targets ARM64 krunkit;
+local development and a Docker-driver image-build workflow are also available.
 
-GPU inference inside krunkit Minikube is available as an [independent Ollama Helm
-release](deploy/helm/local-ollama/README.md), with a retained model PVC. Readiness checks
-the process and API after initial model preparation; GPU inference is verified separately
-by `helm test` or the Argo CD PostSync Job. The application defaults to
-this release at `http://review-ollama.local-inference.svc.cluster.local:11434`.
-
-**A local LLM code-review service with in-cluster Ollama inference and standard Helm deployment to an existing Minikube cluster.**
-
-Paste a code snippet, receive a structured review, and revisit it in your private history.
-The React UI, FastAPI backend and independent Ollama service run in Minikube. Ollama runs `qwen3:1.7b`
-Q4_K_M at a pinned digest. The backend and evaluator use Ollama exclusively.
-Submitted code is treated as text: it is never executed or sent to a cloud inference API.
-Standard Helm deployment supports the existing krunkit GPU cluster. The optional
-local image-build script requires a Docker-driver Minikube. Local development tools
-are also available.
-
-[Ollama acceptance](docs/reports/ollama-integration-2026-10-03.md) · [Quick start](#quick-start) · [Architecture](#architecture) · [Documentation](#documentation) · [Development](#development-and-contributing)
+[Quick start](#quick-start) · [Architecture](#architecture) · [Documentation](docs/README.md) · [Development](#development-and-contributing)
 
 ## Key capabilities
 
-- **Durable submissions:** SQLite records jobs and enforces queue capacity in one
-  transaction. It deduplicates matching request IDs for each account. Queued jobs
-  survive restarts, and interrupted jobs have a limited number of retries.
-- **One inference at a time:** a background coordinator uses one inference executor.
-  After a timeout, the service waits for generation to stop before starting another
-  review. It reports that it is not ready during this wait.
-- **Private accounts and history:** password hashing, signed sessions, exact Origin and
-  CSRF checks protect access. History is scoped to the authenticated account.
-- **Verified model identity:** startup verifies the selected Ollama model's digest, capability and
-  context; saved reviews retain the actual model digest.
-- **Reviewed Helm releases:** CI builds images and proposes immutable deployment
-  snapshots; approved releases install with standard Helm commands and explicit
-  environment values. Existing Secrets and persistent volumes survive upgrades.
+- **Durable submissions:** SQLite stores jobs and checks queue capacity in one
+  transaction. Matching request IDs are deduplicated per account. Queued jobs survive
+  restarts, and interrupted jobs have a limited number of retries.
+- **One review at a time:** a background coordinator uses one inference executor.
+  After a timeout, the backend waits for the executor to return before starting
+  another review. It reports that it is not ready during this wait.
+- **Private accounts and history:** password hashing, signed sessions, Origin and
+  CSRF checks protect access. Each account can access only its own history.
+- **Model identity checks:** startup checks the selected Ollama model's digest,
+  capabilities and context size. Completed reviews record the model digest.
+- **Reviewed releases:** CI builds changed images and opens a deployment PR with
+  pinned image digests. Upgrades reuse existing Secrets and persistent volumes.
 
-Generated findings still need human review. Structural quality checks do not establish
-semantic correctness, and CPU performance depends on the host. This is a local single-node
-service, not a validated highly available or publicly exposed production platform.
-
-## Architecture
-
-### Application and persistent data
-
-The backend's single executor calls
-`review-ollama.local-inference.svc.cluster.local:11434`. Ollama owns a separate model
-PVC, tokenizes requests, and performs inference in the cluster. The backend selects
-the model through configuration.
-The [historical diagram](docs/assets/application-architecture.png) depicts the removed
-in-process CPU implementation; see the [current request flow](docs/reference/architecture.md).
-
-The browser reaches Nginx through a host loopback port-forward. Nginx serves the React
-bundle and proxies `/api/` and `/health/` to FastAPI on the same origin.
-
-Inside the **single backend process**, the API writes jobs to the SQLite queue. A background
-coordinator claims one job, runs it in the single inference executor, and writes the outcome
-back to SQLite. The submission request returns before inference; the browser polls
-stored status. The coordinator, executor and SQLite access layer run within the backend.
-The API and coordinator use that layer to access the same history PVC.
-
-The application uses three separate PVCs. The backend uses the history and model-cache
-PVCs; DynamoDB Local uses the accounts PVC. Ollama stores weights in its own model PVC;
-the former backend tokenizer cache is retained but unused. Model weights are not baked into
-application images. Existing cached HF weights are retained but no longer used.
-
-### Deployment management
-
-GitHub Actions builds application images and proposes a reviewed snapshot on
-`deployment-release`. The snapshot contains the Chart, image digests and a
-Minikube environment example. Deploy it with Helm; prepare the cluster, independent
-Ollama release and namespace Secrets separately. No Python deployment wrapper is required.
-
-The [deployment guide](docs/guides/helm-release.md) documents configuration,
-installation, upgrades, status, rollback and data retention. Argo CD renders the same
-Charts from the approved release branch. Each deployment must have only one manager.
-
-The optional [local Helm CLI](docs/guides/minikube-demo.md) builds source images for
-a Docker-driver Minikube. Argo CD deployments are managed through GitOps.
+Generated findings still need human review. Output checks cannot establish that a
+review is correct. This is a local, single-node application; high availability and
+public internet access have not been validated.
 
 ## Quick start
 
-For local source development, the optional script builds/loads images and calls
-standard Helm. Prepare an existing Docker-driver Minikube and a reachable Ollama
-Service using the default namespace/release, then run:
+### Deploy a reviewed release
+
+1. Prepare a running Minikube cluster and its `standard` StorageClass. For the
+   krunkit GPU setup, follow the [local platform guide](infra/local-platform/README.md).
+   The starter VM uses 4 CPUs and 8 GiB of memory; check the
+   [resource requirements](docs/reference/costs-and-limitations.md) before adding services.
+2. Choose one deployment manager: [Argo CD](docs/guides/gitops.md) or
+   [standard Helm](docs/guides/helm-release.md). Both use reviewed snapshots from
+   `deployment-release`. The guides cover namespaces, Secrets and environment values.
+3. Deploy the [independent Ollama release](deploy/helm/local-ollama/README.md) and
+   the application. The default application endpoint is
+   `http://review-ollama.local-inference.svc.cluster.local:11434`.
+4. Port-forward `service/review-frontend` as described in the selected guide, open
+   `http://localhost:8080`, and complete a real review. A Ready Pod alone does not
+   confirm that inference works. Ollama GPU inference has a separate Helm test or
+   Argo CD PostSync check.
+
+The local values file disables NetworkPolicy isolation. If you need isolation, follow
+the Helm guide to enable policies with a CNI that enforces them. Optional monitoring
+is covered in the [platform setup](infra/local-platform/README.md#monitoring) and
+[observability runbook](docs/operations/observability.md).
+
+### Build source images on Docker-driver Minikube
+
+The optional CLI builds and loads application images, then calls Helm. It requires an
+existing Docker-driver cluster and a reachable Ollama service. Prepare the tools and
+Ollama connection using the [local Helm guide](docs/guides/minikube-demo.md), then run:
 
 ```bash
 scripts/minikube_demo.sh init --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh up --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh verify --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
-See the [local Helm guide](docs/guides/minikube-demo.md) for configuration, rollback and
-cleanup, with options to retain or delete data. Stop the foreground port-forward before
-running `verify`. Helm commands remain usable independently of this script.
+`verify` creates test data and restarts the backend to check persistence. Stop any
+foreground port-forward before running it. The guide also covers rollback and cleanup.
 
-For published release snapshots:
+## Architecture
 
-1. Prepare an existing Minikube cluster (start with 4 CPUs / 8 GiB), its `standard`
-   StorageClass, and the [independent Ollama release](deploy/helm/local-ollama/README.md)
-   with the pinned model. The GPU image requires krunkit.
-2. Check out an approved `deployment-release` snapshot. Follow the
-   [one-time setup](docs/guides/helm-release.md#one-time-namespace-and-secret-preparation)
-   to create a fresh namespace and stable signing Secret. Private GHCR images
-   also require an image pull Secret.
-3. Copy the provided Minikube values outside the checkout, adjust the environment,
-   and follow the [standard Helm installation](docs/guides/helm-release.md#configure-inspect-and-install).
-   Pass `release-values.yaml` before your environment file on every upgrade.
-4. Port-forward `service/review-frontend`, open `http://localhost:8080`, and complete
-   a real review. Kubernetes readiness alone is not model acceptance.
+The browser reaches Nginx through a loopback port-forward. Nginx serves the React UI
+and proxies `/api/` and `/health/` to FastAPI on the same origin.
 
-The local example disables NetworkPolicy isolation. The guide explains how to
-enable policies with a capable CNI and select the in-cluster Ollama Pods. Source users
-can run `helm lint` and `helm template` with
-`deploy/helm/local-review/values-minikube.yaml` without a cluster; deploying source
-also requires actual application images.
+The single backend process stores submissions in SQLite and returns a job ID. Its
+background coordinator claims one job at a time, calls Ollama, and saves the result.
+The browser polls for progress and completed reviews. DynamoDB Local stores accounts.
+
+The application Chart creates three PVCs: review history, accounts, and a legacy
+backend model cache that is retained but unused. The independent Ollama Chart has
+its own model PVC. Model weights are not baked into application images. See the
+[architecture reference](docs/reference/architecture.md) for the request flow,
+queue lifecycle and storage details.
+
+GitHub Actions publishes application and Ollama images and proposes a snapshot on
+`deployment-release`. Argo CD or Helm deploys the approved Charts and image digests.
+Use one manager for each deployment; see the
+[release guide](docs/guides/helm-release.md) for the full lifecycle.
 
 ## Documentation
 
-| Reader task                  | Start here                                                                                                                                 | What you will find                                                                    |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Getting started              | [Helm deployment](docs/guides/helm-release.md)                                                                                             | Prerequisites, deployment, access and acceptance                                      |
-| Architecture and design      | [Architecture](docs/reference/architecture.md), [security](docs/reference/security.md)                                                     | Request flow, queue lifecycle, storage and trust boundaries                           |
-| Development and testing      | [Local development](docs/guides/local-development.md), [testing](docs/testing/README.md)                                                   | Setup, fake-model/Compose tools, offline gates and real acceptance boundaries         |
-| Deployment and operations    | [Helm lifecycle](docs/guides/helm-release.md#status-uninstall-and-rollback), [observability runbook](docs/operations/observability.md) | Helm status, rollback, retained storage and diagnostics                       |
-| Reference                    | [Documentation index](docs/README.md#reference)                                                                                            | API, model, CLI, logging and resource contracts                                       |
-| Historical validation        | [Dated reports](docs/reports/README.md)                                                                                                    | Original environments, measured results and limitations; no current acceptance claims |
+The [documentation index](docs/README.md) links to setup guides, operating procedures
+and references. Common starting points are:
 
-The [documentation index](docs/README.md) maps each task to its main guide or reference.
-Project documentation and fixed output use English; user input and model
-output retain their original language.
+- [API](docs/reference/api.md), [model configuration](docs/reference/model.md) and
+  [security](docs/reference/security.md).
+- [Troubleshooting and cleanup](docs/operations/recovery-and-cleanup.md).
+- [Testing](docs/testing/README.md) and [model evaluation](docs/testing/model-evaluation.md).
+- [Dated reports](docs/reports/README.md), which preserve earlier results and their
+  limits rather than describe the current deployment.
+
+Project documentation and fixed UI text use English. User input and model output
+retain their original language.
 
 ## Development and contributing
 
-Follow the Python setup in [local development](docs/guides/local-development.md),
-then install Node 24 dependencies and run the offline gate:
+Follow [local development](docs/guides/local-development.md) to install Python
+dependencies and Node 24, then install frontend dependencies and run the offline checks:
 
 ```bash
 npm --prefix frontend ci
+```
+
+```bash
 bash scripts/check.sh
 ```
 
-The checks use test doubles for the model and cluster, temporary loopback fixtures, and
-offline Helm rendering. They do not download weights, build container images or
-deploy. Browser tests use a separate fake-model harness; real inference and environment
-acceptance are opt-in operations. See [testing](docs/testing/README.md) for
-prerequisites and coverage limits.
+These checks use model and cluster test doubles, temporary loopback services, and
+offline Helm rendering. Browser tests, schema checks and real-environment acceptance
+have separate entry points in the [testing guide](docs/testing/README.md).
 
-For a change, follow [local development](docs/guides/local-development.md), add focused
-regressions, and update the owning reference or guide. Keep private state, credentials,
-user data, weights and generated artifacts out of commits. Explain which checks actually
-ran and preserve any skipped, failed or unmeasured result.
+For each change, run the relevant checks and update the guide or reference that
+describes the behavior. Keep credentials, user data, weights and generated artifacts
+out of commits. Record which checks ran and which were skipped or failed.

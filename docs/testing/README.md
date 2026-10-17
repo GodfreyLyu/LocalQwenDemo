@@ -3,17 +3,18 @@
 [Documentation index](../README.md)
 
 The maintained deployment runs on an existing Minikube cluster and uses an
-independent Ollama service exclusively.
-Offline tests exercise product behavior and deployment safety without a cluster,
-model download or real inference. Operational acceptance requires separate authorization and real results.
+independent Ollama service. Offline tests check application behavior and deployment
+tooling without a live cluster, model download or real inference. Real-model and
+deployment acceptance are separate checks.
 
 ## Strategy and discovery
 
 The repository-root `pytest.ini` owns discovery, import paths and marker registration
 for both Python suites. A bare `backend/.venv/bin/pytest` from the repository root
 collects `backend/tests` and `scripts/tests`. Pass a directory explicitly for a focused
-run; this also applies when invoking pytest from `backend`. Imports use importlib mode with namespace-package resolution, so domain directories
-may reuse basenames and multiprocessing workers can import their test doubles.
+run; this also applies when invoking pytest from `backend`. Importlib mode and
+namespace-package resolution let test directories reuse filenames and let
+multiprocessing workers import their test doubles.
 
 Tests stay with their owning components and are grouped by domain:
 
@@ -28,6 +29,7 @@ scripts/tests/
   deployment/   # Helm rendering/lifecycle, ownership, state and shared process guards
   release/      # Planning, publishing, GitOps and chart contracts
   inference/    # Ollama runtime doubles and separate chart tests
+  monitoring/   # Monitoring charts, platform configuration and PromQL scenarios
   evaluation/   # Evaluator behavior using model doubles
   persistence/  # Local users initializer
   tooling/      # Public CLI compatibility and package dependency boundaries
@@ -56,15 +58,31 @@ can coexist with any primary level. Unknown markers fail collection.
 
 Examples from the repository root:
 
+Run fast logic checks without Helm, kubectl, browsers or real inference:
+
 ```bash
-# Fast logic checks; does not execute Helm, kubectl, browsers or real inference.
 backend/.venv/bin/pytest -m unit
-# All API behavior, or security checks across both Python suites.
+```
+
+Check API behavior, or run security checks across both Python suites:
+
+```bash
 backend/.venv/bin/pytest backend/tests/api
+```
+
+```bash
 backend/.venv/bin/pytest -m 'security and not real_model and not requires_cluster'
-# All Python tests that do not need a real model or live cluster.
+```
+
+Run all Python tests that do not need a real model or live cluster:
+
+```bash
 backend/.venv/bin/pytest -m 'not real_model and not requires_cluster'
-# A focused subset without local CLI/socket dependencies.
+```
+
+To exclude local CLI and socket dependencies as well:
+
+```bash
 backend/.venv/bin/pytest -m 'not requires_helm and not requires_kubectl and not requires_git and not loopback and not real_model and not requires_cluster'
 ```
 
@@ -81,17 +99,19 @@ from `backend.tests.support`, never from `conftest`. Release fixtures live in
 Tests must not import helpers or fixtures from another `test_*.py` module.
 
 Every test under `scripts/tests/deployment` receives an isolated `LOCAL_QWEN_STATE_HOME`
-from that directory's autouse fixture. This isolation no longer depends on a filename
-prefix. Shared repository paths come from `scripts.tests.support.paths`. Tests import canonical packages such as
+from that directory's autouse fixture. Shared repository paths come from
+`scripts.tests.support.paths`. Tests import canonical packages such as
 `deployment.helm.session`, `release.publisher` and `evaluation.runner`; only public
 entry compatibility tests import or execute the entry point wrappers. See the
-[script package map](../reference/scripts.md#organization-and-dependency-boundaries).
+[script package map](../../scripts/README.md#organization-and-dependency-boundaries).
 
 When moving tests, compare collected test names and parameter IDs before and after the
-move, not just totals. Retiring Kustomize removes its dedicated tests; shared forwarding,
-SQLite admission fencing, acceptance and image-permission coverage remains in the Helm
-suite. The rendered ConfigMap-to-Settings test lives there too, where Helm is available.
-Historical reports retain their original paths and counts.
+move, not just totals. Historical reports retain their original paths and counts.
+
+Script tests use temporary state and fake APIs. Loopback servers check port conflicts,
+cleanup of owned processes and conditional kubectl DELETE requests; they must never
+discover or modify a live cluster. Local database tests use AWS SDK/Moto interfaces
+and verify that requests cannot fall back to real cloud services.
 
 ## Test matrix
 
@@ -103,18 +123,10 @@ Historical reports retain their original paths and counts.
 | Release and charts | Shared script gate | Helm rendering, GitOps, snapshot/provenance and simulated publishing with local Git remotes |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |
 | Evaluator | Shared script gate | Model doubles, report states, privacy and fixed synthetic-suite contracts; no model load |
+| Monitoring | Shared script gate; `scripts/check_monitoring.sh` in CI | Metrics, platform and chart contracts; CI also checks alert rules and dashboard queries with promtool |
 | Frontend | `npm --prefix frontend test` | UI/API handling and rendering with test doubles |
 | Manifest invariants | `backend/.venv/bin/python scripts/validate_helm.py` | Helm-rendered model/resources/security/PVC/local dependency contracts |
 | Browser harness | `npm --prefix frontend run test:e2e` | Real local browser/API/SQLite with deterministic fake model and Moto; not real-model minikube acceptance |
-
-## Suite ownership
-
-Tests stay with their components. Script tests use private temporary state and fake
-API fixtures. Real socket
-fixtures test port conflicts, owned-process cleanup and conditional kubectl DELETE
-transport against loopback servers. They must never discover or modify a live cluster.
-Local database tests use AWS SDK/Moto interfaces to emulate the protocol and check
-that calls cannot fall back to real cloud services.
 
 ## Quick check
 
@@ -122,7 +134,13 @@ After installing the [development dependencies](../guides/local-development.md):
 
 ```bash
 backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'
+```
+
+```bash
 npm --prefix frontend test
+```
+
+```bash
 scripts/check_scripts.sh
 ```
 
@@ -130,15 +148,16 @@ scripts/check_scripts.sh
 
 Install the Python 3.12 virtual environment from the dev lock, the editable backend
 package and Node 24/npm dependencies. The gate also requires Git, Helm and kubectl
-for local repositories and offline rendering and permission to bind temporary loopback test sockets. These checks need no
-Docker daemon, Minikube cluster, cloud account or infrastructure providers. Installing
-dependencies requires network access, but the tests do not download weights or images.
+for temporary repositories and offline rendering, plus permission to bind temporary
+loopback sockets. These checks need no Docker daemon, Minikube cluster, cloud account
+or infrastructure providers. Installing dependencies requires network access, but
+the tests do not download weights or images.
 
 ```bash
 bash scripts/check.sh
 ```
 
-This runs Ruff lint/format, backend pytest, frontend lint/Vitest/build, Shell syntax,
+This runs Ruff lint/format checks, backend pytest, frontend lint/Vitest/build, shell syntax,
 all maintained script regressions (including release, GitOps and Ollama charts),
 manifest validation and Helm lint/render validation. It fails on the first failed
 stage. It never builds container images, deploys, migrates actual state or invokes real
@@ -169,15 +188,17 @@ With a local promtool binary, run:
 backend/.venv/bin/python scripts/validate_monitoring.py --promtool /path/to/promtool
 ```
 
-Set `PROMTOOL` to that absolute path when running `pytest scripts/tests/monitoring`
-to include additional dashboard query scenarios. Without it, the offline suite
-explicitly skips the external-tool test; CI's separate monitoring check requires
-the tool and never silently skips rule validation.
+Set `PROMTOOL` to that absolute path when running
+`backend/.venv/bin/pytest scripts/tests/monitoring` to include additional dashboard
+query scenarios. Without it, the offline suite explicitly skips the external-tool
+test; CI's separate monitoring check requires the tool and never silently skips
+rule validation.
 
-After a merge to `main`, `Prepare release` reruns quality checks, builds changed
-backend, frontend and Ollama images, and publishes them to GHCR. It proposes a reviewed
-deployment snapshot; Argo CD reconciles approved snapshots in the cluster. CI does not
-access the cluster or establish real-model acceptance. See the [GitOps guide](../guides/gitops.md).
+After a merge to `main`, `Prepare release` reruns quality checks. If release inputs
+changed, it builds the affected images, publishes them to GHCR and proposes a
+deployment snapshot for review. Argo CD reconciles approved snapshots in the cluster.
+CI does not access the cluster or establish real-model acceptance. See the
+[GitOps guide](../guides/gitops.md).
 
 ## Explicit real-model smoke and quality evaluation
 
@@ -193,10 +214,10 @@ check suite does not run real inference.
 Follow the [local Helm guide](../guides/minikube-demo.md) for the development CLI or
 the [release guide](../guides/helm-release.md) for published deployments. The CLI
 command `up` establishes only readiness. `verify` requires records that match the
-deployed build and uses normal
-authentication. It must complete a real review that passes the quality checks, then
-verify account isolation and persistence. It may create accounts, write reviews and
-restart owned workloads. Do not run a full verify just to inspect a performance problem.
+deployed build and uses normal authentication. It must complete a real review that
+passes the quality checks, then verify account isolation and persistence. It may
+create accounts, write reviews and restart owned workloads. Do not run a full verify
+just to inspect a performance problem.
 Stop your owned foreground port-forward before verify uses its port. Browser acceptance
 through the deployed same-origin entry is a separate check.
 
