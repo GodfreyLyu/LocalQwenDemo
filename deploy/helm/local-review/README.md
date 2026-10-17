@@ -26,15 +26,12 @@ check application startup; completing a real review remains a separate check.
 From an approved `deployment-release` checkout, after preparing the prerequisites:
 
 ```bash
-helm upgrade --install local-review ./deploy/helm/local-review \
-  --kube-context tf-lab \
-  --namespace local-review-helm --create-namespace \
-  -f release-values.yaml \
-  -f deploy/helm/local-review/values-minikube.yaml \
-  --wait --timeout 65m
+helm upgrade --install local-review ./deploy/helm/local-review --kube-context minikube --namespace local-review-helm --create-namespace -f release-values.yaml -f deploy/helm/local-review/values-minikube.yaml --wait --timeout 65m
 ```
 
-Replace the context with your target and use a new namespace for initial testing.
+Replace the context and namespace with your prepared target. Use a separate namespace
+for an independent test installation. These commands are for Helm-managed instances;
+use the [GitOps workflow](../../../docs/guides/gitops.md) for an Argo CD application.
 For custom environment settings, copy `values-minikube.yaml` outside the checkout
 and pass that path as the last `-f` argument. Keep using the same file on upgrades.
 Release values pin the published images; the environment file supplies local
@@ -55,8 +52,10 @@ Render and lint from main without credentials or cluster access:
 
 ```bash
 helm lint ./deploy/helm/local-review -f deploy/helm/local-review/values-minikube.yaml
-helm template local-review ./deploy/helm/local-review \
-  --namespace local-review-helm -f deploy/helm/local-review/values-minikube.yaml
+```
+
+```bash
+helm template local-review ./deploy/helm/local-review --namespace local-review-helm -f deploy/helm/local-review/values-minikube.yaml
 ```
 
 ## Optional monitoring
