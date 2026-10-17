@@ -143,8 +143,10 @@ The initial budget uses a 30-second scrape/evaluation interval, one-day retentio
 a 4 GiB TSDB retention cap and a 5 Gi PVC on `standard`. Time and size limits both
 apply; the earlier limit wins. WAL and head-block space still need free disk, and
 hostpath PVC size is not a reservation or backup. Running monitoring containers request
-340m CPU and about 1 GiB memory in total, with memory limits around 3 GiB; check node
+340m CPU and 1.25 GiB memory in total, with memory limits of 3.25 GiB; check node
 allocatable minus existing requests as well as actual usage before installation.
+Grafana requests 384 MiB and has a 768 MiB limit to leave room for dashboard queries
+and plugins; the previous 384 MiB limit caused runtime OOM kills.
 Free node disk must also cover image downloads, TSDB data, WAL and kubelet eviction
 headroom. A successful Terraform plan or PVC bind does not establish capacity.
 Grafana dashboards and data sources are provisioned
