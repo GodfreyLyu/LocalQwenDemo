@@ -13,17 +13,24 @@ the cluster; the release workflow does not provision cloud infrastructure. See t
 
 ## Resource diagnostics
 
-By default, the backend requests 2 CPUs and 4 GiB memory, with limits of 2 CPUs and 6 GiB. DynamoDB
-Local, frontend, Kubernetes components and other workloads consume additional capacity.
-The application Chart requests three PVCs: 12 GiB for the backend model cache, 10 GiB
-for history/queue/sessions and 1 GiB for accounts. The independent Ollama Chart adds a
-4 GiB model PVC and its own CPU, memory and GPU requests. These storage requests do not
-reserve physical host disk. The optional `values-minikube-ollama.yaml` overlay reduces
-backend resource requests because inference runs in Ollama. See the
-[Ollama Chart](../../deploy/helm/local-ollama/README.md) for its requirements.
+The base application Chart and the smaller backend profile have different resource
+settings. The maintained Argo CD application uses the smaller profile from
+`values-minikube-ollama.yaml`, since inference runs in a separate Ollama Pod.
 
-The removed Transformers CPU path used approximately 4.08 GB of pinned BF16 weights.
-That figure is not the size of Ollama's quantized model.
+| Workload / profile | CPU request / limit | Memory request / limit |
+| --- | --- | --- |
+| Backend, base Chart | 2 / 2 CPUs | 4 / 6 GiB |
+| Backend, `values-minikube-ollama.yaml` | 100m / 1 CPU | 256 / 768 MiB |
+| Ollama, default Chart | 250m / 2 CPUs | 1 / 3 GiB |
+
+DynamoDB Local, frontend, monitoring, Kubernetes components and other workloads need
+additional capacity. Ollama also requires the GPU resource described in its
+[Chart guide](../../deploy/helm/local-ollama/README.md).
+
+The application Chart requests three PVCs: 12 GiB for the unused legacy backend model
+cache, 10 GiB for history/queue/sessions and 1 GiB for accounts. Ollama adds a 4 GiB
+model PVC; optional Prometheus monitoring adds a 5 GiB PVC. These requests do not
+reserve physical host disk, and declared sizes are not measured usage.
 
 For the Docker-driver workflow, `doctor` separately measures host memory pressure,
 Docker capacity, node allocatable resources, existing requests/limits and available
@@ -37,14 +44,12 @@ is separate; the krunkit platform provides its own startup helper.
 
 ## Performance and availability
 
-The following historical measurements describe the Transformers CPU path; they are
-not Ollama GPU benchmarks. Those runs used a fixed model, BF16 CPU inference, two
-model threads, a 384-token total budget, and a 300-second whole-review timeout.
-The B run added `OMP_NUM_THREADS=2`; the other inference settings stayed fixed.
-The successful historical B measurement
-ran under different host swap pressure from A. Neither run proves hardware-accelerated
-BF16 execution or repeatable performance. The comparison does not isolate the cause of
-the improvement or measure this checkout's performance.
+The [historical CPU reports](../reports/README.md) describe the removed Transformers
+implementation. Their weight sizes and A/B timings do not measure current Ollama
+performance. Host load differed between those runs, so they also do not isolate the
+cause of the timing difference. Measure the current Ollama container and record its
+model, hardware and workload when comparing performance; see the
+[measurement guidance](observability.md#inference-and-startup-measurement-boundaries).
 
 There is one backend replica and one inference worker. Rollout/recovery can interrupt
 availability; there is no horizontal scaling, distributed queue or high availability.

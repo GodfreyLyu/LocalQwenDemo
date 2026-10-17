@@ -9,7 +9,8 @@ Descriptions are omitted to keep the files small. Kubernetes integer-or-string
 fields are represented as JSON Schema `anyOf`. Declared object properties reject
 unknown fields unless the upstream schema permits them; free-form metadata/maps
 remain open. Other constraints are preserved.
-Kubeconform validates these CRDs explicitly instead of ignoring unknown kinds.
+Kubeconform uses these schemas to validate ServiceMonitor and PrometheusRule
+resources; it does not ignore unknown kinds.
 Kubernetes CEL rules and PromQL semantics require their own validation; promtool
 checks the actual rendered rules and dashboards in the configuration CI job.
 

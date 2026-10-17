@@ -22,8 +22,7 @@ and serial durable queue. `/api/chat` uses streaming internally to observe first
 content latency and support cancellation; the browser still polls saved jobs.
 `think=false` asks the selected model to disable thinking. Unexpected thinking/tool output is rejected. No reasoning is stored or logged.
 
-Ollama owns the tokenizer and chat template; the backend no longer downloads or
-renders a Hugging Face tokenizer. Startup requires Ollama **0.24.0 or newer**,
+Ollama owns the tokenizer and chat template. Startup requires Ollama **0.24.0 or newer**,
 a locally installed model with the `completion` capability, and a declared context
 length at least as large as the configured request context. It then probes actual
 generation. Cloud-backed models and unexpected thinking/tool output are rejected.
@@ -31,14 +30,16 @@ generation. Cloud-backed models and unexpected thinking/tool output are rejected
 Every request sends `truncate=false` and `shift=false`. The backend checks actual
 `prompt_eval_count` against the per-section input budget; malformed/missing counts
 fail closed. Context overflow and excess input tokens fail with `token_limit`.
-Character/empty-input checks still happen before admission. **Exact token validation
-now happens in the serial worker after submission**, because Ollama has no public
-tokenize endpoint. No estimate is presented as an exact count, and no partial review
+Character and empty-input checks happen before admission. **Exact token validation
+happens in the serial worker after submission**, using Ollama's reported counts.
+No estimate is presented as an exact count, and no partial review
 is published when any section exceeds its budget. A request within the context but
 over the input budget may spend generation time before it is rejected.
 
-Startup availability checks retry transient failures for up to 60 seconds; missing
-models, incompatible identities and malformed metadata fail immediately.
+Startup metadata checks retry connection failures, unavailable responses and timeouts
+within a 60-second budget. Missing models, incompatible identities and malformed
+metadata fail immediately. The subsequent generation probe runs once under the
+configured inference timeout; it does not use that retry loop.
 
 Timeout/shutdown cancels the in-flight async HTTP operation and closes its connection
 before the adapter exits. Ollama owns remote generation cleanup; the single worker
@@ -51,10 +52,6 @@ the service is available; replacing the model digest requires a backend restart.
 Device means placement **observed at startup or the last completed review** from
 `/api/ps`, not continuous GPU monitoring. Saved review `model_revision` contains the
 Ollama `sha256:` digest; old HF revisions and simulated records are preserved.
-
-`MODEL_BACKEND`, Helm `model.backend`, and CLI `--model-backend` have been removed.
-There is no in-process Transformers implementation or automatic fallback. Existing
-review history and old cache files are retained; this change does not delete data.
 
 ## Configuration and generation
 
@@ -90,8 +87,7 @@ only for that section body. No conversation history, prior generated section, or
 result is appended. The backend inserts the three exact Markdown headings; it does not
 invent, copy, or synthesize a review conclusion.
 
-Default sampling uses temperature 0.7, top-p 0.8, top-k 20, min-p 0 and repeat penalty 1.
-The shared generation policy is used by both production and evaluation. Each section
+The application and evaluator share the sampling settings above. Each section
 receives a stable 63-bit seed derived from the actual Ollama digest, language, section
 and source. Startup uses seed 0 and one output token. Seeds are never logged or saved;
 identical seeds do not guarantee identical output across engines or hardware.
@@ -121,15 +117,17 @@ Ollama server or GPU memory.
 
 The backend image installs Python 3.12 and application/HTTP dependencies only.
 No tokenizers, Hugging Face Hub, Torch or Transformers are needed. Ollama owns model
-weights and its separate PVC. The old backend cache PVC is retained for migration
-safety but is unused; neither startup nor evaluation downloads tokenizer files.
-`MODEL_ID`, `MODEL_REVISION` and `HF_HOME` are retired configuration keys.
+weights and its separate PVC. The old backend cache PVC is retained but unused;
+neither startup nor evaluation downloads tokenizer files. Existing review history
+and old cache files are preserved. `MODEL_ID`, `MODEL_REVISION`, `HF_HOME`,
+`MODEL_BACKEND`, Helm `model.backend`, and CLI `--model-backend` are retired.
+There is no in-process Transformers adapter or automatic fallback.
 
-Run the optional real-service smoke test with an installed local model:
+From the repository root, run the optional real-service smoke test with an installed
+local model:
 
 ```bash
-cd backend
-OLLAMA_BASE_URL=http://localhost:11434 RUN_REAL_MODEL=1 .venv/bin/pytest tests/inference/test_real_model.py -v
+OLLAMA_BASE_URL=http://localhost:11434 RUN_REAL_MODEL=1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py -v
 ```
 
 Its reduced 64-token budget permits a controlled quality rejection and does not prove

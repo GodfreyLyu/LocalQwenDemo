@@ -6,6 +6,8 @@ environment at `backend/.venv`. The full check suite also requires frontend
 dependencies, Git, kubectl, and Helm. Use `backend/.venv/bin/python` for Python
 scripts and `bash` for shell scripts. The check scripts and Minikube shell entry
 point accept `REVIEW_PYTHON` to override the interpreter path.
+The backend development dependencies supply Ruff, pytest, HTTPX, PyYAML, boto3 and
+the local service doubles. Check commands expect these tools to be installed.
 
 - **Automatic invocation**: run by CI, test tools, or another entry point. The table
   identifies the caller; you do not need to run these steps individually.
@@ -30,7 +32,7 @@ and manual uses carry both labels.
 | `check_monitoring.sh` | **Automatic invocation** | CI wrapper downloads checksum-verified Prometheus 3.15.0 for Linux amd64 and calls `validate_monitoring.py`. Requires `RUNNER_TEMP`, `gh`, Helm and Python with PyYAML; outside the offline gate. |
 | `local_demo.py` | **Automatic invocation / Manual entry point** | Playwright starts it with `--fake-model` and an isolated data directory. For manual development, run `backend/.venv/bin/python scripts/local_demo.py --fake-model`. Omitting `--fake-model` uses real Ollama inference. |
 | `init_local_users.py` | **Manual entry point** | Initializes DynamoDB Local from the host. Requires `DYNAMODB_ENDPOINT_URL`; see the example below. **Does not support `--help`.** |
-| `minikube_demo.sh` | **Manual entry point** | Preferred entry point for Minikube operations: `bash scripts/minikube_demo.sh COMMAND --profile NAME`. See the deployment sequence below. |
+| `minikube_demo.sh` | **Manual entry point** | Development CLI for Docker-driver Minikube profiles: `bash scripts/minikube_demo.sh COMMAND --profile NAME`. Use standard Helm for krunkit clusters. |
 | `minikube_helm.py` | **Automatic invocation / Manual entry point** | Receives arguments from `minikube_demo.sh`. The equivalent direct command is `backend/.venv/bin/python scripts/minikube_helm.py COMMAND --profile NAME`. |
 | `evaluate_model.py` | **Manual entry point** | Run `backend/.venv/bin/python scripts/evaluate_model.py --dry-run` to create a plan. Real inference requires an explicit `--run-real-model` flag. |
 | `release/publish.py` | **Automatic invocation** | The release workflow calls `prepare`, `publish`, and `supersede`; the deployment validation workflow calls `verify`. These steps depend on workflow context. Use the workflow to start a release. |
@@ -43,21 +45,47 @@ includes the script checks:
 
 ```bash
 bash scripts/check.sh
+```
+
+```bash
 bash scripts/check_scripts.sh
+```
+
+```bash
 bash scripts/check_minikube_demo.sh
+```
+
+```bash
 backend/.venv/bin/python scripts/validate_helm.py
 ```
 
+These checks exclude `real_model` and `requires_cluster` tests. They can write caches,
+temporary test data and `frontend/dist`, and some tests start temporary loopback
+servers. They do not install dependencies, build container images or change a live
+cluster or cloud service. Failed checks return nonzero; aggregate suites stop at the
+first failure, including missing tools.
+
 For UI/API development without a real model, run the following in separate terminals:
 
+In the first terminal, start the API with a fake model. Accounts reset on restart;
+the signing key also changes, invalidating sessions. Review history stays in
+`.local/demo`:
+
 ```bash
-# Terminal 1: start the local API with a fake model; accounts reset on restart
 backend/.venv/bin/python scripts/local_demo.py --fake-model
 ```
 
+The harness binds to loopback. `--port` defaults to 8000 and `--data-dir` to
+`.local/demo`. Real inference uses `--ollama-base-url`, which defaults to
+`http://localhost:11434`; Ollama handles tokenization.
+
+In the second terminal, install frontend dependencies and start the development server:
+
 ```bash
-# Terminal 2: install frontend dependencies and start the development server
 npm --prefix frontend ci
+```
+
+```bash
 npm --prefix frontend run dev
 ```
 
@@ -66,12 +94,16 @@ with Docker Compose and run the dedicated initializer:
 
 ```bash
 docker compose up -d dynamodb
-DYNAMODB_ENDPOINT_URL=http://127.0.0.1:8001 \
-  backend/.venv/bin/python scripts/init_local_users.py
 ```
 
-The initializer creates the users table if needed and preserves existing accounts.
-It accepts only loopback addresses with an explicit port. For backend startup
+```bash
+DYNAMODB_ENDPOINT_URL=http://127.0.0.1:8001 backend/.venv/bin/python scripts/init_local_users.py
+```
+
+The initializer uses boto3 and fixed local dummy credentials to create
+`llm-review-users` if needed, preserving existing accounts. This writes to the local
+database. It accepts only loopback addresses with an explicit port and has no CLI
+options, including `--help`. For backend startup
 instructions with persistent accounts, see the
 [local development guide](../docs/guides/local-development.md#persistent-local-accounts-and-real-inference).
 Helm deployments initialize the table automatically through the Chart's
@@ -84,9 +116,21 @@ in order to initialize, check, deploy, verify, and access the application:
 
 ```bash
 bash scripts/minikube_demo.sh init --profile minikube
+```
+
+```bash
 bash scripts/minikube_demo.sh doctor --profile minikube
+```
+
+```bash
 bash scripts/minikube_demo.sh up --profile minikube
+```
+
+```bash
 bash scripts/minikube_demo.sh verify --profile minikube
+```
+
+```bash
 bash scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
@@ -96,20 +140,39 @@ point does not start a cluster. For krunkit GPU clusters, use
 [standard Helm deployment](../docs/guides/helm-release.md); for instances managed by
 Argo CD, follow the [GitOps workflow](../docs/guides/gitops.md).
 
+Every operational command requires `--profile NAME`. Keep `--namespace` and
+`--release` consistent across commands; `-f` supplies values and `--state-root`
+selects private local records. The CLI also provides `status`, `logs`, `rollback`
+and `undeploy`. Undeploy retains data by default; purging it requires explicit
+confirmation. Use `--help` for all supported options.
+
 For model evaluation, choose either a plan or a real run. A real run also requires a
 running Ollama service with the selected model installed. No extra Python model
 packages are needed:
 
 ```bash
 backend/.venv/bin/python scripts/evaluate_model.py --dry-run
+```
+
+```bash
 backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case average
 ```
 
-Reports are written to `.local/model-evaluations/`. See the
-[evaluation guide](../docs/testing/model-evaluation.md) for all options and the
-human review required for full semantic acceptance.
+Reports are written to `.local/model-evaluations/`. Only the fixed synthetic fixtures
+are accepted. The evaluator does not install dependencies, start services or access
+AWS/Kubernetes. See the [evaluation guide](../docs/testing/model-evaluation.md) for
+settings isolation, [exit codes and human review](../docs/testing/model-evaluation.md#acceptance-contract),
+and [report contents and worker supervision](../docs/testing/model-evaluation.md#reports-and-supervision).
 
 ## Automatic invocation and release commands
+
+`check.sh` calls `checks/all.sh`, which runs backend lint/tests, frontend
+lint/tests/build, then `checks/scripts.sh`. The standalone `check_scripts.sh` calls
+that same script gate. It syntax-checks maintained shell scripts, lints script code
+and tests once, runs all script test domains, and validates both Helm Charts.
+`check_minikube_demo.sh` calls `checks/deployment.sh` for the deployment subset;
+`check_helm_schema.sh` calls `checks/schema.sh` for Linux CI schema validation.
+Browser tests are separate locally and run in CI with the fake-model harness.
 
 These files define the automated call chains:
 
@@ -125,14 +188,21 @@ These files define the automated call chains:
 
 Merging into `main` triggers the release workflow automatically. To trigger it
 manually, authenticate `gh` with the required repository permissions, then choose
-one of the following commands from the repository root. The workflow pushes images
-and creates a deployment candidate PR:
+one of the following commands from the repository root. When release inputs change,
+the workflow publishes the affected images and proposes a deployment candidate PR.
+An unchanged release reuses the existing result.
+Release image builds and publication are separate from the offline check suite;
+CI has no cluster access.
+
+Build images as needed based on changes:
 
 ```bash
-# Build images as needed based on changes
 gh workflow run release-candidate.yml --ref main
+```
 
-# Force all three images to rebuild
+Or force all three images to rebuild:
+
+```bash
 gh workflow run release-candidate.yml --ref main -f rebuild=true
 ```
 
@@ -142,14 +212,20 @@ an actual release:
 
 ```bash
 backend/.venv/bin/python scripts/release/publish.py --help
+```
+
+```bash
 backend/.venv/bin/python scripts/release/snapshot.py --help
 ```
 
-## Internal implementation
+## Organization and dependency boundaries
 
 The public entry points call the modules below. Edit these modules when developing
 the tooling, and use the stable entry points above when running it. Executing
 implementation files directly may leave import paths or runtime context incomplete.
+Root Python entries and `release/{publish,snapshot}.py` delegate to packages. New
+code should import those packages rather than wrappers. The public entries and
+pytest configure `scripts/` as the internal import root.
 
 | Path | Usage | Entry point or responsibility |
 | --- | --- | --- |
@@ -157,12 +233,26 @@ implementation files directly may leave import paths or runtime context incomple
 | `dev/*.py` | **Internal implementation** | Implementations of `local_demo.py` and `init_local_users.py`. |
 | `deployment/helm/*.py` | **Internal implementation** | CLI, sessions, builds, diagnostics, lifecycle operations, and acceptance checks for `minikube_helm.py`. |
 | `deployment/common/*.py` | **Internal implementation** | Shared deployment target, port forwarding, queue protection, and resource logic. |
-| `validation/*.py` | **Internal implementation** | Helm, snapshot, and GitOps validation used by `validate_helm.py`. |
+| `validation/*.py` | **Internal implementation** | Helm, snapshot and GitOps validation used by `validate_helm.py`, plus monitoring validation used by `validate_monitoring.py`. |
 | `release/_entry.py`, `release/publisher.py`, `release/snapshot_impl.py`, `release/github.py` | **Internal implementation** | Import path setup, publishing, snapshot generation, and GitHub requests for `release/publish.py` and `release/snapshot.py`. |
 | `evaluation/` | **Internal implementation** | Configuration, fixtures, execution, metrics, and reports for `evaluate_model.py`. |
 | `tooling_paths.py` and package `__init__.py` files | **Internal implementation** | Path setup and package structure. |
 | `tests/` | **Internal implementation** | Regression tests collected by the check scripts or pytest. To run a single domain, use a command such as `backend/.venv/bin/python -m pytest scripts/tests/tooling`. |
 
-See the [script reference](../docs/reference/scripts.md) for detailed dependencies,
-side effects, and call chains, and the [testing guide](../docs/testing/README.md)
-for test coverage.
+`minikube_demo.sh` resolves the checkout from its own path and invokes
+`minikube_helm.py`, which calls `deployment.helm.cli.entry()` and `main()`.
+Target discovery lives in `deployment/common/target.py`; `Session` handles private
+records and locking. Helm's `build.py`, `diagnostics.py`, `lifecycle.py` and `verify.py`
+handle builds, resource checks, removal and acceptance respectively.
+
+`deployment/common` does not import the Helm CLI or session. Its helpers receive
+command builders, environments or executors from callers; target ownership and
+release-specific deletion rules stay in the Helm implementation. Helm and GitOps
+validators share `validation/resources.py`, with snapshot orchestration in
+`validation/snapshot.py`; neither validator imports the other's CLI. Release commands
+share GitHub request encoding in `release/github.py` while retaining their own
+transport and failure policies. Evaluator reports fingerprint the implementation
+modules, public entry and shared path bootstrap.
+
+See the [testing guide](../docs/testing/README.md) for test coverage and
+[fixture maintenance](../docs/testing/README.md#mock-boundaries-and-fixture-maintenance).

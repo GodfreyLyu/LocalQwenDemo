@@ -46,14 +46,21 @@ Submission body:
 }
 ```
 
-`language` defaults to `auto`; any valid short language hint is accepted. `client_request_id` is optional; the server generates a UUID if omitted. Browsers generate and retain it for uncertain-delivery retries. The response contains `review_id`, `status`, and `client_request_id`. An idempotent response may already be completed or failed.
+`language` defaults to `auto`. It accepts 1–50 ASCII letters, digits, spaces, or the
+characters `_`, `+`, `#`, `.`, and `-`; it is a hint, not a fixed language list.
+`client_request_id` is optional; the server generates a UUID if omitted. Browsers
+retain it so they can retry when they cannot confirm whether a submission arrived.
+The response contains `review_id`, `status`, and `client_request_id`. A retry with the
+same ID and input returns the existing review, which may already be completed or failed.
+A changed payload with that ID returns 409. Input, readiness and rate checks still
+apply to retries.
 
 The default source limit is 12,000 characters. Each of the three complete section
 prompts, including instructions, must fit within 2,048 tokens. The character limit is
 checked before admission. The worker checks actual prompt token counts reported by
 Ollama after submission; a token-limit failure marks the accepted job as failed with
 `token_limit`, rather than returning HTTP 422 from the submission request.
-Oversized HTTP bodies are rejected at 128 KiB
+HTTP bodies larger than 128 KiB are rejected
 before JSON parsing. Nothing is compiled, parsed as an executable language, or saved as
 a source file.
 
@@ -64,7 +71,8 @@ responses contain `review_id`, `status`, `client_request_id`, `language`, `sourc
 are never serialized. History returns `items` and nullable `next_cursor`; each item
 contains only `review_id`, `language`, `status`, `error_code`, `created_at`, `updated_at`.
 IDs stay strings, timestamps stay numeric Unix seconds, and absent result/error/model
-values stay null. No response model excludes null values.
+values stay null. History accepts a `limit` from 1 to 50 (default 20). Pass the returned
+`next_cursor` as `before` to fetch the next page; null means there are no more entries.
 
 The optional local `ENABLE_API_DOCS=true` switch exposes `/docs` and `/openapi.json`
 on the backend. Both are off by default and remain off in the maintained deployment.
@@ -94,17 +102,23 @@ Errors use:
 | 429     | Login/submission rate limit or full queue; includes Retry-After           |
 | 503     | Model loading/draining, storage failure, unavailable account service      |
 
-Inference errors mark the stored job as `failed`, with codes such as `inference_timeout`, `empty_model_response`, `invalid_model_response`, `inference_failed`, or `interrupted`. `invalid_model_response` means the local model returned text that did not satisfy the minimum structured, source-linked review contract. A successful GET still returns 200 when describing a failed job.
+Inference errors mark the stored job as `failed`, with codes such as `token_limit`,
+`inference_timeout`, `empty_model_response`, `invalid_model_response`,
+`inference_failed`, or `interrupted`. `invalid_model_response` covers malformed or
+incomplete Ollama responses, unexpected thinking/tool output, and reviews that fail
+the required structure or source-reference checks. A successful GET still returns
+200 when describing a failed job.
 
-## Read-only instance runtime
+## Instance runtime
 
 `GET /api/v1/runtime` is a public, non-sensitive display endpoint (no session required).
 It returns HTTP 200 when the observation succeeds, including when the service is not ready.
-The existing `/health/live` and `/health/ready` HTTP status and body contracts are unchanged.
+Like `/health/ready`, it checks writable SQLite access and removes expired sessions
+when the coordinator is ready. It does not submit reviews or change review records.
 
 - `deployment_environment`: `minikube`, `development`, or `unknown`, from explicit
   `DEPLOYMENT_ENVIRONMENT` configuration. Default is `unknown`; neither hostname nor
-  the existing logging/test `ENVIRONMENT` setting implies a deployment environment.
+  the logging/test `ENVIRONMENT` setting implies a deployment environment.
 - `inference_mode`: `real` for the Ollama adapter, `simulated` for an
   explicitly marked fixture, otherwise `unknown`. Deployment environment does not select inference.
 - `model_id`, `model_revision`, `model_source`, `device`: the selected Ollama tag,

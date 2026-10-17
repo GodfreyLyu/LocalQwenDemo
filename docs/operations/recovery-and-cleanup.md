@@ -13,7 +13,13 @@ reports, including failed and incomplete results.
 
 ```bash
 scripts/minikube_demo.sh status --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh logs --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh doctor --profile minikube
 ```
 
@@ -23,6 +29,9 @@ and namespace:
 
 ```bash
 kubectl --context minikube -n local-review-demo get deployments,pods,pvc
+```
+
+```bash
 kubectl --context minikube -n local-review-demo logs deployment/review-backend -c review-backend --tail=100
 ```
 
@@ -31,52 +40,38 @@ with an explicit context and namespace. Do not print kubeconfig, acceptance acco
 Secret contents, complete environment dumps, user history bodies or raw exception strings.
 
 `/health/live` is available during loading. `/health/ready` remains 503 until storage,
-accounts and the startup-validated model are ready. The local Helm CLI deployment timeout defaults to 3900 seconds and its warm verification
-budget to 600 seconds; the whole-review inference timeout remains
-300 seconds. A longer startup allowance does not change inference parameters.
+accounts and the model are ready. The local Helm CLI deployment timeout defaults to
+3900 seconds and its warm verification budget to 600 seconds. The Helm profile allows
+300 seconds for a whole review; direct local development defaults to 180 seconds.
+A longer startup allowance does not extend the inference timeout.
 
 ### Temporary account-store connection failures
 
-Only the startup `users_storage` check retries connection failures. An initial
-`ConnectTimeoutError` no longer permanently ends initialization if the database
-recovers within the startup retry budget. The order remains SQLite initialization,
-account-store check, queue recovery, model loading/validation, final storage check,
-and queue processing. Only the account-store check repeats.
+The startup `users_storage` check retries botocore `ConnectTimeoutError`,
+`ReadTimeoutError`, `EndpointConnectionError` and `ConnectionClosedError`.
+Other errors fail immediately, including missing tables, service `ClientError`
+responses and schema mismatches. The table must be ACTIVE with a `login_id` string
+hash key. This check only describes the table; the separate initializer creates it
+when needed.
 
-The allowlist is botocore `ConnectTimeoutError`, `ReadTimeoutError`,
-`EndpointConnectionError` (including unavailable/refused endpoints), and
-`ConnectionClosedError`. Other exceptions fail immediately, including configuration,
-credentials/permissions, missing tables, service `ClientError` responses, and table
-schema/status mismatches. The check requires an ACTIVE table with the existing
-`login_id` string hash-key schema. It only describes the table; it never creates,
-repairs, deletes or clears account storage.
+Retries wait 1, 2, 4 and 8 seconds, then at most 10 seconds between attempts.
+The **120-second budget includes calls and waits**. Each call uses one SDK attempt,
+a 3-second connect timeout and a 5-second read timeout. Calls run one at a time;
+none starts at or after the deadline. An in-flight call is allowed to finish, but a
+late success still fails startup. Reporting can therefore take longer than 120 seconds;
+socket timeouts do not provide a hard wall-clock limit for DNS or scheduling.
 
-Startup checks use a separate SDK client with one total request attempt, a 3-second
-connect timeout and a 5-second read timeout. Normal account operations retain their
-existing SDK retry settings. Retries wait asynchronously for 1, 2, 4 and 8 seconds, then
-at most 10 seconds between attempts. The final wait is shortened to fit the remaining
-budget. The **120-second monotonic budget includes both calls and waits**. No new call
-starts at or after the deadline. The code waits for an in-flight call to return instead
-of abandoning it with an asyncio timeout. Even a successful response cannot make startup
-succeed after the deadline. Reporting may therefore extend beyond 120 seconds while the
-final request finishes, normally within one attempt's 3-second connect and 5-second read
-timeouts. Socket timeouts are not hard wall-clock bounds on OS DNS resolution,
-scheduling or a continuously trickling response. There is no parallel check or
-overlapping retry.
+During retries, liveness stays healthy, readiness returns 503 with `model_loading`,
+and submissions are rejected. Success continues with queue recovery, model validation
+and the final storage check. Retry exhaustion or another error enters
+`startup_or_storage_failure`. Later database recovery does not restart initialization
+within that process. Inspect the dependency and Pod state before deciding whether a
+restart is needed. Only the account-store check retries; earlier startup stages and
+inference do not repeat as part of this loop.
 
-During retries, `/health/live` stays responsive and alive; `/health/ready` remains
-503 with the compatible `model_loading` state and submissions remain rejected.
-Success continues initialization in the same process. Exhaustion or a non-retryable
-error enters the existing `startup_or_storage_failure` state. A database recovery
-*after* this final failure does not restart initialization automatically; inspect
-and use the existing deliberate restart procedure. Probes and deployment budgets
-have not changed.
-
-Shutdown wakes a pending backoff immediately and stops later checks or startup
-stages. If a check is already in flight, the existing coordinator shutdown grace
-(default 20 seconds) applies while the bounded SDK call returns. A deliberately
-shorter shutdown grace can expire first; cancellation does not forcibly kill a
-Python worker thread, but no follow-up request is scheduled.
+Shutdown interrupts retry waits and schedules no further calls. An in-flight call
+uses the coordinator's shutdown grace, which defaults to 20 seconds. Cancelling the
+coordinator does not forcibly stop its Python worker thread.
 
 Safe events are `users_storage_check_started`, `users_storage_retry_scheduled`,
 `users_storage_ready`, `users_storage_retry_exhausted`, and
@@ -90,10 +85,9 @@ These logs omit exception text, endpoints, credentials and account data.
 | No running profile or API unavailable | Start/fix the cluster yourself, then rerun diagnostics. The script never starts or recreates a cluster. |
 | Pending backend, resource warnings | Inspect actual allocatable, requests/limits and usage, host swap, Docker capacity and disk. Do not treat unavailable metrics as sufficient capacity. |
 | `Unable to access jarfile DynamoDBLocal.jar` | Verify the pinned image and effective identity. The minikube configuration uses image UID 1000, group/fsGroup 10001 and a root-only volume-permission initializer limited to the PVC root. Do not recursively change data permissions or replace the PVC. |
-| Model download finishes but startup fails | Check Ollama service readiness, the selected model digest and safe startup errors. A completed download alone does not prove the backend can use the service. Preserve Ollama model storage. |
-| Download service error | Verify Ollama service availability and the selected model digest/context. Only Ollama downloads model files; preserve its model PVC during repair. |
-| Account dependency unavailable | Confirm explicit local endpoint, inert credentials, disabled SDK metadata/shared configuration and ACTIVE table/schema. The initializer is idempotent and refuses remote endpoints or schema replacement. |
-| 415, 403 or 401 | POST/PUT/PATCH require JSON; Origin must exactly match localhost and authenticated writes require the session's CSRF token. Sign in normally; never bypass media-type/auth/CSRF checks. |
+| Model download or validation failure | Check Ollama service readiness, the selected model digest/context and safe startup errors. Only Ollama downloads model files; a completed download alone does not prove the backend can use the model. Preserve its model PVC and partial downloads. |
+| Account dependency unavailable | Confirm the local endpoint, dummy credentials, disabled SDK metadata/shared configuration and ACTIVE table/schema. The initializer is idempotent and refuses remote endpoints or schema replacement. |
+| 415, 403 or 401 | POST/PUT/PATCH require JSON; Origin must match the configured scheme, host and port, and authenticated writes require the session's CSRF token. Use the documented localhost URL and sign in normally. |
 | `inference_timeout` | Retain the failed review and wait for draining. Correlate one container's measured CPU/memory deltas and section timings; do not blindly retry or tune parameters. |
 | `inference_stuck` | The inference worker did not exit within the drain timeout. Liveness becomes false. Inspect the backend and Ollama separately before recovery; do not submit overlapping reviews. |
 | Port binding failure | Inspect the reported errno/category. Permission restrictions are not proof of occupation; a later successful bind does not establish earlier state. Never kill an unknown listener. |
@@ -103,8 +97,11 @@ These logs omit exception text, endpoints, credentials and account data.
 
 ## Backup and recovery
 
-Three PVCs separately hold SQLite history/queue/sessions, model cache, and DynamoDB
-Local accounts. A consistent SQLite backup requires its backup API or an explicitly
+The application has three PVCs: SQLite history/queue/sessions, DynamoDB Local
+accounts, and a retained legacy backend cache. Ollama does not use that cache; its
+models live on a fourth PVC owned by the independent Ollama release. See the
+[storage reference](../reference/architecture.md#storage) for paths and sizes.
+A consistent SQLite backup requires its backup API or an explicitly
 coordinated idle shutdown; copying only the database file during WAL writes is unsafe.
 No automatic backup or secure erasure is provided. Any backup may contain user source,
 reviews and credentials and needs a private retention policy.
@@ -123,6 +120,9 @@ Missing local evidence does not authorize resource adoption or deletion.
 
 ```bash
 scripts/minikube_demo.sh status --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh undeploy --profile minikube
 ```
 

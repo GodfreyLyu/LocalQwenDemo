@@ -1,11 +1,12 @@
 # Ollama integration acceptance — 2026-10-03
 
-> Historical snapshot: the Transformers option described below has since been removed.
-> Current runtime and evaluation both use [Ollama](../reference/model.md).
+> Historical snapshot: this run used host Ollama and an optional Transformers fallback.
+> The fallback has since been removed. Current runtime and evaluation use
+> [Ollama](../reference/model.md), with an in-cluster service as the default endpoint.
 
 This is an integration acceptance record, not a controlled performance comparison.
-The application runs in the existing native arm64 minikube cluster; inference uses
-host Ollama 0.35.1. The previous Transformers CPU path remains explicitly selectable.
+At the time of this run, the application ran in the existing native arm64 Minikube
+cluster and used host Ollama 0.35.1. The Transformers CPU path was still selectable.
 
 ## Configuration
 
@@ -70,22 +71,23 @@ and legacy verification module have since been removed. For the current deployme
 follow the [Helm guide](../guides/helm-release.md) and
 [model reference](../reference/model.md).
 
-Start native Ollama with the pinned model and a bind address reachable from minikube.
-From the repository root:
+The recorded procedure started native Ollama with the pinned model and a bind address
+reachable from Minikube, then ran the following commands from the repository root.
+These are historical commands, not instructions for the current checkout:
 
-```bash
+```text
 scripts/minikube_demo.sh up --profile minikube --model-backend ollama
 scripts/minikube_demo.sh verify --profile minikube
 scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
-At `http://localhost:8080`, create a test account, select Python, submit the fixed
-`average(values)` sample from `scripts/minikube_verify.py`, inspect the model digest,
-refresh history, sign out and sign back in. The CLI report intentionally retains
-`ui_verified=false`; browser evidence is a separate check, not a rewritten API report.
-Use `up --model-backend transformers` for a separately measured CPU baseline.
+The browser procedure at `http://localhost:8080` was to create a test account, select
+Python, submit the fixed `average(values)` sample from `scripts/minikube_verify.py`,
+inspect the model digest, refresh history, sign out and sign back in. The CLI report
+retains `ui_verified=false`; browser evidence is recorded separately.
+The old `up --model-backend transformers` option selected the separate CPU baseline.
 
-For a future comparison, run both adapters against a fixed dataset with matching
-budgets. Record cold and warm runs, latency percentiles, output tokens, quality results
-and total host resource usage. Resolve and re-test the observed network isolation
-failure separately.
+A follow-up comparison would need the recorded revision to run both adapters against
+a fixed dataset with matching budgets. It should record cold and warm runs, latency
+percentiles, output tokens, quality results and total host resource usage. The observed
+network isolation failure would need a separate fix and check.

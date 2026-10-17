@@ -1,13 +1,11 @@
 # PR-gated images and Argo CD
 
-Source changes enter `main` only through PRs. `Quality checks` runs on PRs and the
-required `main-ci` gate succeeds only if both application and configuration jobs
-succeed. Main protection requires an up-to-date branch and resolved conversations;
-administrators cannot bypass these checks. This personal project requires no review
-approvals, so authors can merge their own PRs after CI passes. GitHub does not support
-self-approval. The `deployment-release` branch also requires no approvals. It still
-requires the `deployment/snapshot` check and an up-to-date PR, and administrators must
-follow the same rules.
+The checked-in branch protection settings require PRs for changes to `main` and
+`deployment-release`. The `Quality checks` workflow supplies `main-ci`, which passes
+only when its application and configuration jobs both succeed. Release PRs require
+`deployment/snapshot`. Both branches require an up-to-date PR and resolved
+conversations, apply the same rules to administrators, and require no review approvals.
+Authors can merge their own PRs once the required checks pass.
 
 After merge, `Prepare release` rechecks the exact main commit, builds changed
 backend/frontend images for amd64+arm64 and Ollama for arm64, and pushes to GHCR.
@@ -29,11 +27,9 @@ build is not evidence of working GPU inference.
 
 ## Repository release state
 
-This repository already has an initialized `deployment-release` branch and uses
-format-3 snapshots. Its one-time bootstrap and workflow migration tools have been
-retired; normal releases use **Prepare release** on main, followed by review and
-merge after `deployment/snapshot` succeeds. Historical migration tools remain in Git
-history for reference.
+The release workflow uses format-3 snapshots. Run **Prepare release** on main, then
+review and merge its candidate after `deployment/snapshot` succeeds. The one-time
+branch bootstrap tools are no longer part of the current workflow.
 
 The generator removes obsolete scripts and docs when generating snapshots.
 Release files are limited to the two Helm Charts, `deploy/argocd`,
@@ -44,10 +40,11 @@ Chart-local `values-release.yaml`.
 Apply repository protection using a maintainer identity:
 
 ```bash
-gh api --method PUT repos/GodfreyLyu/LocalQwenDemo/branches/main/protection \
-  --input deploy/release/main-protection.json
-gh api --method PUT repos/GodfreyLyu/LocalQwenDemo/branches/deployment-release/protection \
-  --input deploy/release/branch-protection.json
+gh api --method PUT repos/GodfreyLyu/LocalQwenDemo/branches/main/protection --input deploy/release/main-protection.json
+```
+
+```bash
+gh api --method PUT repos/GodfreyLyu/LocalQwenDemo/branches/deployment-release/protection --input deploy/release/branch-protection.json
 ```
 
 Keep the existing immutable candidate ruleset. Do not enable automatic deletion
@@ -56,45 +53,65 @@ of merged branches. Do not use administrator merges to bypass either PR gate.
 ## Argo CD installation and first deployment
 
 Terraform owns the platform namespaces, device plugin and optional Argo CD and
-monitoring Helm releases. Enable `argocd_enabled = true` in your ignored platform terraform.tfvars,
-then run init, plan and apply as documented in the
-[platform README](../../infra/local-platform/README.md). Argo CD uses
-the pinned Chart 10.9.6, ClusterIP access and annotation-based resource tracking.
+monitoring Helm releases. First set `argocd_enabled = true` and leave
+`monitoring_enabled = false` in your ignored platform `terraform.tfvars`.
+Run init, plan and apply as documented in the
+[platform README](../../infra/local-platform/README.md). This creates the platform
+namespaces and installs Argo CD. Argo CD uses the Chart version pinned in the platform
+configuration, ClusterIP access and annotation-based resource tracking.
 ApplicationSets, Dex and notifications are disabled for the local cluster.
 
-The application also enables `values-monitoring.yaml` after its release, Minikube
-and Ollama values. Install the optional monitoring platform before merging/syncing
-the first monitoring-enabled deployment snapshot: set `monitoring_enabled = true`,
-prepare its external Grafana Secret, and follow the
-[platform monitoring setup](../../infra/local-platform/README.md#monitoring).
-ServiceMonitor and PrometheusRule CRDs must already exist. Terraform owns the platform
-and CRDs; Argo owns only application monitoring resources and dashboard ConfigMaps.
-The application AppProject retains no cluster-wide access. Standard Helm deployments
-can omit the overlay and continue without the monitoring platform.
+Next create the `local-inference` and `local-review-demo` namespaces, then prepare
+the stable `review-secrets` Secret in `local-review-demo` using the
+[Helm guide's Secret steps](helm-release.md#one-time-namespace-and-secret-preparation).
+Use `REVIEW_CONTEXT=minikube` and `REVIEW_NAMESPACE=local-review-demo` for that example.
+These application namespaces are not created by Terraform's default platform
+configuration or by the limited Argo AppProject.
 
-The application namespaces and signing Secret must exist before bootstrap. Private GHCR
-packages additionally require pull credentials in **both** application namespaces,
+Private GHCR packages additionally require pull credentials in **both** application namespaces,
 configured in each Chart's environment values. Access to a private Git repository
 requires a separate Argo CD repository Secret. None of these credentials belongs in Git.
 For public packages, no image pull Secret is needed. Verify GHCR package visibility
 before the first sync; repository visibility alone does not set package visibility.
 
-Use a separate checkout of the **approved format-3 deployment-release snapshot**.
-For a fresh installation, create the `local-inference` and `local-review-demo` namespaces
-and prepare the stable `review-secrets` Secret as described in the
-[Helm guide](helm-release.md#one-time-namespace-and-secret-preparation).
-The limited AppProject intentionally cannot create cluster-scoped resources.
+With the namespaces in place, create the external Grafana admin Secret in `monitoring`,
+set `monitoring_enabled = true`, and follow the
+[platform monitoring setup](../../infra/local-platform/README.md#monitoring).
+Grafana's Role and RoleBinding need `local-review-demo` to exist before this apply.
+Wait for the monitoring services and ServiceMonitor/PrometheusRule CRDs before the
+first application sync.
+
+The supplied Argo Application enables `values-monitoring.yaml` after its release,
+Minikube and Ollama values. Terraform owns the monitoring platform and CRDs; Argo owns
+the application monitors, rules and dashboard ConfigMaps. The application AppProject
+has no cluster-wide access. Standard Helm deployments can omit this overlay when
+monitoring is not needed.
+
+Finally, run the bootstrap commands from a separate checkout of the
+**approved format-3 deployment-release snapshot**:
 
 ```bash
 kubectl --context minikube apply -f deploy/argocd/project.yaml
+```
+
+```bash
 kubectl --context minikube apply -f deploy/argocd/review-ollama-application.yaml
-kubectl --context minikube -n argocd wait application/review-ollama \
-  --for=jsonpath='{.status.operationState.phase}'=Succeeded --timeout=2400s
-kubectl --context minikube -n argocd wait application/review-ollama \
-  --for=jsonpath='{.status.health.status}'=Healthy --timeout=2400s
+```
+
+```bash
+kubectl --context minikube -n argocd wait application/review-ollama --for=jsonpath='{.status.operationState.phase}'=Succeeded --timeout=2400s
+```
+
+```bash
+kubectl --context minikube -n argocd wait application/review-ollama --for=jsonpath='{.status.health.status}'=Healthy --timeout=2400s
+```
+
+```bash
 kubectl --context minikube apply -f deploy/argocd/local-review-application.yaml
-kubectl --context minikube -n argocd wait application/local-review \
-  --for=jsonpath='{.status.health.status}'=Healthy --timeout=2400s
+```
+
+```bash
+kubectl --context minikube -n argocd wait application/local-review --for=jsonpath='{.status.health.status}'=Healthy --timeout=2400s
 ```
 
 Both apps automatically track deployment-release, prune obsolete workloads and self-heal
@@ -107,8 +124,7 @@ After verifying the child Applications, run the following command from the main 
 checkout:
 
 ```bash
-kubectl --context minikube apply \
-  -f infra/local-platform/kubernetes/argocd/root-application.yaml
+kubectl --context minikube apply -f infra/local-platform/kubernetes/argocd/root-application.yaml
 ```
 
 This small root app watches only deploy/argocd so later approved Application
@@ -129,8 +145,8 @@ review backend separately validates its selected model. Standard Helm installs s
 `helm test` and do not render the Argo Job unless enabled explicitly. See
 [Argo Helm hooks](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/).
 
-All four PVCs have the Helm keep annotation and the Argo `Prune=false,Delete=false`
-annotations. Deleting a namespace or cluster still deletes its storage; these
+The four application and Ollama PVCs have the Helm keep annotation and the Argo
+`Prune=false,Delete=false` annotations. Deleting a namespace or cluster still deletes its storage; these
 annotations are not backups. Bootstrap does not delete or recreate namespaces or signing
 keys. Before applying an Application for an existing Helm-managed workload, record its
 exact values, image digests and PVCs. Plan the end of Helm management and verify that

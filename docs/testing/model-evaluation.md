@@ -1,8 +1,7 @@
 # Current-model evaluation through Ollama
 
-The evaluator uses the same `OllamaModel`, prompts, three serial section requests,
-seed policy and output validator as the application. It does not run a separate
-Transformers model. Run commands from the repository root.
+The evaluator uses the application's `OllamaModel`, prompts, three serial section
+requests, seed policy and output validator. Run commands from the repository root.
 
 ## Preparation
 
@@ -14,13 +13,20 @@ The default endpoint is `http://localhost:11434`, and the default model is
 `qwen3:1.7b`. Use `--ollama-base-url`, `--ollama-model` and optionally
 `--ollama-model-digest` to select another installed model. Without an explicit digest,
 the adapter captures it at startup and checks it throughout the run.
-All validation and sampling defaults come from the production model settings.
+Validation and sampling use the application's model settings; the token budget and
+deadline below match the Helm deployment defaults.
 
 ## Plan and run
 
 ```bash
 backend/.venv/bin/python scripts/evaluate_model.py --dry-run
+```
+
+```bash
 backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case average
+```
+
+```bash
 backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case all
 ```
 
@@ -31,8 +37,9 @@ contact Ollama, load model dependencies or download anything. Exit 0 with
 Defaults match the maintained deployment's 2048 input tokens, 384 total output tokens
 and 300-second review deadline. Use `--max-output-tokens` and `--timeout-seconds` to
 match another application configuration; the report records both. Settings ignore
-ambient environment overrides and `.env`. Model, endpoint, digest, context and sampling are explicit CLI
-choices; use `--help` for all options. All three sections share the production deadline and budget allocation.
+ambient environment overrides and `.env`. Select the model, endpoint, digest, context
+and sampling through CLI options; use `--help` for the full list. All three sections
+share one deadline and use the application's token budget allocation.
 
 To inspect generated synthetic output and record human judgments in a private terminal:
 
@@ -46,10 +53,13 @@ No automatic confirmation or keyword score can substitute for semantic review.
 
 ## Acceptance contract
 
-The checked-in `fixtures-v1.json` contains six synthetic cases: `hello_world`, `average`,
-`square`, `first_item`, `sql_injection` and `prompt_injection`. They are a new baseline,
-not reconstructed historical inputs. The evaluator parses but never executes them.
-No arbitrary user-source input option exists.
+The checked-in [fixtures](../../scripts/evaluation/fixtures-v1.json) contain six
+synthetic cases: `hello_world`, `average`, `square`, `first_item`, `sql_injection` and
+`prompt_injection`. These inputs were newly authored for the 2026-09-25 baseline;
+they are not recovered inputs from the earlier six-case evaluations. See the
+[historical reproducibility limits](../reports/verification-2026-09-10-to-13.md#reproducibility-limits)
+before comparing results. The evaluator parses but never executes the fixtures and
+has no arbitrary user-source input option.
 
 Every case must pass output structure/source-binding validation, generation metrics
 and runtime budget checks. Ollama does not report local preparation or PyTorch thread
@@ -74,8 +84,9 @@ rejection. It establishes transport/inference behavior, not quality acceptance.
 ## Reports and supervision
 
 Each run writes a new private `.local/model-evaluations/<run>/report.json` (directory
-0700, file 0600). Schema/tool version 3 records source/fixture/dependency fingerprints,
-configuration, actual Ollama digest, quantization and observed device after loading.
+0700, file 0600). Reports use schema version 3 and tool version 3.1.0. They record
+source, fixture and dependency fingerprints, configuration, the actual Ollama digest,
+quantization and observed device after loading.
 Plan mode leaves unobserved device/quantization null. Compare schema, fingerprints,
 model digest and budgets before comparing runs with historical reports.
 

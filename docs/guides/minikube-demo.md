@@ -35,7 +35,13 @@ The CLI uses an isolated temporary kubeconfig and never switches the global cont
 
 ```bash
 scripts/minikube_demo.sh init --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh doctor --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh up --profile minikube
 ```
 
@@ -70,6 +76,9 @@ not automatic release-Secret deletion or a forced retry.
 
 ```bash
 scripts/minikube_demo.sh init --profile minikube -f /path/to/site.yaml
+```
+
+```bash
 scripts/minikube_demo.sh up --profile minikube -f /path/to/site.yaml --port 8081
 ```
 
@@ -77,17 +86,15 @@ Values are applied in this order: Chart defaults, `values-minikube.yaml`, user `
 files, explicit CLI options, then local build image identities. Later values override
 earlier ones; multiple `-f` files are applied in the order supplied. User values are not
 silently imported from the previous release. Repeat your values/options on each upgrade.
-`--port` updates the browser Origin; `--storage-class` is
-optional explicit overrides. Deployment waits default to 3900 seconds (`--timeout`, also
+`--port` sets the browser Origin, and `--storage-class` overrides the StorageClass.
+Deployment waits default to 3900 seconds (`--timeout`, also
 accepting the old `--cold-timeout` spelling).
 
 The printed `values-local.json` is a complete ordinary values file. It contains
 no generated secret material and can be passed directly to Helm:
 
 ```bash
-helm upgrade --install local-review ./deploy/helm/local-review \
-  --kube-context minikube --namespace local-review-demo \
-  --reset-values -f /printed/path/values-local.json --wait --timeout 65m
+helm upgrade --install local-review ./deploy/helm/local-review --kube-context minikube --namespace local-review-demo --reset-values -f /printed/path/values-local.json --wait --timeout 65m
 ```
 
 Keep the matching Chart source/version with this file for reproducibility.
@@ -97,8 +104,17 @@ Diagnostic commands and `init` do not overwrite the last deployment values file.
 
 ```bash
 scripts/minikube_demo.sh status --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh logs --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh verify --profile minikube
+```
+
+```bash
 scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
@@ -111,8 +127,9 @@ before running `verify`, which owns its own temporary forwarding process.
 `verify` creates test accounts and a real review. It checks authentication, CSRF,
 account isolation, model identity, and persisted results. By default, it confirms that
 workloads are idle and blocks new submissions before restarting the local database and
-backend. It then checks that model-cache files are unchanged and that accounts, cookies
-and review history survived. `--skip-restart` produces a partial result and exits
+backend. It then checks that the retained legacy backend cache is unchanged and that
+accounts, cookies and review history survived. This does not test Ollama's separate
+model PVC or restart Ollama. `--skip-restart` produces a partial result and exits
 nonzero, not a persistence pass. No browser automation is implied; manual UI acceptance
 remains separate.
 
@@ -125,6 +142,9 @@ record. A copied checkout can inspect the release without importing `owner.json`
 
 ```bash
 helm history local-review --kube-context minikube -n local-review-demo
+```
+
+```bash
 scripts/minikube_demo.sh rollback --profile minikube --revision 1
 ```
 
@@ -149,21 +169,19 @@ already exist and are treated as externally supplied data.
 To also delete this deployment's data:
 
 ```bash
-scripts/minikube_demo.sh undeploy --profile minikube \
-  --purge-data --confirm-data-loss local-review-demo
+scripts/minikube_demo.sh undeploy --profile minikube --purge-data --confirm-data-loss local-review-demo
 ```
 
 Purge removes retained PVCs owned by this release and signing Secrets created by `init`.
 User-supplied claims and Secrets remain outside purge, even when supplied claims carry
-matching Helm annotations. It does not delete images, host Ollama, or the Minikube
-cluster. The CLI refuses to interrupt workloads if work is active or its state cannot be
+matching Helm annotations. Images, the independent Ollama release, host Ollama and the
+Minikube cluster remain in place. The CLI refuses to interrupt workloads if work is active or its state cannot be
 measured.
 
 To additionally remove a namespace that this CLI created:
 
 ```bash
-scripts/minikube_demo.sh undeploy --profile minikube \
-  --purge-data --delete-namespace --confirm-data-loss local-review-demo
+scripts/minikube_demo.sh undeploy --profile minikube --purge-data --delete-namespace --confirm-data-loss local-review-demo
 ```
 
 The CLI inventories every namespaced resource type. Unknown resources or explicit
@@ -192,7 +210,13 @@ Argo CD applications must be managed through their GitOps source.
 
 ```bash
 scripts/check_minikube_demo.sh
+```
+
+```bash
 backend/.venv/bin/python scripts/validate_helm.py
+```
+
+```bash
 backend/.venv/bin/python -m pytest scripts/tests/release -q
 ```
 

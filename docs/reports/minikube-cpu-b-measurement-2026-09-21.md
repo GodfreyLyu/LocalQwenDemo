@@ -6,8 +6,8 @@ checkout. For current guidance, start with the [documentation index](../README.m
 
 Result: **improved in this single comparison**. The B review completed in 191.941
 seconds and passed the unchanged product and sample-specific acceptance checks.
-Recommendation: **retain `OMP_NUM_THREADS=2` for now**. No rollback or configuration
-change was performed by this task. One successful sample does not establish
+Recommendation at the time: **retain `OMP_NUM_THREADS=2`**. No rollback or configuration
+change was performed during the measurement. One successful sample does not establish
 repeatability, behavior under load, persistence across restarts or browser acceptance.
 
 Baseline A: `e6d35cc3-eda1-4832-91a3-5ddeb78867b0`.

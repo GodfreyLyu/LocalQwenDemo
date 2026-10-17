@@ -6,7 +6,12 @@
 
 Passwords use Argon2id with a fresh random salt, memory cost 19,456 KiB, two iterations, and one lane. Identifiers are normalized before DynamoDB's conditional write. Passwords are neither stored in plaintext nor reversibly encrypted. Unknown accounts use a dummy hash verification, and invalid-login messages do not reveal which credential failed.
 
-Sessions have a 30-minute absolute lifetime, no refresh mechanism, and a signed random opaque token. With Secure cookies enabled, the browser cookie is `__Host-review_session`, Secure, HttpOnly, SameSite=Strict, Path=/, and has no Domain. A hashed token record in SQLite supports immediate logout revocation. Every authenticated request verifies the current DynamoDB account and disabled flag. Rotating the signing secret and restarting the backend invalidates all outstanding sessions.
+Sessions default to a 30-minute absolute lifetime, with no refresh mechanism, and use
+a signed random opaque token. With Secure cookies enabled, the browser cookie is
+`__Host-review_session`, Secure, HttpOnly, SameSite=Strict, Path=/, and has no Domain.
+A hashed token record in SQLite supports immediate logout revocation. Every
+authenticated request verifies the current DynamoDB account and disabled flag.
+Rotating the signing secret and restarting the backend invalidates all outstanding sessions.
 
 Authenticated state changes require both exact Origin validation and a session-bound `X-CSRF-Token`. Register/login require the exact Origin and JSON content type; CORS is deliberately absent. The maintained loopback HTTP entry explicitly uses `COOKIE_SECURE=false` and a separate cookie name. HttpOnly, SameSite=Strict, Origin and CSRF protections remain in force; HTTPS/Secure-cookie behavior is still covered by API tests. The service is not configured for public exposure.
 
@@ -25,20 +30,17 @@ agent, or cloud inference API.
 Input is bounded by HTTP bytes, characters, and model prompt tokens. Output token count, queue size, retry count, and inference concurrency are bounded. The model has no tools. Prompt injection can still influence review quality; model text is always untrusted.
 
 Three independent prompts reuse only the original untrusted source, never a previously
-generated section. Ollama receives the explicit `think=false`
-chat-template option; the application does not request, parse, store, or log
-chain-of-thought. Backend code inserts the fixed Markdown headings, but every review
-body remains model-generated. When a section reaches its token limit, post-processing
-may remove only the unfinished text after the last complete terminator. It cannot add or
-rewrite a conclusion. If no complete boundary exists, the response is rejected. Sampling
-uses a stable SHA-256-derived seed for each model digest, language, source, and section.
-The backend sends the seed to Ollama with the request. Neither the seed nor a source
-hash is logged or persisted. The validator
-rejects empty bodies, unexpected reserved headings and capped bodies with no complete
-terminator. It also rejects results that lack a recognizable link to a source
-identifier. Each rejection returns a fixed public error without saving or logging the
-rejected content. These checks reject obvious structural or source-association failures;
-they do not verify semantic correctness.
+generated section. Ollama receives `think=false`; unexpected thinking or tool output is
+rejected and never saved or logged. The backend inserts fixed Markdown headings and
+may remove unfinished text at a section's token limit, but it never writes or rewrites
+a review conclusion. Sampling seeds are sent to Ollama; neither seeds nor source
+hashes are logged or persisted.
+
+The [output checks](model.md#configuration-and-generation) reject empty or malformed
+sections, capped output with no complete sentence or item, and reviews without a
+recognizable source reference when the source provides one. Rejections use fixed public
+errors without saving or logging the rejected content. These checks do not verify
+semantic correctness.
 
 React Markdown skips raw HTML, applies `rehype-sanitize`, and does not load images from generated content. Unsafe link schemes are removed. External links use `noopener noreferrer`. Nginx adds a restrictive Content Security Policy, frame blocking, no-referrer, HSTS, and content-type protection. The style policy permits inline styles for CodeMirror; script execution remains restricted to bundled same-origin scripts.
 
@@ -52,7 +54,7 @@ The default Chart enables NetworkPolicy, but `values-minikube.yaml` explicitly d
 it. With policies enabled, the manifests permit frontend-to-backend traffic, backend
 access to DynamoDB Local, DNS, and the selected Ollama service on port 11434. The backend
 policy also retains public IPv4 HTTPS egress, excluding private and link-local ranges;
-it is not restricted to model registries. The backend no longer downloads model files.
+it is not restricted to model registries. The backend does not download model files.
 Policy enforcement depends on the CNI, and the independent Ollama Chart provides no
 network isolation of its own. Rendered policies alone do not prove isolation.
 
@@ -79,19 +81,13 @@ resources. The optional volume-permission init containers run as root with `CHOW
 
 ## Logging and secrets
 
-Structured application logs always contain UTC timestamp, level, service, environment,
-event, and only explicitly allowlisted optional fields. HTTP records add a fixed method,
-nonnegative monotonic duration, fixed error code, and only an allowlisted FastAPI route
-template; no unknown route falls back to the raw path. Successful health probes are
-suppressed, failed probes stay visible, and `X-Request-ID` remains available for
-correlation. Review submit/start/finish/reject events add opaque review ID and bounded
-queue/timing/outcome fields. A rejected model response may add only a fixed
-validation-reason enum; an unknown reason is omitted. Generation completion adds the
-summed monotonic duration, total token count, configured global limit and limit flag. It
-also adds integer or boolean metrics for the three fixed section names, including
-whether an unfinished suffix was removed from a capped section. `release_sha` is omitted
-unless the runtime receives a validated real SHA. See the [log
-contract](observability.md) for field definitions.
+Structured logs include a UTC timestamp, level, service, environment and event, plus
+only allowlisted diagnostic fields. HTTP records use known route templates, never raw
+paths. Successful health probes are suppressed; failed probes remain visible.
+Request and review IDs support correlation. Review and generation events report bounded
+timings, token counts and fixed validation reasons. Unknown measurements remain null
+where supported. See the [log contract](observability.md#safe-application-log-contract)
+for exact fields and timing boundaries.
 
 Removed text, removed character counts, punctuation, request/response bodies, raw path/URL/query, source code, source-derived hashes, generation seeds, prompts, token IDs or generated token content, decoded model output, passwords, cookies, tokens, usernames, and full exception messages are excluded. API validation errors never echo raw input. Uvicorn and frontend access logging are disabled, to prevent arbitrary path/query values from entering logs. Unexpected model/storage messages are translated to fixed public errors.
 

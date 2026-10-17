@@ -28,13 +28,24 @@ later. Do not manage the same resources from another root module.
 ## Initialize and review the plan
 
 Run from the repository root. Skip the startup script if the cluster is already running.
+For a new profile, the script defaults to 4 CPUs and 8192 MiB of memory. Set
+`MINIKUBE_CPUS` and `MINIKUBE_MEMORY` before starting it to choose a different size;
+these variables do not resize an existing profile. Install the krunkit driver before
+using this script; the device plugin is installed by Terraform in the following steps.
 
 ```bash
-# Run only to start or resume the cluster; this does not install drivers or device plugins.
 infra/local-platform/scripts/start-minikube.sh --profile minikube
+```
 
+```bash
 terraform -chdir=infra/local-platform/terraform/platform init
+```
+
+```bash
 terraform -chdir=infra/local-platform/terraform/platform validate
+```
+
+```bash
 terraform -chdir=infra/local-platform/terraform/platform plan
 ```
 
@@ -55,6 +66,9 @@ After reviewing the plan, apply it and verify the deployment:
 
 ```bash
 terraform -chdir=infra/local-platform/terraform/platform apply
+```
+
+```bash
 infra/local-platform/scripts/verify-gpu.sh --profile minikube
 ```
 
@@ -74,29 +88,48 @@ memory isolation. After changing it, verify with `--expected-slots N`. A node's
 `allocatable` value is its total schedulable capacity and does not decrease as Pods use
 the resource.
 
+Run the smoke test before starting Ollama, or while the GPU slot is free. With the
+default single slot, the test cannot schedule while Ollama holds it.
+
 ```bash
 kubectl --context minikube apply -f infra/local-platform/kubernetes/tests/gpu-smoke-test.yaml
+```
+
+```bash
 kubectl --context minikube -n gpu-tests wait --for=jsonpath='{.status.phase}'=Succeeded pod/gpu-smoke-test --timeout=150s
+```
+
+```bash
 kubectl --context minikube -n gpu-tests logs gpu-smoke-test
+```
+
+```bash
 kubectl --context minikube -n gpu-tests delete pod gpu-smoke-test
 ```
 
 Before repeating the test, delete the previous test Pod. If you change the default
 namespace, update the test YAML as well. If your kubeconfig is stored elsewhere, add
 `--kubeconfig` to the kubectl commands above. The test needs read and write access to
-the node's render device. On the current node, `renderD128` has permissions `0666`.
+the node's render device as UID 1000. Check the device permissions on your node if
+the access check fails.
 
 This test verifies scheduling, device injection and successful device access. It does
 not test Vulkan, model inference or GPU utilization. Inference workloads also need
 userspace drivers and an inference image that support the krunkit virtio GPU. The
-repository's `scripts/minikube_demo.sh` still requires the Docker driver and cannot be
+repository's `scripts/minikube_demo.sh` requires the Docker driver and cannot be
 used for this krunkit platform.
 
 If the test fails, inspect the logs and resources:
 
 ```bash
 kubectl --context minikube -n gpu-system logs daemonset/generic-device-plugin
+```
+
+```bash
 kubectl --context minikube -n gpu-tests describe pod gpu-smoke-test
+```
+
+```bash
 kubectl --context minikube describe node minikube
 ```
 
@@ -121,9 +154,7 @@ for credentials. The files below must contain the chosen admin username and pass
 they are not committed or printed by the platform:
 
 ```bash
-kubectl --context minikube -n monitoring create secret generic monitoring-grafana-admin \
-  --from-file=admin-user=/path/to/grafana-admin-user \
-  --from-file=admin-password=/path/to/grafana-admin-password
+kubectl --context minikube -n monitoring create secret generic monitoring-grafana-admin --from-file=admin-user=/path/to/grafana-admin-user --from-file=admin-password=/path/to/grafana-admin-password
 ```
 
 Keep this Secret stable across upgrades. Its two keys are `admin-user` and
@@ -139,19 +170,19 @@ values in its normal release workflow. Prometheus selects resources labelled
 dashboard ConfigMaps labelled `grafana_dashboard: "1"` from those same namespaces.
 Application changes do not replace this platform release or restart Ollama.
 
-The initial budget uses a 30-second scrape/evaluation interval, one-day retention,
+The configured budget uses a 30-second scrape/evaluation interval, one-day retention,
 a 4 GiB TSDB retention cap and a 5 Gi PVC on `standard`. Time and size limits both
 apply; the earlier limit wins. WAL and head-block space still need free disk, and
 hostpath PVC size is not a reservation or backup. Running monitoring containers request
 340m CPU and 1.25 GiB memory in total, with memory limits of 3.25 GiB; check node
 allocatable minus existing requests as well as actual usage before installation.
 Grafana requests 384 MiB and has a 768 MiB limit to leave room for dashboard queries
-and plugins; the previous 384 MiB limit caused runtime OOM kills.
+and plugins.
 Free node disk must also cover image downloads, TSDB data, WAL and kubelet eviction
 headroom. A successful Terraform plan or PVC bind does not establish capacity.
-Grafana dashboards and data sources are provisioned
-from Git. Grafana UI changes and Alertmanager silences are not retained after Pod
-replacement. Alertmanager displays alerts locally; no external receiver is configured.
+Grafana dashboards and data sources are provisioned from Git. Grafana UI changes
+and Alertmanager silences are not retained after Pod replacement. Alertmanager
+displays alerts locally; no external receiver is configured.
 
 API server, kubelet/cAdvisor, workload, node and storage monitoring remain enabled.
 The Minikube profile disables scraping and associated rules for unexposed etcd,
@@ -164,7 +195,13 @@ All monitoring UIs remain ClusterIP services. Use separate terminals as needed:
 
 ```bash
 kubectl --context minikube -n monitoring port-forward service/monitoring-grafana 3000:80
+```
+
+```bash
 kubectl --context minikube -n monitoring port-forward service/monitoring-kube-prometheus-prometheus 9090:9090
+```
+
+```bash
 kubectl --context minikube -n monitoring port-forward service/monitoring-kube-prometheus-alertmanager 9093:9093
 ```
 
