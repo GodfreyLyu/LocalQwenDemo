@@ -1,0 +1,3 @@
+# Apply last, after installing the platform monitoring release and its CRDs.
+monitoring:
+  enabled: true
