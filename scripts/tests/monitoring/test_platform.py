@@ -119,7 +119,7 @@ def test_retention_and_resource_budgets_are_bounded(values):
     prometheus = values["prometheus"]["prometheusSpec"]
     assert prometheus["replicas"] == 1
     assert prometheus["scrapeInterval"] == prometheus["evaluationInterval"] == "30s"
-    assert prometheus["retention"] == "3d"
+    assert prometheus["retention"] == "1d"
     assert prometheus["retentionSize"] == "4GiB"
     assert prometheus["storageSpec"]["volumeClaimTemplate"]["spec"] == {
         "storageClassName": "standard",
