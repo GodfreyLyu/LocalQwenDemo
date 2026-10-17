@@ -148,7 +148,7 @@ def test_retention_and_resource_budgets_are_bounded(values):
     assert sum(parse_quantity(b["requests"]["cpu"]) for b in budgets) <= 0.5
     assert sum(parse_quantity(b["limits"]["cpu"]) for b in budgets) <= 3
     assert sum(parse_quantity(b["requests"]["memory"]) for b in budgets) <= 1.25 * 1024**3
-    assert sum(parse_quantity(b["limits"]["memory"]) for b in budgets) <= 3 * 1024**3
+    assert sum(parse_quantity(b["limits"]["memory"]) for b in budgets) <= 3.25 * 1024**3
 
 
 def test_only_unexposed_control_plane_targets_and_related_rules_are_disabled(values):

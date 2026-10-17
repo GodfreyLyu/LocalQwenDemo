@@ -44,6 +44,14 @@ In separate terminals, forward Prometheus on `9090:9090` using
 Alertmanager displays and groups alerts locally; external notification delivery is
 not configured.
 
+If Grafana probes report `connection refused`, inspect the `grafana` container's
+last termination reason and previous logs. `OOMKilled` means the process exceeded its
+container memory limit or encountered node memory pressure; extending probe delays
+does not fix it. Check node capacity and adjust Grafana resources in the platform's
+`values/monitoring.yaml`, then plan and apply with Terraform. Verify dashboard queries
+and restart counts after the rollout. Pod replacement discards Grafana UI edits;
+the provisioned dashboards and data sources are loaded again from ConfigMaps.
+
 ## Diagnose targets and alerts
 
 Start with Prometheus Targets and

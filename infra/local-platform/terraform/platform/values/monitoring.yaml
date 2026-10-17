@@ -109,8 +109,9 @@ grafana:
     userKey: admin-user
     passwordKey: admin-password
   resources:
-    requests: {cpu: 100m, memory: 128Mi}
-    limits: {cpu: 500m, memory: 384Mi}
+    # Leave room for dashboard queries and plugins; 384Mi caused runtime OOM kills.
+    requests: {cpu: 100m, memory: 384Mi}
+    limits: {cpu: 500m, memory: 768Mi}
   # Dashboards and data sources are provisioned from Git; UI edits are not durable.
   persistence:
     enabled: false
