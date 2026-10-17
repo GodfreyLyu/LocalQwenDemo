@@ -59,6 +59,23 @@ helm template local-review ./deploy/helm/local-review \
   --namespace local-review-helm -f deploy/helm/local-review/values-minikube.yaml
 ```
 
+## Optional monitoring
+
+Install the [Terraform monitoring platform](../../../infra/local-platform/README.md)
+and its Prometheus Operator CRDs before enabling monitoring in this Chart. Append
+`-f deploy/helm/local-review/values-monitoring.yaml` after the release and environment
+values in the Helm command. This creates the backend ServiceMonitor, nine alert
+rules and two Grafana dashboards. Monitoring is disabled in the default values.
+
+The supplied platform discovers `local-review-demo` and `monitoring`. For another
+application namespace, update its Prometheus namespace selectors and Grafana
+sidecar search namespaces and RBAC as well as the application release namespace.
+When NetworkPolicy is enabled, the Chart permits the selected Prometheus Pods to
+reach backend port 8000. `/metrics` is not exposed by the frontend proxy.
+
+Follow the [monitoring runbook](../../../docs/operations/observability.md) for
+capacity checks, Grafana credentials, access, alert handling and GitOps ordering.
+
 ## Lifecycle
 
 Each namespace supports one release. Fixed Service names preserve local endpoint

@@ -81,6 +81,17 @@ spec:
     ports:
     - port: 8000
       protocol: TCP
+{{- if .Values.monitoring.enabled }}
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: {{ .Values.monitoring.namespace | quote }}
+      podSelector:
+        matchLabels: {{ .Values.monitoring.prometheusPodLabels | toJson }}
+    ports:
+    - port: 8000
+      protocol: TCP
+{{- end }}
   podSelector:
     matchLabels:
       app: review-backend

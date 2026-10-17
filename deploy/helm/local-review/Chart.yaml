@@ -2,6 +2,6 @@ apiVersion: v2
 name: local-review
 description: Local Qwen code review with persistent single-worker inference
 type: application
-version: 0.1.3-rc.13
-appVersion: 5a9a13ab6f0423defa331675bbe4bf2935188be0
+version: 0.1.3-rc.14
+appVersion: 97d03665b437069ba533dd7034244e896a2a7145
 kubeVersion: '>=1.30.0-0'

@@ -1,18 +1,18 @@
 {
   "schemaVersion": 3,
-  "sourceSha": "5a9a13ab6f0423defa331675bbe4bf2935188be0",
+  "sourceSha": "97d03665b437069ba533dd7034244e896a2a7145",
   "repository": "GodfreyLyu/LocalQwenDemo",
   "inputs": {
-    "backend": "3a350d9108edf6e8d369c762fdad434b9898c60e0b7b1a3efe7dfe4b41aa7cc3",
+    "backend": "52978850ba46dc13da05ce2550501a28ae12824408766c48b7352edd32738d37",
     "frontend": "45f67bbc875e1f91ac07b80154b8c2ec34931cf44c98908eeddb116d3d4f251b",
     "ollama": "f041dc402fcaa346bca837eb11bcc552b38866f0d60521846d5b081fb6817c62",
-    "deployment": "611f26b69d8806a9cb93ae8fc1be17a8019b4e6cfbac8cb0469e5b4c73ddcfe1"
+    "deployment": "374a1a7ce7d73f24b3d732aecd19bb822de1c4c8ea9d560fa271c19e5f217ebd"
   },
   "images": {
     "backend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-backend",
-      "sourceSha": "77f286bba7bb8027874eb1c463d7513c386e2539",
-      "digest": "sha256:ce649e0867fc18428f5d620d7ff163c86e05a80ca5510ac0b9a736c5f4ec3782"
+      "sourceSha": "97d03665b437069ba533dd7034244e896a2a7145",
+      "digest": "sha256:3836379fd30f67663d0e660adcf44e37f77acae098f722e9b948d18835eb88cd"
     },
     "frontend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-frontend",
@@ -26,15 +26,15 @@
     }
   },
   "candidate": {
-    "version": "0.1.3-rc.13",
-    "branch": "release-candidate/0.1.3-rc.13",
-    "runId": "37872089598",
-    "runNumber": 13,
-    "baseSha": "c304d1213e5f9effaecc5f1627347bfee6090e23"
+    "version": "0.1.3-rc.14",
+    "branch": "release-candidate/0.1.3-rc.14",
+    "runId": "39006028952",
+    "runNumber": 14,
+    "baseSha": "8603b49243b10d865b026e02cd42656b5dff4442"
   },
   "chartVersions": {
-    "local-review": "0.1.3-rc.13",
+    "local-review": "0.1.3-rc.14",
     "local-ollama": "0.1.1"
   },
-  "chartVersion": "0.1.3-rc.13"
+  "chartVersion": "0.1.3-rc.14"
 }
