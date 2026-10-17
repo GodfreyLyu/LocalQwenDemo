@@ -2,9 +2,91 @@
 
 [Documentation index](../README.md)
 
-The local service emits content-free JSON diagnostics. It installs no external collector,
-metrics backend, canary or alert infrastructure. Use the [local runbook](../operations/observability.md)
-and record measured, unavailable and inferred facts separately.
+The local service emits content-free JSON diagnostics and internal Prometheus metrics.
+The optional Terraform monitoring platform provides Prometheus, Grafana and Alertmanager;
+the application Chart owns its ServiceMonitor, rules and dashboards. Use the
+[local runbook](../operations/observability.md) and record measured, unavailable and
+inferred facts separately. Monitoring does not run synthetic reviews or repair workloads.
+
+## Metrics contract
+
+`GET /metrics` is an internal backend endpoint on port 8000. It needs no user session
+and is omitted from OpenAPI. The frontend does not proxy it. Each `create_app` owns
+its registry; there is no global shared registry or additional inference process.
+The endpoint remains available during model loading, drain and storage errors.
+Scrapes do not increment HTTP metrics or emit normal request logs.
+
+| Metric | Type and meaning |
+| --- | --- |
+| `review_http_requests_total` | Counter by fixed `method`, allowlisted route template and HTTP `status`; includes health probes |
+| `review_http_request_duration_seconds` | Histogram by method/route, from request handling to response headers starting |
+| `review_submissions_total` | Counter of newly committed submissions; idempotent retries are excluded |
+| `review_rejections_total` | Counter by safe `reason` for service admission rejections; HTTP authentication/validation failures remain HTTP observations |
+| `review_completions_total` | Counter by `outcome=completed` or safe error code, recorded after terminal-state persistence |
+| `review_queue_depth`, `review_queue_capacity` | Current persisted waiting count and configured capacity |
+| `review_queue_oldest_age_seconds` | Age from original submission of the oldest waiting review; zero only for a successfully observed empty queue |
+| `review_metrics_collection_success` | Whether the read-only queue snapshot succeeded |
+| `review_coordinator_state` | One-hot operational state: `model_loading`, `ready`, `inference_draining`, `inference_stuck`, `startup_or_storage_failure` |
+| `review_worker_busy` | Whether the actual review executor call is still running, including drain and late exit after stuck |
+| `review_queue_wait_seconds` | Histogram from original submission to this execution attempt starting |
+| `review_duration_seconds` | Histogram from original submission to persisted terminal state |
+| `review_execution_duration_seconds` | Monotonic executor duration through its actual return, including cancellation drain |
+| `review_generation_duration_seconds` | Observed section call duration, including first-content time |
+| `review_first_content_duration_seconds` | Section call to first nonempty content |
+| `review_input_tokens_total`, `review_generated_tokens_total` | Observed token counters by fixed section |
+| `review_output_limit_total` | Counter of completed section responses reaching their output budget |
+
+The final four rows use only `section=summary|findings|suggestions`; duration metrics
+are Histograms. Standard `_bucket`, `_sum`, `_count` and `_created` samples follow
+the client library's exposition format. Unknown HTTP routes become `unknown`, unknown
+methods become `OTHER`, and error labels use the same safe-code allowlist as logs.
+No request/review ID, account, raw URL/query, source/hash, prompt, generated text or
+exception message is a metric label. Kubernetes target identity labels are supplied
+by service discovery, not copied from request data.
+
+Counters describe events observed by the current process and reset on restart.
+Completion/rejection labels start at zero so a first event can contribute to a later
+Prometheus `increase`. They are not an audit of persistent history: recovery can
+requeue or terminate old records, and a crash can occur between commit and observation.
+Queue gauges instead query the durable store. That query uses a short read-only
+connection and never calls the writable readiness/session-cleanup probe. On collection
+failure, depth and age are omitted and collection success is zero; stale data must not
+be interpreted as an empty queue.
+
+Queue wait and total review duration retain the original submission timestamp. After
+recovery, they can include earlier attempts and downtime. Executor duration is a
+separate attempt measurement. A timed-out review is persisted as failed before drain
+finishes, so worker occupancy can remain one after completion is recorded. The state
+gauge preserves the last operational state during shutdown; it is not a fresh readiness
+probe or a writable storage-health guarantee.
+
+Startup validation does not increment review-generation metrics. Section latency
+histograms have zero observation-count baselines; no zero-duration observations are
+inserted. Dashboards display latency only when the observation rate is positive.
+Unobserved token counts remain absent. An interrupted stream may contain text without
+a terminal token count; do not infer zero generated tokens. These metrics
+describe calls through this backend, not other clients of the shared Ollama server.
+
+## Platform ownership and limits
+
+Terraform owns the optional `monitoring` Helm release and Operator CRDs. The application
+Chart defaults monitoring resources off; `values-monitoring.yaml` enables them after
+the platform is ready. Argo CD uses that overlay in its approved application snapshot.
+Prometheus selects `release: monitoring` resources in `monitoring` and
+`local-review-demo`. Grafana reads dashboard ConfigMaps in those two namespaces.
+See the [platform setup](../../infra/local-platform/README.md#monitoring) for versions,
+resource requests, credential preparation and storage lifecycle.
+
+The initial platform uses 30-second scrape/evaluation intervals, three-day retention,
+a 4 GiB TSDB retention target and a 5 GiB PVC. WAL/head data also consumes space;
+retention is not a hard total-disk quota. Dashboards are provisioned from Git and UI
+changes are not durable. Alertmanager has no external notification receiver configured.
+
+NetworkPolicy isolation requires a capable CNI and an enabled policy. The Minikube
+profile disables policies. When enabled, the added ingress selects both the monitoring
+namespace and Prometheus Pods. Because metrics share backend port 8000, this is a port
+boundary, not HTTP-path isolation. ClusterIP and lack of a frontend proxy do not imply
+that other in-cluster workloads cannot reach the endpoint.
 
 ## Safe application log contract
 

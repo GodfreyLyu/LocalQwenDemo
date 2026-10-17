@@ -55,12 +55,22 @@ of merged branches. Do not use administrator merges to bypass either PR gate.
 
 ## Argo CD installation and first deployment
 
-Terraform owns the platform namespaces, device plugin and optional Argo CD Helm
-release. Enable `argocd_enabled = true` in your ignored platform terraform.tfvars,
+Terraform owns the platform namespaces, device plugin and optional Argo CD and
+monitoring Helm releases. Enable `argocd_enabled = true` in your ignored platform terraform.tfvars,
 then run init, plan and apply as documented in the
 [platform README](../../infra/local-platform/README.md). Argo CD uses
 the pinned Chart 10.9.6, ClusterIP access and annotation-based resource tracking.
 ApplicationSets, Dex and notifications are disabled for the local cluster.
+
+The application also enables `values-monitoring.yaml` after its release, Minikube
+and Ollama values. Install the optional monitoring platform before merging/syncing
+the first monitoring-enabled deployment snapshot: set `monitoring_enabled = true`,
+prepare its external Grafana Secret, and follow the
+[platform monitoring setup](../../infra/local-platform/README.md#monitoring).
+ServiceMonitor and PrometheusRule CRDs must already exist. Terraform owns the platform
+and CRDs; Argo owns only application monitoring resources and dashboard ConfigMaps.
+The application AppProject retains no cluster-wide access. Standard Helm deployments
+can omit the overlay and continue without the monitoring platform.
 
 The application namespaces and signing Secret must exist before bootstrap. Private GHCR
 packages additionally require pull credentials in **both** application namespaces,

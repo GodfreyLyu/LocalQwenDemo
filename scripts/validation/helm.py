@@ -8,6 +8,7 @@ import yaml
 from tooling_paths import ROOT
 
 from validation.constants import CHART, MINIKUBE_VALUES
+from validation.monitoring import validate_monitoring
 from validation.resources import require, validate_resources
 from validation.snapshot import validate_snapshot, validate_tree
 
@@ -59,6 +60,11 @@ def main():
             ],
         )
     )
+    monitoring_values = [*values, root / CHART / "values-monitoring.yaml"]
+    for policies in ("false", "true"):
+        monitored = render(root, monitoring_values, settings=["networkPolicy.enabled=" + policies])
+        validate_resources(monitored)
+        validate_monitoring(monitored)
     validate_resources(
         render(
             root,

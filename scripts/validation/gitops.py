@@ -5,6 +5,7 @@ import subprocess
 
 import yaml
 
+from validation.monitoring import validate_monitoring
 from validation.resources import require, validate_resources
 
 
@@ -31,6 +32,13 @@ def render_application(root, application):
 def validate_snapshot(root, manifest):
     repo = "https://github.com/" + manifest["repository"] + ".git"
     project = yaml.safe_load((root / "deploy/argocd/project.yaml").read_text())
+    require(
+        project["apiVersion"] == "argoproj.io/v1alpha1"
+        and project["kind"] == "AppProject"
+        and project["metadata"]["name"] == "local-review"
+        and project["metadata"]["namespace"] == "argocd",
+        "Unexpected AppProject identity",
+    )
     require(project["spec"]["sourceRepos"] == [repo], "Unexpected project source")
     require(project["spec"]["clusterResourceWhitelist"] == [], "No cluster-wide app access")
     expected = {
@@ -42,14 +50,52 @@ def validate_snapshot(root, manifest):
         "local-review": (
             "local-review",
             "local-review-demo",
-            ["values-release.yaml", "values-minikube.yaml", "values-minikube-ollama.yaml"],
+            [
+                "values-release.yaml",
+                "values-minikube.yaml",
+                "values-minikube-ollama.yaml",
+                "values-monitoring.yaml",
+            ],
         ),
     }
+    allowed = {
+        ("", "Service"),
+        ("", "ConfigMap"),
+        ("", "PersistentVolumeClaim"),
+        ("", "ServiceAccount"),
+        ("apps", "Deployment"),
+        ("batch", "Job"),
+        ("networking.k8s.io", "NetworkPolicy"),
+        ("monitoring.coreos.com", "ServiceMonitor"),
+        ("monitoring.coreos.com", "PrometheusRule"),
+    }
+    require(
+        sorted(project["spec"]["namespaceResourceWhitelist"], key=lambda item: item["kind"])
+        == sorted(
+            [{"group": group, "kind": kind} for group, kind in allowed],
+            key=lambda item: item["kind"],
+        ),
+        "AppProject must allow only the required application resource kinds",
+    )
+    require(
+        sorted(project["spec"]["destinations"], key=lambda item: item["namespace"])
+        == sorted(
+            [
+                {"server": "https://kubernetes.default.svc", "namespace": namespace}
+                for _, namespace, _ in expected.values()
+            ],
+            key=lambda item: item["namespace"],
+        ),
+        "AppProject must target only the two application namespaces",
+    )
     rendered = {}
     for name, (chart, namespace, values) in expected.items():
         app = yaml.safe_load((root / f"deploy/argocd/{name}-application.yaml").read_text())
         require(
-            app["kind"] == "Application" and app["metadata"]["name"] == name,
+            app["apiVersion"] == "argoproj.io/v1alpha1"
+            and app["kind"] == "Application"
+            and app["metadata"]["name"] == name
+            and app["metadata"]["namespace"] == "argocd",
             "Unexpected Application identity",
         )
         spec = app["spec"]
@@ -83,7 +129,14 @@ def validate_snapshot(root, manifest):
         )
         docs = render_application(root, app)
         rendered[name] = {(r["kind"], r["metadata"]["name"]): r for r in docs}
+        require(len(rendered[name]) == len(docs), "Duplicate Kubernetes resource")
         for resource in docs:
+            group = resource["apiVersion"].split("/")[0] if "/" in resource["apiVersion"] else ""
+            require((group, resource["kind"]) in allowed, "Resource is not allowed by AppProject")
+            require(
+                resource["metadata"].get("namespace") == namespace,
+                "Resource must stay in its Application namespace",
+            )
             if resource["kind"] == "PersistentVolumeClaim":
                 require(
                     resource["metadata"]["annotations"].get("argocd.argoproj.io/sync-options")
@@ -96,6 +149,7 @@ def validate_snapshot(root, manifest):
             "Chart version does not match provenance",
         )
     app = validate_resources(list(rendered["local-review"].values()))
+    validate_monitoring(list(app.values()))
     # The compatibility root values must agree with the file Argo actually reads.
     require(
         (root / "release-values.yaml").read_bytes()

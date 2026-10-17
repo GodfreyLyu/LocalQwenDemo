@@ -7,12 +7,13 @@ from fastapi import FastAPI
 
 from app.api.http_errors import register_error_handlers
 from app.api.middleware import RequestGuard
-from app.api.routes import auth, health, reviews, runtime
+from app.api.routes import auth, health, metrics, reviews, runtime
 from app.config import Settings
 from app.coordinator import Coordinator
 from app.inference.model import ReviewModel
 from app.inference.ollama import OllamaModel
 from app.logging import configure_logging
+from app.monitoring import Metrics
 from app.persistence.storage import Store
 from app.persistence.users import DynamoUsers, UserStore
 from app.rate_limit import RateLimiter
@@ -46,13 +47,16 @@ def create_app(
     )
     app.state.settings = config
     app.state.store = store = Store(config.data_dir)
+    app.state.metrics = monitoring = Metrics(store, config.queue_capacity)
     app.state.users = user_store = users or DynamoUsers(config)
-    app.state.model = review_model = model or OllamaModel(config)
-    app.state.coordinator = Coordinator(store, user_store, review_model, config)
+    app.state.model = review_model = model or OllamaModel(config, metrics=monitoring)
+    app.state.coordinator = Coordinator(store, user_store, review_model, config, monitoring)
     app.state.limiter = limiter = RateLimiter()
-    app.state.review_service = ReviewService(config, store, app.state.coordinator, limiter)
-    app.add_middleware(RequestGuard)
+    app.state.review_service = ReviewService(
+        config, store, app.state.coordinator, limiter, monitoring
+    )
+    app.add_middleware(RequestGuard, metrics=monitoring)
     register_error_handlers(app)
-    for router in (auth.router, reviews.router, health.router, runtime.router):
+    for router in (auth.router, reviews.router, health.router, runtime.router, metrics.router):
         app.include_router(router)
     return app

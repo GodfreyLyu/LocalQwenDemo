@@ -140,6 +140,7 @@ the request. This keeps stores and settings separate across app instances.
 | `health.py`, `api/routes/runtime.py`, `inference/identity.py` | Readiness observation, runtime HTTP presentation and typed adapter identity |
 | `api/middleware.py`, `api/http_errors.py` | Bounded request bodies, response headers and safe error responses |
 | `logging.py` | Structured logging and field allowlists |
+| `monitoring.py`, `api/routes/metrics.py` | Per-application Prometheus metrics and read-only collection |
 | `coordinator.py` | Serial queue processing, persistence and timeout draining |
 | `review_service.py`, `api/dependencies.py`, `domain.py` | Admission policy, typed HTTP dependencies and internal record/result types |
 | `inference/model.py`, `inference/ollama.py`, `inference/generation.py` | Model interface, Ollama transport, sampling policy and metrics |

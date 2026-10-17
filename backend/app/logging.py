@@ -57,6 +57,7 @@ SAFE_ROUTES = frozenset(
         "/api/v1/auth/me",
         "/api/v1/reviews",
         "/api/v1/reviews/{review_id}",
+        "/api/v1/runtime",
         "/health/live",
         "/health/ready",
     }

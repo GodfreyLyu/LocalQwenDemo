@@ -210,10 +210,14 @@ Readiness and acceptance have independent reports.
 
 ## Observability flow
 
-The backend emits allowlisted JSON events to stderr. The Helm CLI `logs` command
-reads the selected backend container's logs. No cloud collector, metrics exporter or automated alarm
-service is installed. [The log contract](observability.md) and [local runbook](../operations/observability.md)
-define safe correlation, timing boundaries and unknown measurements.
+The backend emits allowlisted JSON events to stderr and serves an internal `/metrics`
+endpoint from its per-application Prometheus registry. The Helm CLI `logs` command
+reads the selected backend container's logs. Optional Terraform monitoring runs
+Prometheus, Grafana and Alertmanager; the application Chart supplies its monitor,
+rules and dashboards. [The observability contract](observability.md) and
+[local runbook](../operations/observability.md) define safe correlation, timing
+boundaries and unknown measurements. Scraping never submits inference or runs the
+writable readiness probe.
 
 ## Frontend task status
 
@@ -231,8 +235,9 @@ The package layout follows existing responsibilities with one level of grouping:
 backend/app/
   main.py, config.py, model_config.py, domain.py, errors.py
   review_service.py, coordinator.py, health.py, rate_limit.py, logging.py, startup.py
+  monitoring.py
   api/
-    routes/                   # auth, reviews, health, runtime HTTP endpoints
+    routes/                   # auth, reviews, health, runtime and internal metrics
     auth.py, dependencies.py, schemas.py, middleware.py, http_errors.py
   inference/
     model.py, ollama.py, prompts.py, generation.py, review_output.py, identity.py
@@ -257,6 +262,7 @@ Use these sources when auditing or changing the design:
 | Durable admission, recovery and sessions             | [storage.py](../../backend/app/persistence/storage.py)                                                       |
 | Single executor, readiness and cancellation/draining | [coordinator.py](../../backend/app/coordinator.py)                                               |
 | Inference and model/context verification | [ollama.py](../../backend/app/inference/ollama.py) |
+| Prometheus metrics and read-only collection | [monitoring.py](../../backend/app/monitoring.py), [metrics.py](../../backend/app/api/routes/metrics.py) |
 | Prompt, output and generation policy | [prompts.py](../../backend/app/inference/prompts.py), [review_output.py](../../backend/app/inference/review_output.py), [generation.py](../../backend/app/inference/generation.py) |
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |
 | Deployment composition                               | [Application Chart](../../deploy/helm/local-review/Chart.yaml)                  |

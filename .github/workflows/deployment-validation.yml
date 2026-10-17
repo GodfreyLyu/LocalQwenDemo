@@ -59,6 +59,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash validator/scripts/check_helm_schema.sh snapshot
+      - name: Check monitoring rules and dashboards
+        if: steps.verify.outputs.migration != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash validator/scripts/check_monitoring.sh snapshot
       - name: Recheck candidate commit
         env:
           GH_TOKEN: ${{ github.token }}

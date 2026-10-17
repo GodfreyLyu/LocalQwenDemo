@@ -1,0 +1,16 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.dashboards.enabled }}
+{{- range $path, $_ := .Files.Glob "files/dashboards/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ base $path | trimSuffix ".json" }}
+  namespace: {{ $.Release.Namespace | quote }}
+  labels:
+    {{- include "review.labels" $ | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  {{ base $path }}: |-
+    {{- $.Files.Get $path | replace "__REVIEW_NAMESPACE__" $.Release.Namespace | replace "__NAMESPACE_HASH__" ($.Release.Namespace | sha256sum | trunc 12) | replace "__OLLAMA_NAMESPACE__" $.Values.monitoring.ollamaNamespace | replace "__OLLAMA_RELEASE__" $.Values.monitoring.ollamaRelease | nindent 4 }}
+{{- end }}
+{{- end }}

@@ -14,6 +14,7 @@ from app.inference.prompts import SECTION_SPECS
 @dataclass
 class SectionMetrics:
     generated_tokens: int = 0
+    output_tokens_observed: bool = False
     limit_reached: bool = False
     trailing_fragment_removed: bool = False
     # None means a stage was not observed, rather than completed in zero time.

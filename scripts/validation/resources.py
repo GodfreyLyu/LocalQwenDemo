@@ -16,6 +16,8 @@ def validate_resources(resources):
         "PersistentVolumeClaim",
         "ServiceAccount",
         "NetworkPolicy",
+        "ServiceMonitor",
+        "PrometheusRule",
     }
     require(
         all(r and r["kind"] in allowed for r in resources),

@@ -44,6 +44,8 @@ jmespath==1.1.0
     # via
     #   boto3
     #   botocore
+prometheus-client==0.26.0
+    # via local-llm-code-review (pyproject.toml)
 pycparser==3.0
     # via cffi
 pydantic==2.13.5

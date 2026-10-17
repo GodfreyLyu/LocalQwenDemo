@@ -1,2 +1,164 @@
-# Placeholder; no helm_release consumes this file yet.
-{}
+# Single-node krunkit monitoring. Application monitors and rules stay in its Helm Chart.
+# Keep release: monitoring aligned with the application's monitoring configuration.
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+
+# These control-plane endpoints are not exposed for scraping in this local profile.
+# Keep API server, kubelet/cAdvisor, workload, storage and node alerts enabled.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeScheduler:
+  enabled: false
+
+prometheusOperator:
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 256Mi}
+  prometheusConfigReloader:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}
+  admissionWebhooks:
+    patch:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 64Mi}
+
+prometheus:
+  service:
+    type: ClusterIP
+  prometheusSpec:
+    replicas: 1
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    retention: 3d
+    retentionSize: 4GiB
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: '1', memory: 1536Mi}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 5Gi
+    # Platform ServiceMonitors live in monitoring, including API server/kubelet targets.
+    serviceMonitorSelector:
+      matchLabels:
+        release: monitoring
+    serviceMonitorNamespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [monitoring, local-review-demo]
+    podMonitorSelector:
+      matchLabels:
+        release: monitoring
+    podMonitorNamespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [monitoring, local-review-demo]
+    ruleSelector:
+      matchLabels:
+        release: monitoring
+    ruleNamespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [monitoring, local-review-demo]
+    probeSelector:
+      matchLabels:
+        release: monitoring
+    probeNamespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    scrapeConfigSelector:
+      matchLabels:
+        release: monitoring
+    scrapeConfigNamespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+
+alertmanager:
+  service:
+    type: ClusterIP
+  # Alerts remain visible locally; no external notification destination is configured.
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests: {cpu: 25m, memory: 64Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+
+grafana:
+  service:
+    type: ClusterIP
+  admin:
+    existingSecret: monitoring-grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 384Mi}
+  # Dashboards and data sources are provisioned from Git; UI edits are not durable.
+  persistence:
+    enabled: false
+  testFramework:
+    enabled: false
+  rbac:
+    namespaced: true
+    namespaces: [local-review-demo]
+    useExistingRole: monitoring-grafana-configmaps
+  sidecar:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 128Mi}
+    dashboards:
+      label: grafana_dashboard
+      labelValue: '1'
+      resource: configmap
+      searchNamespace: [monitoring, local-review-demo]
+    datasources:
+      resource: configmap
+      searchNamespace: monitoring
+  # The upstream Role also reads Secrets. Use ConfigMap-only Roles for the sidecars.
+  extraObjects:
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: monitoring-grafana-configmaps
+        namespace: monitoring
+      rules:
+        - apiGroups: ['']
+          resources: [configmaps]
+          verbs: [get, list, watch]
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: monitoring-grafana-configmaps
+        namespace: local-review-demo
+      rules:
+        - apiGroups: ['']
+          resources: [configmaps]
+          verbs: [get, list, watch]
+
+kube-state-metrics:
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {cpu: 200m, memory: 128Mi}

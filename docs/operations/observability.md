@@ -8,8 +8,84 @@ For Docker-driver deployments managed by the local Helm CLI, start with
 use the explicit context and namespace commands in the
 [recovery runbook](recovery-and-cleanup.md#health-and-startup). For Argo CD, inspect
 Application sync/health and the selected Pod through the [GitOps guide](../guides/gitops.md).
-Confirm the context and namespace before interpreting results. No external monitoring
-service or automated repair is installed by this project.
+Confirm the context and namespace before interpreting results. The optional monitoring
+platform observes the application without automatically repairing it.
+
+## Enable monitoring
+
+Install the pinned platform through [Terraform monitoring setup](../../infra/local-platform/README.md#monitoring)
+first. The `local-review-demo` namespace and external Grafana admin Secret must exist.
+Wait for the Operator/CRDs, Prometheus and Grafana before enabling application resources.
+Do not use Helm to mutate an Argo-managed deployment.
+
+For standard Helm, append `deploy/helm/local-review/values-monitoring.yaml` after the
+release and environment files on install and every upgrade. For Argo CD, the application
+already lists that overlay last; merge its deployment snapshot only after platform
+setup. The AppProject permits the two monitoring resource kinds in the application
+namespace, while cluster-wide access remains prohibited.
+
+Inspect discovery and reach the interfaces through loopback port-forwards:
+
+```bash
+kubectl --context minikube -n monitoring get pods,pvc
+kubectl --context minikube -n local-review-demo get servicemonitor,prometheusrule
+kubectl --context minikube -n monitoring port-forward service/monitoring-grafana 3000:80
+```
+
+Open `http://localhost:3000` with the external admin credentials. Use **Service Overview**
+for API responses, review outcomes and queue state; use **Inference & Resources** for
+section timings, observed token rates and separately scoped backend/Ollama resource
+usage. API panels exclude health probes. Empty panels can mean no observations rather
+than a failure or zero latency. Percentiles need enough samples to be useful.
+
+In separate terminals, forward Prometheus on `9090:9090` using
+`service/monitoring-kube-prometheus-prometheus`, or Alertmanager on `9093:9093` using
+`service/monitoring-kube-prometheus-alertmanager`, both in the `monitoring` namespace.
+Alertmanager displays and groups alerts locally; external notification delivery is
+not configured.
+
+## Diagnose targets and alerts
+
+Start with Prometheus Targets and
+`up{namespace="local-review-demo",service="review-backend"}`. A value of zero means
+a discovered target cannot be scraped; an absent series means no matching target
+was discovered. Check the ServiceMonitor namespace/labels, backend Service selector
+and named `http` port, endpoints, and NetworkPolicy before interpreting business metrics.
+The expected monitor/rule label is `release: monitoring`.
+
+| Alert | Investigation |
+| --- | --- |
+| `ReviewMetricsTargetDown`, `ReviewMetricsTargetMissing` | Target connectivity or discovery; missing-target allowance includes configured startup time |
+| `ReviewCoordinatorUnavailable` | Safe startup events and operational state after the startup allowance |
+| `ReviewInferenceStuck` | A stuck state was observed in the last five minutes; inspect current executor/Ollama state before recovery, since liveness may already have restarted the backend |
+| `ReviewMetricsCollectionFailed` | SQLite readability and storage health; absent queue gauges do not mean zero |
+| `ReviewQueueBacklog` | Oldest queued age exceeds capacity times the inference timeout for five minutes |
+| `ReviewFailureRateHigh` | More than the configured failure ratio over 15 minutes, with a minimum completed-attempt count and five-minute hold |
+| `ReviewContainerRestarts`, `ReviewContainerOOMKilled` | Pod events, termination reasons and container/node resource pressure |
+
+Operational state `ready` alone does not prove writable storage or a successful review.
+Use the existing readiness diagnostics and normal review acceptance separately. Review
+counters reset on process restart; use `rate`/`increase` for time windows. The reference
+defines original-submission versus per-attempt timings and missing-generation semantics.
+
+The Kubernetes node is the Minikube VM, not the macOS host. Container/node CPU and
+memory do not measure host swap pressure. Apple silicon/krunkit GPU utilization remains
+`not_measured`; device allocation and model placement are not utilization counters.
+Some hostpath volumes do not expose usage series, so missing PVC usage remains unknown.
+
+## Validate configuration changes
+
+The offline gate validates monitoring on/off, selectors, network boundaries and
+dashboard JSON. With a local matching promtool binary, run:
+
+```bash
+backend/.venv/bin/python scripts/validate_monitoring.py --promtool /path/to/promtool
+```
+
+CI additionally downloads pinned tools, validates the two CRD schemas and checks
+rendered alert behavior and dashboard PromQL. Runtime acceptance separately verifies
+target `UP`, dashboard discovery and metrics from an authorized normal review. Offline
+tests do not establish live scraping, CNI enforcement, resource fit or real inference.
 
 The Helm CLI returns the backend container's last 100 log lines; it does not apply a
 second field filter. The backend emits the structured safe events defined by the

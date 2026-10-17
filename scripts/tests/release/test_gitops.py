@@ -86,6 +86,73 @@ def test_gitops_contract_rejects_drift(source, tmp_path, change):
 
 
 @pytest.mark.integration
+@pytest.mark.requires_git
+@pytest.mark.requires_helm
+@pytest.mark.security
+@pytest.mark.parametrize(
+    "change",
+    ["namespace", "wildcard", "secret", "role", "cluster-role", "missing-monitor-kind"],
+)
+def test_gitops_project_cannot_expand_or_drop_required_access(source, tmp_path, change):
+    manifest = released(source, tmp_path)
+    root = tmp_path / "release"
+    path = root / snapshot.ARGOCD / "project.yaml"
+    project = yaml.safe_load(path.read_text())
+    spec = project["spec"]
+    if change in {"namespace", "wildcard"}:
+        spec["destinations"].append(
+            {
+                "server": "https://kubernetes.default.svc",
+                "namespace": "monitoring" if change == "namespace" else "*",
+            }
+        )
+    elif change == "secret":
+        spec["namespaceResourceWhitelist"].append({"group": "", "kind": "Secret"})
+    elif change == "role":
+        spec["namespaceResourceWhitelist"].append(
+            {"group": "rbac.authorization.k8s.io", "kind": "Role"}
+        )
+    elif change == "cluster-role":
+        spec["clusterResourceWhitelist"].append(
+            {"group": "rbac.authorization.k8s.io", "kind": "ClusterRole"}
+        )
+    else:
+        spec["namespaceResourceWhitelist"] = [
+            rule for rule in spec["namespaceResourceWhitelist"] if rule["kind"] != "ServiceMonitor"
+        ]
+    path.write_text(yaml.safe_dump(project))
+    with pytest.raises(ValueError, match="AppProject|cluster-wide"):
+        validate_snapshot(root, manifest)
+
+
+@pytest.mark.integration
+@pytest.mark.requires_git
+@pytest.mark.requires_helm
+@pytest.mark.security
+@pytest.mark.parametrize("chart", [snapshot.CHART, snapshot.OLLAMA_CHART])
+@pytest.mark.parametrize("namespace", ["monitoring", "local-inference", None])
+def test_gitops_rejects_resources_outside_their_application_namespace(
+    source, tmp_path, chart, namespace
+):
+    manifest = released(source, tmp_path)
+    root = tmp_path / "release"
+    # Even the other permitted application namespace is outside this release's ownership.
+    target = (
+        "local-review-demo"
+        if chart == snapshot.OLLAMA_CHART and namespace == "local-inference"
+        else namespace
+    )
+    metadata = {"name": "unexpected-config"}
+    if target is not None:
+        metadata["namespace"] = target
+    (root / chart / "templates/unexpected-config.yaml").write_text(
+        yaml.safe_dump({"apiVersion": "v1", "kind": "ConfigMap", "metadata": metadata})
+    )
+    with pytest.raises(ValueError, match="Application namespace"):
+        validate_snapshot(root, manifest)
+
+
+@pytest.mark.integration
 def test_pr_quality_is_required_before_main_image_publication():
     # BaseLoader keeps GitHub's YAML 'on' key and boolean-looking expressions as strings.
     quality = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)

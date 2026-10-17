@@ -3,9 +3,9 @@
 This directory configures a single-node `krunkit/containerd` cluster that has already
 been started with the Minikube CLI. The only Terraform root module is
 `terraform/platform`. It manages custom namespaces and the generic-device-plugin, with
-an optional Argo CD installation enabled by `argocd_enabled = true`. Argo CD is disabled
-by default, and monitoring configuration is still a placeholder. Terraform does not use
-a Minikube provider or `local-exec`, and does not start the cluster. See the [GitOps
+optional Argo CD and monitoring installations enabled by `argocd_enabled = true` and
+`monitoring_enabled = true`. Both Helm releases are disabled by default. Terraform does
+not use a Minikube provider or `local-exec`, and does not start the cluster. See the [GitOps
 guide](../../docs/guides/gitops.md) for setup and the order of the first sync.
 
 ## Files and state
@@ -105,6 +105,79 @@ including resources added manually later. It does not delete the Minikube VM. Al
 the test Pod is outside Terraform state, deleting the `gpu-tests` namespace also deletes
 that Pod.
 
+## Monitoring
+
+Terraform owns the `monitoring` release of kube-prometheus-stack, pinned to Chart
+92.10.1 (Prometheus Operator v0.94.1). The Chart requires Kubernetes 1.25 or later and
+its configured images support Linux ARM64. It installs Prometheus, Grafana,
+Alertmanager, kube-state-metrics and node exporter. The application Chart owns its
+ServiceMonitor, PrometheusRule and dashboard ConfigMap in `local-review-demo`; keep
+those resources out of Terraform state.
+
+First apply the platform with monitoring disabled to create its namespace. Prepare
+`local-review-demo` through the existing application bootstrap and create the Grafana
+admin Secret once. Use private local files, not Terraform variables or Helm values,
+for credentials. The files below must contain the chosen admin username and password;
+they are not committed or printed by the platform:
+
+```bash
+kubectl --context minikube -n monitoring create secret generic monitoring-grafana-admin \
+  --from-file=admin-user=/path/to/grafana-admin-user \
+  --from-file=admin-password=/path/to/grafana-admin-password
+```
+
+Keep this Secret stable across upgrades. Its two keys are `admin-user` and
+`admin-password`; the Terraform configuration references only its name. The Grafana
+sidecars can read ConfigMaps in `monitoring` and `local-review-demo`, without Secret
+read access. This requires the application namespace to exist before enabling the
+release, because Helm creates a Role and RoleBinding there.
+
+Set `monitoring_enabled = true` in the ignored `terraform.tfvars`, review the plan,
+and apply. Wait for the operator and CRDs before enabling the application's monitoring
+values in its normal release workflow. Prometheus selects resources labelled
+`release: monitoring` from `monitoring` and `local-review-demo`. Grafana loads
+dashboard ConfigMaps labelled `grafana_dashboard: "1"` from those same namespaces.
+Application changes do not replace this platform release or restart Ollama.
+
+The initial budget uses a 30-second scrape/evaluation interval, three-day retention,
+a 4 GiB TSDB retention cap and a 5 Gi PVC on `standard`. Time and size limits both
+apply; the earlier limit wins. WAL and head-block space still need free disk, and
+hostpath PVC size is not a reservation or backup. Running monitoring containers request
+340m CPU and about 1 GiB memory in total, with memory limits around 3 GiB; check node
+allocatable minus existing requests as well as actual usage before installation.
+Free node disk must also cover image downloads, TSDB data, WAL and kubelet eviction
+headroom. A successful Terraform plan or PVC bind does not establish capacity.
+Grafana dashboards and data sources are provisioned
+from Git. Grafana UI changes and Alertmanager silences are not retained after Pod
+replacement. Alertmanager displays alerts locally; no external receiver is configured.
+
+API server, kubelet/cAdvisor, workload, node and storage monitoring remain enabled.
+The Minikube profile disables scraping and associated rules for unexposed etcd,
+controller-manager, scheduler and kube-proxy endpoints. Node exporter observes the
+Linux VM, not macOS host pressure. Container metrics for `review-ollama` describe
+model-server resources; backend container metrics do not. GPU device allocation is
+not a GPU utilization measurement.
+
+All monitoring UIs remain ClusterIP services. Use separate terminals as needed:
+
+```bash
+kubectl --context minikube -n monitoring port-forward service/monitoring-grafana 3000:80
+kubectl --context minikube -n monitoring port-forward service/monitoring-kube-prometheus-prometheus 9090:9090
+kubectl --context minikube -n monitoring port-forward service/monitoring-kube-prometheus-alertmanager 9093:9093
+```
+
+Use the [observability runbook](../../docs/operations/observability.md) to verify targets,
+rules and application metrics. A healthy Helm release alone does not establish that
+the application target is scraped or that inference completed successfully.
+
+For an upgrade, review the pinned Chart's release notes and CRD changes first. Helm
+installs CRDs on the first installation but does not automatically upgrade or delete
+them; this configuration leaves the upstream experimental CRD upgrade job disabled.
+Apply any required CRD update from the reviewed Chart before updating the release.
+Disabling monitoring removes the Helm release. Prometheus PVCs created by its
+StatefulSet and CRDs require separate inspection before cleanup; destroying the
+Terraform-managed `monitoring` namespace removes all data and Secrets in it.
+
 ## Upstream references
 
 - [Minikube krunkit driver](https://minikube.sigs.k8s.io/docs/drivers/krunkit/)
@@ -114,3 +187,5 @@ that Pod.
   0.2.0](https://github.com/squat/generic-device-plugin/tree/0.2.0)
 - [Helm provider
   configuration](https://registry.terraform.io/providers/hashicorp/helm/latest/docs)
+- [kube-prometheus-stack 92.10.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-92.10.1/charts/kube-prometheus-stack)
+- [Prometheus Operator compatibility](https://prometheus-operator.dev/docs/getting-started/compatibility/)

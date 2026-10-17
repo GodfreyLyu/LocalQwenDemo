@@ -7,6 +7,7 @@ from uuid import uuid4
 from app.api.http_errors import error_response
 from app.errors import AppError
 from app.logging import SAFE_ERROR_CODES, SAFE_ROUTES
+from app.monitoring import Metrics
 
 logger = logging.getLogger("review")
 BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
@@ -14,7 +15,7 @@ ALLOWED_METHODS = BODY_METHODS | {"GET", "HEAD", "DELETE", "OPTIONS"}
 MAX_BODY_BYTES = 131072
 
 
-def log_request(scope, status, started_at):
+def log_request(scope, status, duration):
     route = getattr(scope.get("route"), "path", None)
     route = route if route in SAFE_ROUTES else None
     if route in {"/health/live", "/health/ready"} and status < 400:
@@ -28,7 +29,7 @@ def log_request(scope, status, started_at):
         "request_id": scope["state"]["request_id"],
         "status": status,
         "method": scope["method"] if scope["method"] in ALLOWED_METHODS else "OTHER",
-        "duration_ms": max(0, round((monotonic() - started_at) * 1000)),
+        "duration_ms": max(0, round(duration * 1000)),
         "error_code": code,
     }
     if route is not None:
@@ -54,8 +55,9 @@ async def read_body(scope, receive):
 
 
 class RequestGuard:
-    def __init__(self, app):
+    def __init__(self, app, metrics: Metrics | None = None):
         self.app = app
+        self.metrics = metrics
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -74,7 +76,17 @@ class RequestGuard:
                     (b"cache-control", b"no-store"),
                     (b"x-content-type-options", b"nosniff"),
                 ]
-                log_request(scope, message["status"], started_at)
+                # The internal scrape is not user traffic and must not observe itself.
+                if scope.get("path") != "/metrics":
+                    duration = max(0, monotonic() - started_at)
+                    log_request(scope, message["status"], duration)
+                    if self.metrics is not None:
+                        self.metrics.http_response(
+                            scope["method"],
+                            getattr(scope.get("route"), "path", None),
+                            message["status"],
+                            duration,
+                        )
             await send(message)
 
         try:
