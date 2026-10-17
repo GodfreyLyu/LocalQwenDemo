@@ -139,7 +139,7 @@ values in its normal release workflow. Prometheus selects resources labelled
 dashboard ConfigMaps labelled `grafana_dashboard: "1"` from those same namespaces.
 Application changes do not replace this platform release or restart Ollama.
 
-The initial budget uses a 30-second scrape/evaluation interval, three-day retention,
+The initial budget uses a 30-second scrape/evaluation interval, one-day retention,
 a 4 GiB TSDB retention cap and a 5 Gi PVC on `standard`. Time and size limits both
 apply; the earlier limit wins. WAL and head-block space still need free disk, and
 hostpath PVC size is not a reservation or backup. Running monitoring containers request

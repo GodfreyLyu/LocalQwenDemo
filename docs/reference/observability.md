@@ -77,7 +77,7 @@ Prometheus selects `release: monitoring` resources in `monitoring` and
 See the [platform setup](../../infra/local-platform/README.md#monitoring) for versions,
 resource requests, credential preparation and storage lifecycle.
 
-The initial platform uses 30-second scrape/evaluation intervals, three-day retention,
+The initial platform uses 30-second scrape/evaluation intervals, one-day retention,
 a 4 GiB TSDB retention target and a 5 GiB PVC. WAL/head data also consumes space;
 retention is not a hard total-disk quota. Dashboards are provisioned from Git and UI
 changes are not durable. Alertmanager has no external notification receiver configured.

@@ -180,38 +180,72 @@ def test_actual_input_limit_is_checked_by_worker_before_result_is_published(adap
 @pytest.mark.parametrize("by_stop", [False, True])
 def test_timeout_or_stop_cancels_inflight_stream_and_releases_client(adapter, monkeypatch, by_stop):
     model, server = adapter
-    model.settings.inference_timeout_seconds = 0.1 if not by_stop else 5
+    model.settings.inference_timeout_seconds = 1 if not by_stop else 5
+    entered = threading.Event()
+    cancelled = threading.Event()
     closed = threading.Event()
     stop = threading.Event()
 
     class HangingStream(httpx.AsyncByteStream):
         async def __aiter__(self):
+            entered.set()
+            if by_stop:
+                stop.set()
             try:
                 await asyncio.sleep(10)
                 yield b""
-            finally:
-                closed.set()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        async def aclose(self):
+            closed.set()
 
     async def handler(request):
         if request.url.path != "/api/chat":
             return await server(request)
-        if by_stop:
-            stop.set()
         return httpx.Response(200, stream=HangingStream())
 
-    monkeypatch.setattr(
-        model,
-        "_client",
-        lambda: httpx.AsyncClient(
-            base_url="http://localhost:11434",
-            transport=httpx.MockTransport(handler),
-        ),
+    # This case exercises an in-flight stream; client setup has its own deadline test.
+    client = httpx.AsyncClient(
+        base_url="http://localhost:11434",
+        transport=httpx.MockTransport(handler),
+        trust_env=False,
     )
+    monkeypatch.setattr(model, "_client", lambda: client)
     start = time.monotonic()
     with pytest.raises(AppError) as error:
         model.review(SOURCE, "python", stop)
     assert error.value.code == "inference_timeout"
-    assert closed.is_set() and time.monotonic() - start < 1
+    assert entered.is_set()
+    assert cancelled.is_set()
+    assert closed.is_set()
+    assert client.is_closed
+    assert time.monotonic() - start < (1 if by_stop else 2)
+
+
+@pytest.mark.component
+def test_deadline_during_client_setup_closes_client_without_starting_generation(
+    adapter, monkeypatch
+):
+    model, server = adapter
+    model.settings.inference_timeout_seconds = 0.1
+    client = httpx.AsyncClient(
+        base_url="http://localhost:11434",
+        transport=httpx.MockTransport(server),
+        trust_env=False,
+    )
+
+    def slow_client():
+        time.sleep(0.15)
+        return client
+
+    monkeypatch.setattr(model, "_client", slow_client)
+    with pytest.raises(AppError) as error:
+        model.review(SOURCE, "python", threading.Event())
+    assert error.value.code == "inference_timeout"
+    assert server.payloads == []
+    assert client.is_closed
 
 
 @pytest.mark.component

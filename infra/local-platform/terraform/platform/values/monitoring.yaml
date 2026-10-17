@@ -40,7 +40,7 @@ prometheus:
     replicas: 1
     scrapeInterval: 30s
     evaluationInterval: 30s
-    retention: 3d
+    retention: 1d
     retentionSize: 4GiB
     resources:
       requests: {cpu: 100m, memory: 512Mi}
