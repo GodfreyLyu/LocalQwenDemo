@@ -8,6 +8,7 @@ import logging
 import re
 import threading
 import time
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -27,6 +28,9 @@ from app.inference.review_output import (
     validate_review_output,
 )
 from app.startup import startup_stage
+
+if TYPE_CHECKING:
+    from app.monitoring import Metrics
 
 logger = logging.getLogger("review")
 MIN_OLLAMA_VERSION = (0, 24, 0)
@@ -51,8 +55,9 @@ def check_server_error(value: dict) -> None:
 
 
 class OllamaModel:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, metrics: Metrics | None = None) -> None:
         self.settings = settings.model_copy(deep=True)
+        self.metrics = metrics
         self.digest: str | None = None
         self.quantization: str | None = None
         self.device: str | None = None
@@ -292,6 +297,7 @@ class OllamaModel:
                         if type(count) is not int or not 0 <= count <= limit:
                             raise invalid_model()
                         metrics.generated_tokens = count
+                        metrics.output_tokens_observed = True
                         metrics.limit_reached = (
                             count >= limit or item.get("done_reason") == "length"
                         )
@@ -347,3 +353,5 @@ class OllamaModel:
                 (s.generation_ms or 0) / 1000 for s in metrics.sections.values()
             )
             logger.info("model_generation_finished", extra=metrics.fields())
+            if self.metrics is not None:
+                self.metrics.generation(metrics)

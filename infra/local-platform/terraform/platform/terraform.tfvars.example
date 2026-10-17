@@ -9,3 +9,6 @@ gpu_slots            = 1
 
 # Enable after reviewing the Argo CD installation plan.
 argocd_enabled = false
+
+# Prepare local-review-demo and monitoring-grafana-admin before enabling.
+monitoring_enabled = false

@@ -1,0 +1,397 @@
+# Use rules.yaml extracted from the monitoring-enabled Helm render in local-review-demo.
+rule_files:
+- rules.yaml
+evaluation_interval: 1m
+tests:
+- name: idle and healthy traffic do not fire failure alerts
+  interval: 1m
+  input_series:
+  - series: up{namespace="local-review-demo",service="review-backend"}
+    values: 1x30
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="completed"}
+    values: '0x30'
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="inference_timeout"}
+    values: '0x30'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewFailureRateHigh",alertstate="firing"}) or
+      vector(0)
+    eval_time: 20m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: one failed attempt does not meet the minimum sample floor
+  interval: 1m
+  input_series:
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="inference_timeout"}
+    values: 0x5 1x25
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="completed"}
+    values: '0x30'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewFailureRateHigh",alertstate="firing"}) or
+      vector(0)
+    eval_time: 12m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: sustained failures with enough observed attempts fire
+  interval: 1m
+  input_series:
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="inference_timeout"}
+    values: 0+1x30
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="completed"}
+    values: '0x30'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewFailureRateHigh",alertstate="firing"}) or
+      vector(0)
+    eval_time: 4m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewFailureRateHigh",alertstate="firing"}) or
+      vector(0)
+    eval_time: 12m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: successful completions keep the failure ratio below threshold
+  interval: 1m
+  input_series:
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="inference_timeout"}
+    values: 0+1x30
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="completed"}
+    values: 0+3x30
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewFailureRateHigh",alertstate="firing"}) or
+      vector(0)
+    eval_time: 20m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: queue age must exceed capacity times the inference timeout
+  interval: 1m
+  input_series:
+  - series: review_queue_oldest_age_seconds{namespace="local-review-demo",service="review-backend"}
+    values: 2400x15
+  - series: review_queue_capacity{namespace="local-review-demo",service="review-backend"}
+    values: 8x15
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewQueueBacklog",alertstate="firing"}) or vector(0)
+    eval_time: 10m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: sustained queue backlog fires after five minutes
+  interval: 1m
+  input_series:
+  - series: review_queue_oldest_age_seconds{namespace="local-review-demo",service="review-backend"}
+    values: 2401x15
+  - series: review_queue_capacity{namespace="local-review-demo",service="review-backend"}
+    values: 8x15
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewQueueBacklog",alertstate="firing"}) or vector(0)
+    eval_time: 4m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewQueueBacklog",alertstate="firing"}) or vector(0)
+    eval_time: 5m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: startup has its configured allowance before unavailable fires
+  interval: 1m
+  input_series:
+  - series: review_coordinator_state{namespace="local-review-demo",service="review-backend",state="ready"}
+    values: '0x65'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewCoordinatorUnavailable",alertstate="firing"})
+      or vector(0)
+    eval_time: 61m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewCoordinatorUnavailable",alertstate="firing"})
+      or vector(0)
+    eval_time: 62m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: a missing scrape target has the same startup allowance
+  interval: 1m
+  input_series: []
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetMissing",alertstate="firing"})
+      or vector(0)
+    eval_time: 61m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetMissing",alertstate="firing"})
+      or vector(0)
+    eval_time: 62m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: a discovered but unreachable target fires after two minutes
+  interval: 1m
+  input_series:
+  - series: up{namespace="local-review-demo",service="review-backend"}
+    values: '0x5'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetDown",alertstate="firing"}) or
+      vector(0)
+    eval_time: 1m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetDown",alertstate="firing"}) or
+      vector(0)
+    eval_time: 2m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: stuck inference fires on the first observed sample
+  interval: 1m
+  input_series:
+  - series: review_coordinator_state{namespace="local-review-demo",service="review-backend",state="inference_stuck"}
+    values: 1x5
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewInferenceStuck",alertstate="firing"}) or vector(0)
+    eval_time: 0m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewInferenceStuck",alertstate="firing"}) or vector(0)
+    eval_time: 1m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: snapshot failures fire while missing queue values do not imply backlog
+  interval: 1m
+  input_series:
+  - series: review_metrics_collection_success{namespace="local-review-demo",service="review-backend"}
+    values: '0x5'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewMetricsCollectionFailed",alertstate="firing"})
+      or vector(0)
+    eval_time: 2m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewQueueBacklog",alertstate="firing"}) or vector(0)
+    eval_time: 5m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: an old OOM reason without recent restarts is not a new OOM
+  interval: 1m
+  input_series:
+  - series: kube_pod_container_status_last_terminated_reason{namespace="local-inference",pod="review-ollama-abc",container="ollama",reason="OOMKilled"}
+    values: 1x30
+  - series: kube_pod_container_status_restarts_total{namespace="local-inference",pod="review-ollama-abc",container="ollama"}
+    values: 3x30
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewContainerOOMKilled",alertstate="firing"})
+      or vector(0)
+    eval_time: 20m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewContainerRestarts",alertstate="firing"}) or
+      vector(0)
+    eval_time: 20m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: a recent Ollama OOM restart fires independently of backend memory
+  interval: 1m
+  input_series:
+  - series: kube_pod_container_status_last_terminated_reason{namespace="local-inference",pod="review-ollama-abc",container="ollama",reason="OOMKilled"}
+    values: 0x4 1x15
+  - series: kube_pod_container_status_restarts_total{namespace="local-inference",pod="review-ollama-abc",container="ollama"}
+    values: 0x4 1x15
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewContainerOOMKilled",alertstate="firing"})
+      or vector(0)
+    eval_time: 4m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewContainerOOMKilled",alertstate="firing"})
+      or vector(0)
+    eval_time: 7m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: three restarts within the window fire after sustained detection
+  interval: 1m
+  input_series:
+  - series: kube_pod_container_status_restarts_total{namespace="local-review-demo",pod="review-backend-abc",container="review-backend"}
+    values: 0x2 3x20
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewContainerRestarts",alertstate="firing"}) or
+      vector(0)
+    eval_time: 4m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewContainerRestarts",alertstate="firing"}) or
+      vector(0)
+    eval_time: 7m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: a missing target alert resolves as soon as the target is discovered
+  interval: 1m
+  input_series:
+  - series: up{namespace="local-review-demo",service="review-backend"}
+    values: _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+      _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 1 1 1 1 1 1 1 1 1
+      1
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetMissing",alertstate="firing"})
+      or vector(0)
+    eval_time: 62m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetMissing",alertstate="firing"})
+      or vector(0)
+    eval_time: 64m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: a failed scrape alert resolves when the target responds
+  interval: 1m
+  input_series:
+  - series: up{namespace="local-review-demo",service="review-backend"}
+    values: 0x3 1x5
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetDown",alertstate="firing"}) or
+      vector(0)
+    eval_time: 2m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewMetricsTargetDown",alertstate="firing"}) or
+      vector(0)
+    eval_time: 4m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: queue backlog resolves when its oldest waiting review clears
+  interval: 1m
+  input_series:
+  - series: review_queue_oldest_age_seconds{namespace="local-review-demo",service="review-backend"}
+    values: 2401x5 0x5
+  - series: review_queue_capacity{namespace="local-review-demo",service="review-backend"}
+    values: 8x10
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewQueueBacklog",alertstate="firing"}) or vector(0)
+    eval_time: 5m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewQueueBacklog",alertstate="firing"}) or vector(0)
+    eval_time: 6m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: failure alert expires once a failed burst leaves the rolling window
+  interval: 1m
+  input_series:
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="inference_timeout"}
+    values: 0+1x12 12x30
+  - series: review_completions_total{namespace="local-review-demo",service="review-backend",outcome="completed"}
+    values: '0x43'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewFailureRateHigh",alertstate="firing"}) or
+      vector(0)
+    eval_time: 12m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewFailureRateHigh",alertstate="firing"}) or
+      vector(0)
+    eval_time: 30m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: deployment availability preserves the outage timer across backend scrape gaps
+  interval: 1m
+  input_series:
+  - series: review_coordinator_state{namespace="local-review-demo",service="review-backend",state="ready"}
+    values: 0x30 _ _ 0x35
+  - series: kube_deployment_status_replicas_available{namespace="local-review-demo",deployment="review-backend"}
+    values: '0x70'
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewCoordinatorUnavailable",alertstate="firing"})
+      or vector(0)
+    eval_time: 61m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewCoordinatorUnavailable",alertstate="firing"})
+      or vector(0)
+    eval_time: 62m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+- name: availability alert recovers when coordinator and deployment are ready
+  interval: 1m
+  input_series:
+  - series: review_coordinator_state{namespace="local-review-demo",service="review-backend",state="ready"}
+    values: 0x63 1x6
+  - series: kube_deployment_status_replicas_available{namespace="local-review-demo",deployment="review-backend"}
+    values: 0x63 1x6
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewCoordinatorUnavailable",alertstate="firing"})
+      or vector(0)
+    eval_time: 62m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewCoordinatorUnavailable",alertstate="firing"})
+      or vector(0)
+    eval_time: 64m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: missing deployment and coordinator series do not assert unavailability
+  interval: 1m
+  input_series: []
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewCoordinatorUnavailable",alertstate="firing"})
+      or vector(0)
+    eval_time: 62m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+- name: one stuck sample survives a stale Pod series and expires five minutes later
+  interval: 30s
+  input_series:
+  - series: review_coordinator_state{namespace="local-review-demo",service="review-backend",state="inference_stuck",pod="review-backend-old"}
+    values: 0 1 stale
+  - series: review_coordinator_state{namespace="local-review-demo",service="review-backend",state="inference_stuck",pod="review-backend-new"}
+    values: _ _ 0x12
+  promql_expr_test:
+  - expr: count(ALERTS{alertname="ReviewInferenceStuck",alertstate="firing"}) or vector(0)
+    eval_time: 0m
+    exp_samples:
+    - labels: '{}'
+      value: 0
+  - expr: count(ALERTS{alertname="ReviewInferenceStuck",alertstate="firing"}) or vector(0)
+    eval_time: 1m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewInferenceStuck",alertstate="firing"}) or vector(0)
+    eval_time: 5m
+    exp_samples:
+    - labels: '{}'
+      value: 1
+  - expr: count(ALERTS{alertname="ReviewInferenceStuck",alertstate="firing"}) or vector(0)
+    eval_time: 6m
+    exp_samples:
+    - labels: '{}'
+      value: 0

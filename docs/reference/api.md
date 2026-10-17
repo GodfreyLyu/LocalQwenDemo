@@ -2,7 +2,12 @@
 
 [Documentation index](../README.md)
 
-Request/response bodies use JSON, except that successful logout returns **204 with no body**. API responses carry `X-Request-ID` and `Cache-Control: no-store`. Source, passwords, cookies, and model responses are never request-log fields. Invalid input errors do not echo Pydantic's input values.
+Application request/response bodies use JSON, except that successful logout returns **204 with no body**. API responses carry `X-Request-ID` and `Cache-Control: no-store`. Source, passwords, cookies, and model responses are never request-log fields. Invalid input errors do not echo Pydantic's input values.
+
+The backend also serves internal `GET /metrics` in Prometheus text format. It has no
+session requirement, is excluded from OpenAPI, and is not proxied by the frontend.
+See the [metrics contract](observability.md#metrics-contract) for collection and privacy
+boundaries. It remains separate from the writable readiness check.
 
 | Endpoint                                   | Success | Purpose                                                                                         |
 | ------------------------------------------ | ------- | ----------------------------------------------------------------------------------------------- |

@@ -11,6 +11,7 @@ from app.domain import ReviewRecord
 from app.errors import AppError
 from app.inference.identity import model_identity
 from app.inference.model import ReviewModel
+from app.monitoring import Metrics
 from app.persistence.storage import Store
 from app.persistence.users import UserStore
 from app.persistence.users_startup import check_users_storage
@@ -33,9 +34,15 @@ class CoordinatorState(StrEnum):
 
 class Coordinator:
     def __init__(
-        self, store: Store, users: UserStore, model: ReviewModel, settings: Settings
+        self,
+        store: Store,
+        users: UserStore,
+        model: ReviewModel,
+        settings: Settings,
+        metrics: Metrics,
     ) -> None:
         self.store, self.users, self.model, self.settings = store, users, model, settings
+        self.metrics = metrics
         self._state = CoordinatorState.LOADING
         self._closing = False
         self._shutdown = asyncio.Event()
@@ -60,6 +67,7 @@ class Coordinator:
 
     def _transition(self, state: CoordinatorState) -> None:
         self._state = state
+        self.metrics.coordinator_state(state)
         if state is CoordinatorState.STUCK:
             self._closing = True
 
@@ -101,7 +109,7 @@ class Coordinator:
         await self.log_started(job)
         future = asyncio.get_running_loop().run_in_executor(
             self.executor,
-            self.model.review,
+            self.execute,
             job["source_code"],
             job["language"],
             self.stop,
@@ -128,8 +136,18 @@ class Coordinator:
         if timed_out:
             await self.drain(future, job["review_id"])
 
+    def execute(self, source: str, language: str, stop: threading.Event) -> str:
+        """Observe the actual executor lifetime, including a late exit after timeout."""
+        started_at = time.monotonic()
+        self.metrics.worker_started()
+        try:
+            return self.model.review(source, language, stop)
+        finally:
+            self.metrics.worker_finished(time.monotonic() - started_at)
+
     async def log_started(self, job: ReviewRecord) -> None:
         queue_wait_ms = milliseconds_since(job["created_at"])
+        self.metrics.started(queue_wait_ms / 1000)
         start_fields: dict[str, str | int] = {
             "review_id": job["review_id"],
             "outcome": "accepted",
@@ -156,11 +174,13 @@ class Coordinator:
             model_id=identity["model_id"] if not error else None,
             revision=identity["model_revision"] if not error else None,
         )
+        duration_ms = milliseconds_since(job["created_at"])
+        self.metrics.finished(error.code if error else "completed", duration_ms / 1000)
         log_fields: dict[str, str | int] = {
             "review_id": job["review_id"],
             "outcome": error.code if error else "completed",
             "error_code": error.code if error else "none",
-            "duration_ms": milliseconds_since(job["created_at"]),
+            "duration_ms": duration_ms,
         }
         if error and error.validation_reason is not None:
             log_fields["validation_reason"] = error.validation_reason.value

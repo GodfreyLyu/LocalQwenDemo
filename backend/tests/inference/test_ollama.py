@@ -14,6 +14,8 @@ from app.errors import AppError
 from app.inference.identity import model_identity
 from app.inference.ollama import OllamaModel
 from app.main import create_app
+from app.monitoring import Metrics
+from app.persistence.storage import Store
 
 SOURCE = "def average(values):\n    return sum(values) / len(values)\n"
 DIGEST = "a" * 64
@@ -282,6 +284,35 @@ def test_cluster_ollama_service_endpoint():
 def test_factory_always_uses_ollama():
     app = create_app(settings(), users=object())
     assert isinstance(app.state.model, OllamaModel)
+
+
+@pytest.mark.component
+def test_startup_probe_does_not_count_as_review_generation(adapter, tmp_path):
+    model, server = adapter
+    model.metrics = Metrics(Store(tmp_path), 8)
+    model.load()
+    registry = model.metrics.registry
+    assert (
+        registry.get_sample_value(
+            "review_generation_duration_seconds_count", {"section": "summary"}
+        )
+        == 0
+    )
+    server.payloads.clear()
+
+    model.review(SOURCE, "python", threading.Event())
+
+    for section in ("summary", "findings", "suggestions"):
+        assert (
+            registry.get_sample_value(
+                "review_generation_duration_seconds_count", {"section": section}
+            )
+            == 1
+        )
+        assert (
+            registry.get_sample_value("review_generated_tokens_total", {"section": section}) == 20
+        )
+        assert registry.get_sample_value("review_input_tokens_total", {"section": section}) == 200
 
 
 @pytest.mark.component

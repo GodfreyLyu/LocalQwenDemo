@@ -3,6 +3,9 @@
 PR-gated image builds and Argo CD: [GitOps guide](docs/guides/gitops.md).
 Standard Helm deployment: [guide](docs/guides/helm-release.md).
 
+Optional Prometheus/Grafana monitoring: [platform setup](infra/local-platform/README.md#monitoring)
+and [application dashboards and alerts](docs/operations/observability.md).
+
 GPU inference inside krunkit Minikube is available as an [independent Ollama Helm
 release](deploy/helm/local-ollama/README.md), with a retained model PVC. Readiness checks
 the process and API after initial model preparation; GPU inference is verified separately

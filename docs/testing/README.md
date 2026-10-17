@@ -155,6 +155,25 @@ fake-model browser suite.
 Its `configuration` job adds Kubernetes schema checks using a downloaded, verified
 Linux tool; that network-dependent CI check is outside the local offline gate.
 
+Monitoring regressions cover independent registries, idempotent admission, read-only
+queue snapshots, safe labels, partial inference measurements, timeout/drain occupancy,
+and monitoring-enabled/disabled Helm rendering. The configuration job also downloads
+Prometheus 3.15.0's checksum-verified promtool, checks rendered alert rules and dashboard
+queries, and runs synthetic alert scenarios. Pinned Operator schemas validate the
+application's ServiceMonitor and PrometheusRule; unknown CRD kinds are not skipped.
+These checks also run against deployment candidates as data using main-owned scripts.
+
+With a local promtool binary, run:
+
+```bash
+backend/.venv/bin/python scripts/validate_monitoring.py --promtool /path/to/promtool
+```
+
+Set `PROMTOOL` to that absolute path when running `pytest scripts/tests/monitoring`
+to include additional dashboard query scenarios. Without it, the offline suite
+explicitly skips the external-tool test; CI's separate monitoring check requires
+the tool and never silently skips rule validation.
+
 After a merge to `main`, `Prepare release` reruns quality checks, builds changed
 backend, frontend and Ollama images, and publishes them to GHCR. It proposes a reviewed
 deployment snapshot; Argo CD reconciles approved snapshots in the cluster. CI does not

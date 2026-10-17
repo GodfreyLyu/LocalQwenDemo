@@ -74,3 +74,20 @@ variable "argocd_chart_version" {
   type        = string
   default     = "10.9.6"
 }
+
+variable "monitoring_enabled" {
+  description = "Install local monitoring after preparing the Grafana admin Secret and application namespace."
+  type        = bool
+  default     = false
+}
+
+variable "monitoring_chart_version" {
+  description = "Pinned kube-prometheus-stack Chart version; review CRD upgrades before changing."
+  type        = string
+  default     = "92.10.1"
+
+  validation {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.monitoring_chart_version))
+    error_message = "Use one explicit kube-prometheus-stack Chart version."
+  }
+}

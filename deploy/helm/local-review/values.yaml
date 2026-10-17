@@ -88,6 +88,26 @@ config:
   deploymentEnvironment: minikube
   releaseSha: ''
 startupTimeoutSeconds: 3600
+monitoring:
+  # Install the platform Prometheus Operator and CRDs before enabling this overlay.
+  enabled: false
+  namespace: monitoring
+  release: monitoring
+  intervalSeconds: 30
+  scrapeTimeoutSeconds: 10
+  sampleLimit: 5000
+  prometheusPodLabels:
+    app.kubernetes.io/name: prometheus
+    prometheus: monitoring-kube-prometheus-prometheus
+  alerts:
+    enabled: true
+    minimumCompletedReviews: 5
+    failureRatio: 0.5
+    runbookUrl: https://github.com/GodfreyLyu/LocalQwenDemo/blob/main/docs/operations/observability.md
+  dashboards:
+    enabled: true
+  ollamaNamespace: local-inference
+  ollamaRelease: review-ollama
 networkPolicy:
   # Use values-minikube.yaml for the local profile without network isolation.
   enabled: true

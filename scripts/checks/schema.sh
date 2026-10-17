@@ -2,6 +2,7 @@
 # CI-only schema validation. Tool download is versioned and checksum-verified.
 set -euo pipefail
 repo_root="${1:-.}"
+schema_dir="$(cd "$(dirname "$0")/../validation/schemas" && pwd)"
 tool_dir="${RUNNER_TEMP:?RUNNER_TEMP must be set}/review-kubeconform"
 mkdir -p "$tool_dir"
 gh release download v0.7.0 --repo yannh/kubeconform \
@@ -14,6 +15,12 @@ helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
 helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
   -f "$repo_root/deploy/helm/local-review/values-minikube.yaml" \
   | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
+helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
+  -f "$repo_root/deploy/helm/local-review/values-minikube.yaml" \
+  -f "$repo_root/deploy/helm/local-review/values-monitoring.yaml" \
+  | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0 \
+    -schema-location default \
+    -schema-location "$schema_dir/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
 if [ -d "$repo_root/deploy/helm/local-ollama" ]; then
   ollama_args=()
   if [ -f "$repo_root/deploy/helm/local-ollama/values-release.yaml" ]; then

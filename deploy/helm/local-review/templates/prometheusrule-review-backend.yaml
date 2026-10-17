@@ -1,0 +1,121 @@
+{{- if and .Values.monitoring.enabled .Values.monitoring.alerts.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: review-backend
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "review.labels" . | nindent 4 }}
+    release: {{ .Values.monitoring.release | quote }}
+spec:
+  groups:
+  - name: local-review.availability
+    rules:
+    - alert: ReviewMetricsTargetDown
+      expr: up{namespace={{ .Release.Namespace | quote }},service="review-backend"} == 0
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: Review backend metrics cannot be scraped
+        description: Check the backend Pod, Service endpoints, ServiceMonitor, and NetworkPolicy.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+    - alert: ReviewMetricsTargetMissing
+      expr: absent(up{namespace={{ .Release.Namespace | quote }},service="review-backend"})
+      for: {{ add .Values.startupTimeoutSeconds 120 }}s
+      labels:
+        severity: warning
+      annotations:
+        summary: Review backend metrics target is missing
+        description: No target has been discovered for longer than the startup allowance. Check platform selectors and workload scheduling.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+    - alert: ReviewCoordinatorUnavailable
+      expr: >-
+        max by (namespace) (review_coordinator_state{namespace={{ .Release.Namespace | quote }},service="review-backend",state="ready"} == 0)
+        or max by (namespace) (kube_deployment_status_replicas_available{namespace={{ .Release.Namespace | quote }},deployment="review-backend"} < 1)
+      for: {{ add .Values.startupTimeoutSeconds 120 }}s
+      labels:
+        severity: warning
+        service: review-backend
+      annotations:
+        summary: Review backend remains unavailable
+        description: The coordinator or its deployment has remained unavailable beyond the startup allowance, including across backend restarts. Inspect readiness and safe startup events.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+    - alert: ReviewInferenceStuck
+      expr: >-
+        max by (namespace, service) (max_over_time(review_coordinator_state{namespace={{ .Release.Namespace | quote }},service="review-backend",state="inference_stuck"}[5m])) == 1
+      labels:
+        severity: critical
+      annotations:
+        summary: Stuck review inference was recently observed
+        description: The inference_stuck state was observed within the last five minutes. Inspect the current backend state and independent Ollama process before submitting more reviews or taking recovery action.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+    - alert: ReviewMetricsCollectionFailed
+      expr: review_metrics_collection_success{namespace={{ .Release.Namespace | quote }},service="review-backend"} == 0
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: Review queue metrics cannot be collected
+        description: Queue depth and age are unavailable. Inspect SQLite access and storage health; missing values are not an empty queue.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+  - name: local-review.workload
+    rules:
+    - alert: ReviewQueueBacklog
+      expr: >-
+        review_queue_oldest_age_seconds{namespace={{ .Release.Namespace | quote }},service="review-backend"}
+        > (review_queue_capacity{namespace={{ .Release.Namespace | quote }},service="review-backend"} * {{ .Values.model.timeoutSeconds }})
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: Review queue exceeds its expected wait budget
+        description: The oldest queued review has waited longer than queue capacity times the per-review inference timeout. Inspect worker state and Ollama latency.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+    - alert: ReviewFailureRateHigh
+      expr: >-
+        (
+          sum by (namespace, service) (increase(review_completions_total{namespace={{ .Release.Namespace | quote }},service="review-backend",outcome!="completed"}[15m]))
+          / sum by (namespace, service) (increase(review_completions_total{namespace={{ .Release.Namespace | quote }},service="review-backend"}[15m]))
+          > {{ .Values.monitoring.alerts.failureRatio }}
+        ) and on (namespace, service) (
+          sum by (namespace, service) (increase(review_completions_total{namespace={{ .Release.Namespace | quote }},service="review-backend"}[15m]))
+          >= {{ .Values.monitoring.alerts.minimumCompletedReviews }}
+        )
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: Review failures exceed the configured ratio
+        description: The failure ratio exceeded its threshold with enough completed attempts in the last 15 minutes. Inspect fixed error codes before retrying.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+  - name: local-review.resources
+    rules:
+    - alert: ReviewContainerRestarts
+      expr: >-
+        increase(kube_pod_container_status_restarts_total{namespace={{ .Release.Namespace | quote }},container=~"review-backend|review-frontend|review-dynamodb"}[15m]) >= 3
+        or increase(kube_pod_container_status_restarts_total{namespace={{ .Values.monitoring.ollamaNamespace | quote }},pod=~{{ printf "%s-.*" .Values.monitoring.ollamaRelease | quote }},container="ollama"}[15m]) >= 3
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: A review workload container is restarting repeatedly
+        description: Check last termination reason, Pod events, resource limits, and dependency health for the affected container.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+    - alert: ReviewContainerOOMKilled
+      expr: >-
+        (
+          kube_pod_container_status_last_terminated_reason{namespace={{ .Release.Namespace | quote }},container=~"review-backend|review-frontend|review-dynamodb",reason="OOMKilled"} == 1
+          and on (namespace, pod, container) increase(kube_pod_container_status_restarts_total{namespace={{ .Release.Namespace | quote }}}[15m]) > 0
+        ) or (
+          kube_pod_container_status_last_terminated_reason{namespace={{ .Values.monitoring.ollamaNamespace | quote }},pod=~{{ printf "%s-.*" .Values.monitoring.ollamaRelease | quote }},container="ollama",reason="OOMKilled"} == 1
+          and on (namespace, pod, container) increase(kube_pod_container_status_restarts_total{namespace={{ .Values.monitoring.ollamaNamespace | quote }}}[15m]) > 0
+        )
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: A review workload container was recently OOM killed
+        description: Correlate the restart with container and node memory pressure. Backend memory does not measure Ollama memory.
+        runbook_url: {{ .Values.monitoring.alerts.runbookUrl | quote }}
+{{- end }}

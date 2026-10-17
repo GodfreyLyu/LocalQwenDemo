@@ -56,6 +56,14 @@ it is not restricted to model registries. The backend no longer downloads model 
 Policy enforcement depends on the CNI, and the independent Ollama Chart provides no
 network isolation of its own. Rendered policies alone do not prove isolation.
 
+The backend's internal `/metrics` endpoint has no user-session requirement and exposes
+only bounded, content-free observations. The frontend does not proxy this endpoint.
+When monitoring and NetworkPolicy are enabled, ingress also permits the configured
+Prometheus Pods in the monitoring namespace on port 8000. This does not provide path-level
+isolation. Grafana credentials are held in an external Secret, and its dashboard sidecars
+read only ConfigMaps in the two configured namespaces. Platform collectors have their
+own Kubernetes/node permissions; application containers do not gain cluster API access.
+
 DynamoDB Local has an explicit HTTP endpoint restricted to loopback with an explicit
 port, or the exact `review-dynamodb` service names on port 8000. Missing endpoints,
 regional/public hosts, embedded credentials, URL queries/fragments and alternate paths

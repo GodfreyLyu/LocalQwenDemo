@@ -7,6 +7,7 @@ from fastapi import Depends, Request
 from app.config import Settings
 from app.coordinator import Coordinator
 from app.inference.model import ReviewModel
+from app.monitoring import Metrics
 from app.persistence.storage import Store
 from app.persistence.users import UserStore
 from app.rate_limit import RateLimiter
@@ -41,6 +42,10 @@ def get_review_service(request: Request) -> ReviewService:
     return request.app.state.review_service
 
 
+def get_metrics(request: Request) -> Metrics:
+    return request.app.state.metrics
+
+
 AppSettings = Annotated[Settings, Depends(get_settings)]
 ReviewStore = Annotated[Store, Depends(get_store)]
 Accounts = Annotated[UserStore, Depends(get_users)]
@@ -49,3 +54,4 @@ ReviewCoordinator = Annotated[Coordinator, Depends(get_coordinator)]
 Reviews = Annotated[ReviewService, Depends(get_review_service)]
 
 InferenceModel = Annotated[ReviewModel, Depends(get_model)]
+Monitoring = Annotated[Metrics, Depends(get_metrics)]

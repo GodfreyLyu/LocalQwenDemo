@@ -36,6 +36,7 @@ def test_shared_modules_do_not_import_command_or_legacy_layers():
         ["local_demo.py"],
         ["evaluate_model.py"],
         ["validate_helm.py"],
+        ["validate_monitoring.py"],
         ["release/publish.py"],
         ["release/snapshot.py"],
     ],

@@ -8,6 +8,7 @@ from app.config import Settings
 from app.coordinator import Coordinator
 from app.domain import ReviewRecord
 from app.errors import AppError
+from app.monitoring import Metrics
 from app.persistence.storage import Store
 from app.rate_limit import RateLimiter
 
@@ -21,11 +22,13 @@ class ReviewService:
         store: Store,
         coordinator: Coordinator,
         limiter: RateLimiter,
+        metrics: Metrics,
     ) -> None:
         self.settings = settings
         self.store = store
         self.coordinator = coordinator
         self.limiter = limiter
+        self.metrics = metrics
 
     def submit(
         self,
@@ -34,9 +37,9 @@ class ReviewService:
         language: str,
         request_id: str | None = None,
     ) -> ReviewRecord:
-        self._validate(source)
-        self.limiter.check("submit:" + user_id, self.settings.submission_rate_limit)
         try:
+            self._validate(source)
+            self.limiter.check("submit:" + user_id, self.settings.submission_rate_limit)
             result = self.store.create_review(
                 user_id,
                 request_id or str(uuid4()),
@@ -45,10 +48,12 @@ class ReviewService:
                 self.settings.queue_capacity,
             )
         except AppError as exc:
+            self.metrics.rejected(exc.code)
             if exc.code == "queue_full":
                 self._log_queue_rejection()
             raise
         if result.created:
+            self.metrics.submitted()
             logger.info(
                 "review_submitted",
                 extra={

@@ -1,0 +1,842 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Observability runbook",
+      "type": "link",
+      "url": "https://github.com/GodfreyLyu/LocalQwenDemo/blob/main/docs/operations/observability.md",
+      "targetBlank": true
+    }
+  ],
+  "panels": [
+    {
+      "title": "Measurement scope",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Backend and Ollama container resources are separate measurements. GPU utilization is **not measured** by this setup; device allocation does not establish utilization. First-content latency is included in generation duration. Missing token, storage, and timing measurements stay missing."
+      },
+      "id": 1
+    },
+    {
+      "title": "Section generation duration \u00b7 p95",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, section) (rate(review_generation_duration_seconds_bucket{namespace=\"$namespace\",service=\"review-backend\"}[$__rate_interval]))) and on (section) (sum by (section)(rate(review_generation_duration_seconds_count{namespace=\"$namespace\",service=\"review-backend\"}[$__rate_interval])) > 0)",
+          "legendFormat": "{{section}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "title": "Section first-content duration \u00b7 p95",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, section) (rate(review_first_content_duration_seconds_bucket{namespace=\"$namespace\",service=\"review-backend\"}[$__rate_interval]))) and on (section) (sum by (section)(rate(review_first_content_duration_seconds_count{namespace=\"$namespace\",service=\"review-backend\"}[$__rate_interval])) > 0)",
+          "legendFormat": "{{section}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "id": 3
+    },
+    {
+      "title": "Observed input tokens",
+      "type": "timeseries",
+      "description": "Input tokens per second reported in terminal section responses, including repeated prompts. A new section series needs a prior scrape before rate can include an increment.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:tokens/s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (section) (rate(review_input_tokens_total{namespace=\"$namespace\",service=\"review-backend\"}[$__rate_interval]))",
+          "legendFormat": "{{section}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "id": 4
+    },
+    {
+      "title": "Observed generated tokens",
+      "type": "timeseries",
+      "description": "Generated tokens per second reported in terminal section responses. Partial streams have no reported token total. A new section series needs a prior scrape before rate can include an increment.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:tokens/s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (section) (rate(review_generated_tokens_total{namespace=\"$namespace\",service=\"review-backend\"}[$__rate_interval]))",
+          "legendFormat": "{{section}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "id": 5
+    },
+    {
+      "title": "Output limit events",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (section) (increase(review_output_limit_total{namespace=\"$namespace\",service=\"review-backend\"}[$__rate_interval]))",
+          "legendFormat": "{{section}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "id": 6
+    },
+    {
+      "title": "Thread occupancy and queue depth",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "review_worker_busy{namespace=\"$namespace\",service=\"review-backend\"}",
+          "legendFormat": "inference thread occupied",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "review_queue_depth{namespace=\"$namespace\",service=\"review-backend\"}",
+          "legendFormat": "queued reviews",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "id": 7
+    },
+    {
+      "title": "Container CPU usage",
+      "type": "timeseries",
+      "description": "CPU seconds per wall-clock second, expressed as cores. Backend CPU excludes independent Ollama inference.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cores",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\",pod=~\"review-backend-.*\",container=\"review-backend\"}[$__rate_interval]))",
+          "legendFormat": "backend",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\"}[$__rate_interval]))",
+          "legendFormat": "Ollama",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "id": 8
+    },
+    {
+      "title": "Container memory working set",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\",pod=~\"review-backend-.*\",container=\"review-backend\"})",
+          "legendFormat": "backend",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\"})",
+          "legendFormat": "Ollama",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "id": 9
+    },
+    {
+      "title": "Container memory limits",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kube_pod_container_resource_limits{namespace=\"$namespace\",pod=~\"review-backend-.*\",container=\"review-backend\",resource=\"memory\",unit=\"byte\"})",
+          "legendFormat": "backend",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(kube_pod_container_resource_limits{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\",resource=\"memory\",unit=\"byte\"})",
+          "legendFormat": "Ollama",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "id": 10
+    },
+    {
+      "title": "Container restarts \u00b7 rolling 15 minutes",
+      "type": "timeseries",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\",pod=~\"review-backend-.*\",container=\"review-backend\"}[15m]))",
+          "legendFormat": "backend",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\"}[15m]))",
+          "legendFormat": "Ollama",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "id": 11
+    },
+    {
+      "title": "Application persistent volume usage",
+      "type": "timeseries",
+      "description": "Available only when the storage driver exposes kubelet volume statistics. Missing data is not zero disk usage.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "kubelet_volume_stats_used_bytes{namespace=\"$namespace\"}",
+          "legendFormat": "{{persistentvolumeclaim}} used",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "kubelet_volume_stats_capacity_bytes{namespace=\"$namespace\"}",
+          "legendFormat": "{{persistentvolumeclaim}} capacity",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "id": 12
+    },
+    {
+      "title": "Ollama persistent volume usage",
+      "type": "timeseries",
+      "description": "Available only when the storage driver exposes kubelet volume statistics.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 6,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "kubelet_volume_stats_used_bytes{namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"}",
+          "legendFormat": "{{persistentvolumeclaim}} used",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "kubelet_volume_stats_capacity_bytes{namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"}",
+          "legendFormat": "{{persistentvolumeclaim}} capacity",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "id": 13
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "local-review",
+    "monitoring"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "prometheus"
+        },
+        "refresh": 1
+      },
+      {
+        "name": "namespace",
+        "label": "Review namespace",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": {
+          "query": "label_values(review_queue_capacity, namespace)",
+          "refId": "NamespaceVariableQuery"
+        },
+        "definition": "label_values(review_queue_capacity, namespace)",
+        "current": {
+          "text": "__REVIEW_NAMESPACE__",
+          "value": "__REVIEW_NAMESPACE__"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false
+      },
+      {
+        "name": "ollama_namespace",
+        "label": "Ollama namespace",
+        "type": "constant",
+        "query": "__OLLAMA_NAMESPACE__",
+        "current": {
+          "text": "__OLLAMA_NAMESPACE__",
+          "value": "__OLLAMA_NAMESPACE__"
+        },
+        "hide": 0
+      },
+      {
+        "name": "ollama_release",
+        "label": "Ollama release",
+        "type": "constant",
+        "query": "__OLLAMA_RELEASE__",
+        "current": {
+          "text": "__OLLAMA_RELEASE__",
+          "value": "__OLLAMA_RELEASE__"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Local Review / Inference & Resources",
+  "uid": "review-inference-__NAMESPACE_HASH__",
+  "version": 1
+}

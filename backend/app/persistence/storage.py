@@ -4,7 +4,7 @@ import hashlib
 import sqlite3
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -148,6 +148,14 @@ class Store:
 
         with self.connection() as db:
             return db.execute("SELECT count(*) FROM reviews WHERE status='queued'").fetchone()[0]
+
+    def queue_snapshot(self) -> tuple[int, float | None]:
+        """Observe queue size and age without creating a database or taking a write lock."""
+        uri = self.path.resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True, timeout=0.1)) as db:
+            return db.execute(
+                "SELECT count(*), min(created_at) FROM reviews WHERE status='queued'"
+            ).fetchone()
 
     def get_review(self, user_id: str, review_id: str) -> ReviewRecord:
         with self.connection() as db:
