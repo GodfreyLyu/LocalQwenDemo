@@ -1,0 +1,45 @@
+name: Tag approved release
+on:
+  pull_request_target:
+    branches: [deployment-release]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Merged deployment PR to tag (retry or historical format-3 release)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-tags-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+jobs:
+  tag:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       startsWith(github.event.pull_request.head.ref, 'release-candidate/'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      statuses: read
+    steps:
+      - name: Check out trusted tag tooling
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install PyYAML
+        run: pip install pyyaml==6.0.3
+      - name: Verify merged PR and atomically create deployment and source tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: python scripts/release/publish.py finalize --pr-number "$PR_NUMBER"

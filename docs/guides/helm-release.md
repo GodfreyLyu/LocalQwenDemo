@@ -3,7 +3,8 @@
 `main` owns application source, Dockerfiles, both Charts under `deploy/helm`, deployment
 tools and workflows. `deployment-release` contains reviewed deployment snapshots.
 Do not merge main into deployment-release or edit generated values there: change
-the source Chart in main and review the generated release PR.
+the source Chart in main and review the generated release PR. The dedicated rollback
+workflow can also restore an approved snapshot with new release metadata.
 
 ## Automated release flow
 
@@ -269,6 +270,11 @@ current approved release; review, merge and explicitly deploy that snapshot. Do 
 restore an old release.json verbatim: its version and release base belong to an earlier
 candidate. Reuse the retained PVCs and signing Secret. A rollback does not undo database
 changes; verify compatibility before deploying earlier application code.
+
+For urgent recovery of an Argo-managed deployment, first create a rollback deployment
+PR from a previously approved tag, then fix/revert the source in main. Follow the
+[release rollback runbook](release-rollback.md). Pause ordinary deployment PR merges
+manually while recovering; keep main CI and Argo auto-sync enabled.
 
 ## Verification
 

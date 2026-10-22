@@ -35,7 +35,7 @@ and manual uses carry both labels.
 | `minikube_demo.sh` | **Manual entry point** | Development CLI for Docker-driver Minikube profiles: `bash scripts/minikube_demo.sh COMMAND --profile NAME`. Use standard Helm for krunkit clusters. |
 | `minikube_helm.py` | **Automatic invocation / Manual entry point** | Receives arguments from `minikube_demo.sh`. The equivalent direct command is `backend/.venv/bin/python scripts/minikube_helm.py COMMAND --profile NAME`. |
 | `evaluate_model.py` | **Manual entry point** | Run `backend/.venv/bin/python scripts/evaluate_model.py --dry-run` to create a plan. Real inference requires an explicit `--run-real-model` flag. |
-| `release/publish.py` | **Automatic invocation** | The release workflow calls `prepare`, `publish`, and `supersede`; the deployment validation workflow calls `verify`. These steps depend on workflow context. Use the workflow to start a release. |
+| `release/publish.py` | **Automatic invocation** | The release workflow calls `prepare`, `publish`, and `supersede`, or `prepare-rollback`, `check-images` and `publish`; deployment validation calls `verify`; post-merge tagging calls `finalize`. These steps depend on workflow context. Use the workflows to start releases, rollbacks or tagging. |
 | `release/snapshot.py` | **Automatic invocation** | The release workflow calls `render --plan … --output … --backend-digest … --frontend-digest … --ollama-digest …` to generate a deployment snapshot. This script does not deploy to a cluster. |
 
 ## Common manual commands
@@ -185,6 +185,14 @@ These files define the automated call chains:
   validation → `supersede`.
 - [Validate release snapshot](../.github/workflows/deployment-validation.yml):
   `publish.py verify`, snapshot validation, and schema checks.
+- [Tag approved release](../.github/workflows/release-finalize.yml): `finalize`
+  verifies the merged deployment PR and creates a deployment/source tag pair.
+
+**Prepare release** also accepts `rollback_tag` and `rollback_reason`. It restores
+the approved snapshot without rebuilding images and opens a new candidate under
+the same version sequence. Publication is paused manually at deployment PR merge
+time; CI and Argo sync continue. See the [recovery runbook](../docs/guides/release-rollback.md)
+for tag protection setup, rollback, source repair and recovery of tagging failures.
 
 Merging into `main` triggers the release workflow automatically. To trigger it
 manually, authenticate `gh` with the required repository permissions, then choose
@@ -234,7 +242,7 @@ pytest configure `scripts/` as the internal import root.
 | `deployment/helm/*.py` | **Internal implementation** | CLI, sessions, builds, diagnostics, lifecycle operations, and acceptance checks for `minikube_helm.py`. |
 | `deployment/common/*.py` | **Internal implementation** | Shared deployment target, port forwarding, queue protection, and resource logic. |
 | `validation/*.py` | **Internal implementation** | Helm, snapshot and GitOps validation used by `validate_helm.py`, plus monitoring validation used by `validate_monitoring.py`. |
-| `release/_entry.py`, `release/publisher.py`, `release/snapshot_impl.py`, `release/github.py` | **Internal implementation** | Import path setup, publishing, snapshot generation, and GitHub requests for `release/publish.py` and `release/snapshot.py`. |
+| `release/_entry.py`, `release/publisher.py`, `release/snapshot_impl.py`, `release/github.py`, `release/lifecycle.py`, `release/metadata.py` | **Internal implementation** | Import path setup, publishing, snapshot generation, GitHub requests, approved release tags, rollback preparation and shared provenance validation. |
 | `evaluation/` | **Internal implementation** | Configuration, fixtures, execution, metrics, and reports for `evaluate_model.py`. |
 | `tooling_paths.py` and package `__init__.py` files | **Internal implementation** | Path setup and package structure. |
 | `tests/` | **Internal implementation** | Regression tests collected by the check scripts or pytest. To run a single domain, use a command such as `backend/.venv/bin/python -m pytest scripts/tests/tooling`. |

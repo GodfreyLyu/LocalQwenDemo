@@ -8,6 +8,14 @@ on:
         description: Rebuild all three images even if build inputs are unchanged
         type: boolean
         default: false
+      rollback_tag:
+        description: Restore an approved deploy/v tag instead of building a normal release
+        type: string
+        default: ''
+      rollback_reason:
+        description: Why this rollback is needed (required with rollback_tag)
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -20,6 +28,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
   candidate:
     name: Build images and open PR
+    if: inputs.rollback_tag == ''
     needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -165,3 +174,68 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
         run: python scripts/release/publish.py supersede --candidate-sha "$CANDIDATE_SHA"
+  rollback:
+    name: Restore approved snapshot and open PR
+    needs: quality
+    if: inputs.rollback_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: read
+      pull-requests: write
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+      candidate_sha: ${{ steps.publish.outputs.candidate_sha }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check rollback inputs
+        env:
+          REBUILD: ${{ inputs.rebuild }}
+        run: 'test "$REBUILD" != true'
+      - name: Check out trusted source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install PyYAML
+        run: pip install pyyaml==6.0.3
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.17.3
+      - name: Prepare rollback with a new version and current release base
+        env:
+          TARGET_TAG: ${{ inputs.rollback_tag }}
+          REASON: ${{ inputs.rollback_reason }}
+        run: python scripts/release/publish.py prepare-rollback --workspace "$RUNNER_TEMP/release" --target-tag "$TARGET_TAG" --reason "$REASON"
+      - name: Validate restored snapshot
+        run: python scripts/validate_helm.py --root "$RUNNER_TEMP/release/candidate" --snapshot
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Verify retained images are available without rebuilding
+        run: python scripts/release/publish.py check-images --workspace "$RUNNER_TEMP/release"
+      - name: Open rollback PR
+        id: publish
+        run: python scripts/release/publish.py publish --workspace "$RUNNER_TEMP/release"
+  validate-rollback:
+    name: Validate rollback snapshot
+    needs: rollback
+    if: needs.rollback.outputs.published == 'true'
+    uses: ./.github/workflows/deployment-validation.yml
+    with:
+      snapshot-sha: ${{ needs.rollback.outputs.candidate_sha }}
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: read
