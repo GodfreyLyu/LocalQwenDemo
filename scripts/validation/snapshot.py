@@ -4,6 +4,7 @@ import json
 import re
 
 import yaml
+from release.metadata import validate_candidate
 
 from validation.constants import CHART
 from validation.resources import require
@@ -54,27 +55,7 @@ def validate_snapshot(root, keyed):
     manifest = json.loads((root / "release.json").read_text())
     require(manifest["schemaVersion"] in {1, 2, 3}, "Unknown release manifest format")
     if manifest["schemaVersion"] in {2, 3}:
-        candidate = manifest.get("candidate", {})
-        number = candidate.get("runNumber")
-        version = candidate.get("version", "")
-        require(type(number) is int and number > 0, "Invalid candidate run number")
-        require(
-            re.fullmatch(r"[1-9][0-9]*", candidate.get("runId", "")), "Invalid candidate run ID"
-        )
-        require(
-            re.fullmatch(
-                r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\." + str(number), version
-            ),
-            "Invalid candidate version",
-        )
-        require(
-            candidate.get("branch") == "release-candidate/" + version,
-            "Candidate branch does not match version",
-        )
-        require(
-            re.fullmatch(r"[a-f0-9]{40}", candidate.get("baseSha", "")), "Invalid candidate base"
-        )
-        require(manifest["chartVersion"] == version, "Candidate version does not match Chart")
+        validate_candidate(manifest)
     require(re.fullmatch(r"[a-f0-9]{40}", manifest["sourceSha"]), "Invalid source commit")
     chart = yaml.safe_load((root / CHART / "Chart.yaml").read_text())
     require(

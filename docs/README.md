@@ -10,6 +10,7 @@ below for your task.
 | --- | --- |
 | Set up a krunkit GPU cluster | [Local platform](../infra/local-platform/README.md) |
 | Deploy reviewed releases with Argo CD | [GitOps guide](guides/gitops.md) |
+| Track a release, roll back and fix main | [Release tags and rollback](guides/release-rollback.md) |
 | Install a release with Helm | [Helm release guide](guides/helm-release.md) |
 | Deploy the independent inference service | [Ollama Chart](../deploy/helm/local-ollama/README.md) |
 | Build source images on Docker-driver Minikube | [Local Helm workflow](guides/minikube-demo.md) |

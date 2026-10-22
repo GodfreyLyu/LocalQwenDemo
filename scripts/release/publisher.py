@@ -136,6 +136,8 @@ def prepare(root, workspace, repository, force=False):
             if parents(root, pr["headRefOid"]) != [base]:
                 continue
             pending = manifest_at(root, pr["headRefOid"])
+            if pending.get("operation") == "rollback":
+                continue
             number = pending.get("candidate", {}).get("runNumber", 0)
             if not selected or number > selected[0]:
                 selected = (number, pr, pending)
@@ -217,6 +219,20 @@ def ensure_pr(root, workspace, repository, manifest, branch, sha, base):
         "",
         f"[Source workflow](https://github.com/{repository}/actions/runs/{manifest['candidate']['runId']})",
     ]
+    if manifest.get("operation") == "rollback":
+        rollback = manifest["rollback"]
+        body += [
+            "",
+            "## Rollback review",
+            "",
+            f"Restores `{rollback['targetTag']}` (`{rollback['targetSha']}`), "
+            f"replacing `{rollback['of']}`.",
+            "Reason: " + rollback["reason"],
+            "",
+            "Manually pause ordinary deployment PR merges and disable their auto-merge. "
+            "Confirm data compatibility before merging; then verify Argo sync and a real request. "
+            "Keep normal CI and Argo sync enabled. Follow up with a main fix/revert PR.",
+        ]
     body_file = workspace / "pr-body.md"
     body_file.write_text("\n".join(body) + "\n")
     command(
@@ -230,7 +246,7 @@ def ensure_pr(root, workspace, repository, manifest, branch, sha, base):
         "--head",
         branch,
         "--title",
-        "Deploy " + version,
+        ("Rollback " if manifest.get("operation") == "rollback" else "Deploy ") + version,
         "--body-file",
         str(body_file),
     )
@@ -343,6 +359,10 @@ def verify_snapshot(root, sha):
             raise ValueError("Candidate branch/base provenance mismatch")
     elif branch != LEGACY_HEAD:
         raise ValueError("Versioned branches require versioned provenance")
+    if manifest.get("schemaVersion") == FORMAT:
+        from release.lifecycle import verify_rollback
+
+        verify_rollback(root, sha, manifest)
     return manifest, base
 
 
@@ -371,6 +391,9 @@ def supersede(root, repository, sha):
             continue
         fetch_branch(root, old["headRefName"])
         old_manifest = manifest_at(root, old["headRefOid"])
+        # Manual incident handling owns rollback PRs, even when newer main builds succeed.
+        if old_manifest.get("operation") == "rollback":
+            continue
         old_number = old_manifest.get("candidate", {}).get("runNumber", 0)
         if old_number >= number:
             continue
@@ -399,12 +422,26 @@ def supersede(root, repository, sha):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["prepare", "publish", "verify", "supersede"])
+    parser.add_argument(
+        "action",
+        choices=[
+            "prepare",
+            "publish",
+            "verify",
+            "supersede",
+            "prepare-rollback",
+            "check-images",
+            "finalize",
+        ],
+    )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--workspace", type=Path)
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"))
     parser.add_argument("--candidate-sha")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--target-tag")
+    parser.add_argument("--reason")
+    parser.add_argument("--pr-number", type=int)
     args = parser.parse_args()
     root = args.root.resolve()
     if args.action == "prepare":
@@ -415,8 +452,19 @@ def main():
         verify_snapshot(root, args.candidate_sha)
         if os.environ.get("GITHUB_OUTPUT"):
             output("migration", str(remote(root, MIGRATION) == args.candidate_sha).lower())
-    else:
+    elif args.action == "supersede":
         supersede(root, args.repository, args.candidate_sha)
+    else:
+        from release.lifecycle import check_images, finalize, prepare_rollback
+
+        if args.action == "prepare-rollback":
+            prepare_rollback(
+                root, args.workspace.resolve(), args.repository, args.target_tag, args.reason
+            )
+        elif args.action == "check-images":
+            check_images(args.workspace.resolve())
+        else:
+            finalize(root, args.repository, args.pr_number)
 
 
 def entry():

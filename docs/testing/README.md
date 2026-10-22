@@ -200,6 +200,15 @@ deployment snapshot for review. Argo CD reconciles approved snapshots in the clu
 CI does not access the cluster or establish real-model acceptance. See the
 [GitOps guide](../guides/gitops.md).
 
+Release lifecycle regressions exercise real temporary Git histories with mocked
+GitHub PR/status transport: exact merge/source tags, atomic tag push retries and
+conflicts, historical tagging, rollback content/provenance checks, immutable retries,
+and preservation of pending rollback PRs during normal candidate publication.
+Workflow contracts and actionlint check the trusted main finalizer and shared
+normal/rollback version sequence. These checks do not test live GitHub permissions,
+GHCR retention or Argo deployment. See the [rollback runbook](../guides/release-rollback.md)
+for manual publishing pauses and actual recovery acceptance.
+
 ## Explicit real-model smoke and quality evaluation
 
 The opt-in [model smoke](../reference/model.md) and [fixed-suite evaluator](model-evaluation.md)

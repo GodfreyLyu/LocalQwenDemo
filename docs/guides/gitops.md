@@ -25,6 +25,13 @@ Merging the reviewed deployment PR updates the desired state Argo CD watches. CI
 kubeconfig or Minikube access, so it cannot verify GPU readiness. A successful image
 build is not evidence of working GPU inference.
 
+After merge, **Tag approved release** records the exact deployment commit and its
+main source commit with paired immutable tags. For incident recovery, manually pause
+ordinary deployment PR merges and generate a rollback candidate from an approved
+deployment tag. Keep CI and Argo sync running. See the
+[release tags and rollback runbook](release-rollback.md) for setup, historical tag
+backfill, recovery checks and the subsequent main fix/revert PR.
+
 ## Repository release state
 
 The release workflow uses format-3 snapshots. Run **Prepare release** on main, then
