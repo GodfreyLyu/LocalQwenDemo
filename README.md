@@ -45,10 +45,23 @@ public internet access have not been validated.
 3. Deploy the [independent Ollama release](deploy/helm/local-ollama/README.md) and
    the application. The default application endpoint is
    `http://review-ollama.local-inference.svc.cluster.local:11434`.
-4. Port-forward `service/review-frontend` as described in the selected guide, open
-   `http://localhost:8080`, and complete a real review. A Ready Pod alone does not
-   confirm that inference works. Ollama GPU inference has a separate Helm test or
-   Argo CD PostSync check.
+4. Start endpoint forwarding with the command below, open the printed frontend URL
+   (normally `http://localhost:8080`), and complete a real review. A Ready Pod alone
+   does not confirm that inference works. Ollama GPU inference has a separate Helm
+   test or Argo CD PostSync check. For a custom application namespace, use the
+   foreground forwarding command in your deployment guide.
+
+From the main source checkout, start background forwards for this repository's
+application, Ollama, Argo CD and monitoring services:
+
+```bash
+python3 scripts/minikube_endpoints.py
+```
+
+The command prints each service's local address and forwarding state, then returns
+while the forwards keep running. It selects only the eight configured services in
+this repository. See the [endpoint guide](scripts/README.md#background-minikube-endpoints)
+for the service list, status and stop commands, port settings and logs.
 
 The local values file disables NetworkPolicy isolation. If you need isolation, follow
 the Helm guide to enable policies with a CNI that enforces them. Optional monitoring
@@ -74,11 +87,14 @@ scripts/minikube_demo.sh verify --profile minikube
 ```
 
 ```bash
-scripts/minikube_demo.sh port-forward --profile minikube
+python3 scripts/minikube_endpoints.py
 ```
 
-`verify` creates test data and restarts the backend to check persistence. Stop any
-foreground port-forward before running it. The guide also covers rollback and cleanup.
+`verify` creates test data and restarts the backend to check persistence. Run it
+before starting the forwards. If the endpoint launcher is already running, stop
+it first; also stop any foreground forward using the frontend port. The
+[Minikube guide](docs/guides/minikube-demo.md#status-access-and-acceptance) covers
+both forwarding options, rollback and cleanup.
 
 ## Architecture
 

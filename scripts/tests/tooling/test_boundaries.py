@@ -33,6 +33,7 @@ def test_shared_modules_do_not_import_command_or_legacy_layers():
     "command",
     [
         ["minikube_helm.py"],
+        ["minikube_endpoints.py"],
         ["local_demo.py"],
         ["evaluate_model.py"],
         ["validate_helm.py"],

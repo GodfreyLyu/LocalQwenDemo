@@ -14,6 +14,7 @@ below for your task.
 | Install a release with Helm | [Helm release guide](guides/helm-release.md) |
 | Deploy the independent inference service | [Ollama Chart](../deploy/helm/local-ollama/README.md) |
 | Build source images on Docker-driver Minikube | [Local Helm workflow](guides/minikube-demo.md) |
+| Access this project's services through background forwards | [Minikube endpoints](../scripts/README.md#background-minikube-endpoints) |
 | Develop the application | [Local development](guides/local-development.md) |
 | Run checks or evaluate the model | [Testing](testing/README.md), [model evaluation](testing/model-evaluation.md) |
 | Investigate a failure or remove a deployment | [Recovery and cleanup](operations/recovery-and-cleanup.md) |

@@ -9,6 +9,22 @@ Start with read-only diagnostics on an explicitly selected profile. Inspection d
 authorize new inference, restarts, configuration changes or deletion. Preserve data and
 reports, including failed and incomplete results.
 
+## Local endpoint access
+
+If a local URL is unavailable, check the background endpoint launcher from the
+main source checkout:
+
+```bash
+python3 scripts/minikube_endpoints.py status
+```
+
+Repeat any custom `--context` and `--state-dir` options used at startup. `READY`
+confirms a forwarding listener, not application health. A skipped service needs
+to be installed and have ready Pods before a fresh start can select it. The
+launcher retries interrupted forwards that it has already started. See the
+[endpoint guide](../../scripts/README.md#background-minikube-endpoints) for start
+and stop commands, logs and port conflicts, then inspect the workloads below.
+
 ## Health and startup
 
 ```bash

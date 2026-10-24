@@ -143,6 +143,27 @@ Restrict write access to the release branch because this is a control-plane entr
 The child AppProject permits only the two application namespaces and required
 workload kinds. Routine application sync cannot modify the GPU plugin or Argo CD.
 
+## Access the application and platform
+
+Once the services are ready, run the endpoint launcher from the root of the main
+source checkout. It requires Python 3.10+ and kubectl; it is not included in
+generated deployment snapshots:
+
+```bash
+python3 scripts/minikube_endpoints.py
+```
+
+The command starts background forwards for this repository's review app, backend,
+DynamoDB, Ollama, Argo CD, Grafana, Prometheus and Alertmanager. It prints their
+local addresses and forwarding states, then returns. Other projects' services in
+the same cluster are excluded. Open the printed frontend URL, normally
+`http://localhost:8080`, to use the application.
+
+See the [endpoint guide](../../scripts/README.md#background-minikube-endpoints)
+for status and stop commands, port settings, skipped services and logs. The
+launcher uses the fixed namespaces in that guide and does not change Argo CD
+resources or the global kubectl context.
+
 ## Verification, storage and ownership
 
 The Ollama Application skips Helm test hooks and enables a separate `PostSync` Job when

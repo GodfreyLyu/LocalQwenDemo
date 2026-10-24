@@ -8,6 +8,9 @@ scripts and `bash` for shell scripts. The check scripts and Minikube shell entry
 point accept `REVIEW_PYTHON` to override the interpreter path.
 The backend development dependencies supply Ruff, pytest, HTTPX, PyYAML, boto3 and
 the local service doubles. Check commands expect these tools to be installed.
+The endpoint launcher is an exception: `minikube_endpoints.py` runs on macOS or
+Linux with Python 3.10+ and kubectl on PATH. It uses only the Python standard
+library, so no backend virtual environment is needed.
 
 - **Automatic invocation**: run by CI, test tools, or another entry point. The table
   identifies the caller; you do not need to run these steps individually.
@@ -34,9 +37,127 @@ and manual uses carry both labels.
 | `init_local_users.py` | **Manual entry point** | Initializes DynamoDB Local from the host. Requires `DYNAMODB_ENDPOINT_URL`; see the example below. **Does not support `--help`.** |
 | `minikube_demo.sh` | **Manual entry point** | Development CLI for Docker-driver Minikube profiles: `bash scripts/minikube_demo.sh COMMAND --profile NAME`. Use standard Helm for krunkit clusters. |
 | `minikube_helm.py` | **Automatic invocation / Manual entry point** | Receives arguments from `minikube_demo.sh`. The equivalent direct command is `backend/.venv/bin/python scripts/minikube_helm.py COMMAND --profile NAME`. |
+| `minikube_endpoints.py` | **Manual entry point** | Run `python3 scripts/minikube_endpoints.py` to start background forwards and print their service/address mapping. Supports `status`, `stop`, `--context` and local `--port` overrides; works with Docker and krunkit clusters, including Argo CD deployments. |
 | `evaluate_model.py` | **Manual entry point** | Run `backend/.venv/bin/python scripts/evaluate_model.py --dry-run` to create a plan. Real inference requires an explicit `--run-real-model` flag. |
 | `release/publish.py` | **Automatic invocation** | The release workflow calls `prepare`, `publish`, and `supersede`, or `prepare-rollback`, `check-images` and `publish`; deployment validation calls `verify`; post-merge tagging calls `finalize`. These steps depend on workflow context. Use the workflows to start releases, rollbacks or tagging. |
 | `release/snapshot.py` | **Automatic invocation** | The release workflow calls `render --plan … --output … --backend-digest … --frontend-digest … --ollama-digest …` to generate a deployment snapshot. This script does not deploy to a cluster. |
+
+## Background Minikube endpoints
+
+With Minikube and the deployed services already running, start the endpoint
+launcher from the root of the main source checkout:
+
+```bash
+python3 scripts/minikube_endpoints.py
+```
+
+The command prints a table with each service's local address, Kubernetes service
+and forwarding state, then returns. The forwards keep running in the background
+after the command finishes or you close the terminal. You do not need to add `&`
+or run a separate terminal for each service.
+
+The launcher is included in the main source checkout, not in generated
+`deployment-release` snapshots. It works with Helm and Argo CD deployments on
+Docker-driver or krunkit clusters. It reads cluster resources and starts local
+forwarding processes; it does not deploy services, start Minikube or switch the
+global kubectl context.
+
+| Endpoint key | Preferred local endpoint | Kubernetes service/port |
+| --- | --- | --- |
+| `frontend` | `http://localhost:8080` | `local-review-demo/review-frontend:8080` |
+| `backend` | `http://127.0.0.1:8000` | `local-review-demo/review-backend:8000` |
+| `dynamodb` | `http://127.0.0.1:8001` | `local-review-demo/review-dynamodb:8000` |
+| `ollama` | `http://127.0.0.1:11435` | `local-inference/review-ollama:11434` |
+| `argocd` | `https://127.0.0.1:8443` | `argocd/argocd-server:443` |
+| `grafana` | `http://127.0.0.1:3000` | `monitoring/monitoring-grafana:80` |
+| `prometheus` | `http://127.0.0.1:9090` | `monitoring/monitoring-kube-prometheus-prometheus:9090` |
+| `alertmanager` | `http://127.0.0.1:9093` | `monitoring/monitoring-kube-prometheus-alertmanager:9093` |
+
+The launcher selects only the eight services above, defined by this repository's
+`deploy/helm/local-review`, `deploy/helm/local-ollama` and `infra/local-platform`
+configuration. Other projects' services, including Spark and Flink, are excluded.
+Internal DNS, webhooks, exporters, controller APIs and duplicate headless service
+addresses are not forwarded. Service names and namespaces are fixed to this
+layout; for a deployment in another namespace, use an explicit kubectl
+port-forward or the Helm CLI's foreground forwarding command.
+
+### Addresses and ports
+
+All forwards bind to `127.0.0.1`. Open the printed frontend URL exactly as shown;
+the default is `http://localhost:8080`. Its port must match `ALLOWED_ORIGIN` in the
+deployed `review-config` ConfigMap so browser authentication continues to work.
+
+If the frontend port or an explicitly pinned port is already in use, startup
+fails. For other services, the launcher chooses an available port when the
+preferred one is occupied. Always use the address in the output. Minikube Ollama
+defaults to port 11435 so it can run alongside host Ollama on port 11434.
+
+DynamoDB is an API endpoint, not a browser UI. Argo CD uses the cluster's existing
+TLS certificate, which your browser may ask you to accept. Use the application,
+Argo CD and Grafana credentials you already configured.
+
+### Check status, stop or change settings
+
+Display the current endpoint table:
+
+```bash
+python3 scripts/minikube_endpoints.py status
+```
+
+Stop the background supervisor and its forwarding processes:
+
+```bash
+python3 scripts/minikube_endpoints.py stop
+```
+
+Running the start command again reuses the existing forwards. To change ports or
+rediscover services, stop the launcher first, then start it with the new settings:
+
+```bash
+python3 scripts/minikube_endpoints.py --port grafana=3001 --port ollama=11436
+```
+
+The default kubeconfig context is `minikube`. Use `--context NAME` to select
+another cluster with the same service layout. `--state-dir PATH` selects a private
+directory for logs and control files. If you use either option, repeat it when
+starting, checking or stopping the launcher. `--port KEY=PORT` can be repeated to
+pin local ports from 1024 to 65535; a frontend override must still match the
+deployed origin. `--timeout SECONDS` sets the startup timeout for each forward
+(default: 20 seconds, greater than zero and at most 300).
+
+### Readiness, retries and logs
+
+`READY` means the launcher's kubectl process has announced its local listener and
+the launcher has connected to it. It does not verify application health, login or
+inference. Use the normal application health and acceptance checks for those.
+
+Services that are missing, lack a Pod selector or have no ready running Pods are
+shown as `SKIPPED`. Stop and start the launcher to discover them again when they
+become available. For forwards it has started, the supervisor retries after
+interruptions, including Pod replacement, while keeping the same local ports.
+Access is interrupted while the laptop is asleep or the cluster is unavailable.
+
+If a forward fails during startup, the command reports the problem and exits with
+a nonzero status while the supervisor continues retrying. Other forwards can stay
+available. Inspect the logs and run the status command to check recovery. A
+service with an incompatible port is shown as `ERROR` and requires a restart
+after its configuration is corrected. If no configured services have ready Pods,
+the launcher exits without starting a supervisor.
+
+The status command exits successfully when at least one service is `READY` and
+all other services are either `READY` or `SKIPPED`. It exits with a nonzero status
+if no supervisor is running or a selected forward is starting, retrying or in error.
+
+Logs, `plan.json` and the latest `endpoints.json` snapshot are stored under
+`.local/endpoints/CONTEXT/` in this checkout. Each forwarded service has its own
+log, such as `frontend.log`; `supervisor.log` records supervisor errors. The status
+command queries the live supervisor. A saved JSON snapshot alone does not show
+whether the forwards are still running. Keep a custom state directory's absolute
+path under 90 bytes to leave room for the Unix control socket filename.
+
+The stop command ends only the launcher's own forwarding processes. Stop the
+launcher before running deployment verification or starting local development
+servers that need the same ports.
 
 ## Common manual commands
 
@@ -140,7 +261,7 @@ point does not start a cluster. For krunkit GPU clusters, use
 [standard Helm deployment](../docs/guides/helm-release.md); for instances managed by
 Argo CD, follow the [GitOps workflow](../docs/guides/gitops.md).
 
-Every operational command requires `--profile NAME`. Keep `--namespace` and
+Every Helm CLI command requires `--profile NAME`. Keep `--namespace` and
 `--release` consistent across commands; `-f` supplies values and `--state-root`
 selects private local records. The CLI also provides `status`, `logs`, `rollback`
 and `undeploy`. Undeploy retains data by default; purging it requires explicit
@@ -240,6 +361,7 @@ pytest configure `scripts/` as the internal import root.
 | `checks/*.sh` | **Internal implementation** | Check logic called by `check*.sh`; `common.sh` is sourced only by other check scripts. |
 | `dev/*.py` | **Internal implementation** | Implementations of `local_demo.py` and `init_local_users.py`. |
 | `deployment/helm/*.py` | **Internal implementation** | CLI, sessions, builds, diagnostics, lifecycle operations, and acceptance checks for `minikube_helm.py`. |
+| `deployment/endpoints.py` | **Internal implementation** | Service discovery and the detached forwarding supervisor for `minikube_endpoints.py`. Uses the standard library and does not import the Helm CLI or session. |
 | `deployment/common/*.py` | **Internal implementation** | Shared deployment target, port forwarding, queue protection, and resource logic. |
 | `validation/*.py` | **Internal implementation** | Helm, snapshot and GitOps validation used by `validate_helm.py`, plus monitoring validation used by `validate_monitoring.py`. |
 | `release/_entry.py`, `release/publisher.py`, `release/snapshot_impl.py`, `release/github.py`, `release/lifecycle.py`, `release/metadata.py` | **Internal implementation** | Import path setup, publishing, snapshot generation, GitHub requests, approved release tags, rollback preparation and shared provenance validation. |

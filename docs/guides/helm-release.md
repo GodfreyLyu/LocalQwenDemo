@@ -212,6 +212,14 @@ If changing the local port, also change `config.allowedOrigin` in the environmen
 file, run the Helm upgrade, and use the matching forwarding port. Origin matching
 is exact; do not substitute `127.0.0.1` in the browser URL.
 
+For deployments in the default `local-review-demo` namespace, the
+[background endpoint launcher](../../scripts/README.md#background-minikube-endpoints)
+can forward the application and this repository's platform services together.
+Run it from the main source checkout with Python 3.10+ and kubectl; generated
+deployment snapshots do not include it. Its namespaces are fixed, so use the
+explicit foreground command above for the `local-review-helm` namespace used in
+this guide. Avoid running both forwarding options on the same local port.
+
 ### Argo CD integration
 
 Argo CD can render the same Chart with release values followed by environment

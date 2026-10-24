@@ -227,8 +227,17 @@ deployed build and uses normal authentication. It must complete a real review th
 passes the quality checks, then verify account isolation and persistence. It may
 create accounts, write reviews and restart owned workloads. Do not run a full verify
 just to inspect a performance problem.
-Stop your owned foreground port-forward before verify uses its port. Browser acceptance
-through the deployed same-origin entry is a separate check.
+Before running `verify`, stop any foreground forward using the frontend port. If
+the [background endpoint launcher](../../scripts/README.md#background-minikube-endpoints)
+is running, stop it too:
+
+```bash
+python3 scripts/minikube_endpoints.py stop
+```
+
+Repeat any custom `--context` and `--state-dir` options used at startup. The verify
+command starts its own temporary forward. Browser acceptance through the deployed
+same-origin URL is a separate check.
 
 Browser tests use a fresh temporary directory for fake history and artifacts by default.
 `LOCAL_REVIEW_TEST_ROOT` can select a dedicated disposable test directory; never point it

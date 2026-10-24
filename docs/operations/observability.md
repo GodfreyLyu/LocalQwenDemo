@@ -24,7 +24,7 @@ already lists that overlay last; merge its deployment snapshot only after platfo
 setup. The AppProject permits the two monitoring resource kinds in the application
 namespace, while cluster-wide access remains prohibited.
 
-Inspect discovery and reach the interfaces through loopback port-forwards:
+Check that the monitoring workloads and application monitors exist:
 
 ```bash
 kubectl --context minikube -n monitoring get pods,pvc
@@ -34,27 +34,27 @@ kubectl --context minikube -n monitoring get pods,pvc
 kubectl --context minikube -n local-review-demo get servicemonitor,prometheusrule
 ```
 
+From the main source checkout, start background forwards for this repository's
+application and platform services:
+
 ```bash
-kubectl --context minikube -n monitoring port-forward service/monitoring-grafana 3000:80
+python3 scripts/minikube_endpoints.py
 ```
 
-Open `http://localhost:3000` with the external admin credentials. Use **Service Overview**
-for API responses, review outcomes and queue state; use **Inference & Resources** for
-section timings, observed token rates and separately scoped backend/Ollama resource
-usage. API panels exclude health probes. Empty panels can mean no observations rather
-than a failure or zero latency. Percentiles need enough samples to be useful.
+The command prints the local addresses and forwarding states, then returns. Open
+the printed Grafana address (normally `http://127.0.0.1:3000`) with the external
+admin credentials. Use **Service Overview** for API responses, review outcomes and
+queue state; use **Inference & Resources** for section timings, observed token
+rates and backend/Ollama resource usage shown separately. API panels exclude
+health probes. Empty panels can mean no observations rather than a failure or
+zero latency. Percentiles need enough samples to be useful.
 
-For Prometheus and Alertmanager access, use the port-forward commands in the
+The same command forwards Prometheus and Alertmanager, normally on ports 9090 and
+9093. See the [endpoint guide](../../scripts/README.md#background-minikube-endpoints)
+for the full service list, status and stop commands, port settings and logs. For
+individual foreground forwards, use the
 [platform monitoring guide](../../infra/local-platform/README.md#monitoring).
 Alertmanager displays and groups alerts locally; external notifications are not configured.
-
-If Grafana probes report `connection refused`, inspect the `grafana` container's
-last termination reason and previous logs. `OOMKilled` means the process exceeded its
-container memory limit or encountered node memory pressure; extending probe delays
-does not fix it. Check node capacity and adjust Grafana resources in the platform's
-`values/monitoring.yaml`, then plan and apply with Terraform. Verify dashboard queries
-and restart counts after the rollout. Pod replacement discards Grafana UI edits;
-the provisioned dashboards and data sources are loaded again from ConfigMaps.
 
 If Grafana probes report `connection refused`, inspect the `grafana` container's
 last termination reason and previous logs. `OOMKilled` means the process exceeded its

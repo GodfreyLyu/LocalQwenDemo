@@ -124,6 +124,28 @@ only loopback; it never reuses or kills an unrelated listener. Visit the printed
 `http://localhost:PORT` URL, not `127.0.0.1`. Stop your foreground forwarding process
 before running `verify`, which owns its own temporary forwarding process.
 
+For background access to the default `local-review-demo` deployment and this
+repository's platform services, run the endpoint launcher instead:
+
+```bash
+python3 scripts/minikube_endpoints.py
+```
+
+It prints each service's local address and forwarding state, then returns while
+the forwards keep running. It defaults to kubeconfig context `minikube`; use
+`--context NAME` if your cluster uses another context. Its service names and
+namespaces are fixed, so keep the Helm CLI's foreground command for deployments
+that use a custom namespace. See the
+[endpoint guide](../../scripts/README.md#background-minikube-endpoints) for the
+service list, status, port settings and logs.
+
+If the background launcher is running, stop it before `verify` or before starting
+a foreground forward on the same port:
+
+```bash
+python3 scripts/minikube_endpoints.py stop
+```
+
 `verify` creates test accounts and a real review. It checks authentication, CSRF,
 account isolation, model identity, and persisted results. By default, it confirms that
 workloads are idle and blocks new submissions before restarting the local database and
