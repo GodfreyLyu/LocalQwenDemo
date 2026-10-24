@@ -76,8 +76,8 @@ credentials are protocol requirements, not permission to access a cloud account.
 Application service containers run as non-root with read-only root filesystems, dropped
 Linux capabilities, no privilege escalation, RuntimeDefault seccomp, and bounded
 resources. The optional volume-permission init containers run as root with `CHOWN` and
-`FOWNER` to prepare volume roots. Writable backend locations are `/data`,
-`/models/huggingface`, and `/tmp`. The platform device plugin has separate host privileges.
+`FOWNER` to prepare volume roots. Writable backend locations are `/data` and `/tmp`.
+The platform device plugin has separate host privileges.
 
 ## Logging and secrets
 

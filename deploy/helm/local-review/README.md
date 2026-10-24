@@ -79,8 +79,15 @@ capacity checks, Grafana credentials, access, alert handling and GitOps ordering
 
 Each namespace supports one release. Fixed Service names preserve local endpoint
 validation. The backend runs one replica and uses `Recreate` updates. Chart-created PVCs
-are retained on Helm uninstall. To reuse storage, set the three
-`persistence.*.existingClaim` values and retain the original signing Secret.
+are retained on Helm uninstall. To reuse storage, set
+`persistence.history.existingClaim` and `persistence.dynamodb.existingClaim`, and
+retain the original signing Secret.
+
+The Chart no longer creates or mounts the legacy backend model-cache PVC. Existing
+cache PVCs keep their retention annotations; old `persistence.modelCache` values
+are accepted but ignored. For an existing Argo CD installation, complete the
+[cache retirement step](../../../docs/guides/gitops.md#retire-the-legacy-backend-cache)
+before approving the upgrade. See the [storage reference](../../../docs/reference/architecture.md#storage).
 
 The Chart has deterministic templates and can also be rendered by Argo CD. Choose
 one manager for each deployment; Argo CD instances are not Helm releases.

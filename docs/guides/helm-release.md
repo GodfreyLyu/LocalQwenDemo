@@ -36,7 +36,7 @@ standard Helm on krunkit or Docker-driver clusters. The independent GPU Ollama i
 requires ARM64 krunkit; the optional local image-build CLI requires the Docker driver.
 For the default application resource settings, start with 4 CPUs and 8 GiB of cluster
 memory. Check available capacity for Ollama, platform services and the host before
-installing. The application requests 23 GiB across three PVCs; Ollama adds a 4 GiB PVC.
+installing. The application requests 11 GiB across two PVCs; Ollama adds a 4 GiB PVC.
 Allow additional disk space for images and any monitoring storage. The
 `values-minikube-ollama.yaml` overlay offers smaller backend resource settings when
 inference runs in the independent Ollama service.

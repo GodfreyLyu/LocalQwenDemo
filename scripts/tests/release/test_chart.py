@@ -1,5 +1,6 @@
 """Release regressions: cumulative inputs, provenance, Helm invariants and target isolation."""
 
+import shutil
 import subprocess
 
 import pytest
@@ -38,7 +39,7 @@ def test_schema_rejects_multiple_workers_and_invalid_configuration():
 @pytest.mark.integration
 @pytest.mark.requires_helm
 @pytest.mark.contract
-def test_config_rollout_and_volume_retention():
+def test_external_volume_and_volume_retention():
     before = validate_helm.validate_resources(
         validate_helm.render(ROOT, [ROOT / validate_helm.MINIKUBE_VALUES])
     )
@@ -47,25 +48,71 @@ def test_config_rollout_and_volume_retention():
             ROOT,
             [ROOT / validate_helm.MINIKUBE_VALUES],
             settings=[
-                "config.queueCapacity=6",
                 "volumePermissions.enabled=false",
                 "persistence.history.existingClaim=old-history",
             ],
         )
     )
-    old = before["Deployment", "review-backend"]["spec"]["template"]
     new = after["Deployment", "review-backend"]["spec"]["template"]
-    assert (
-        old["metadata"]["annotations"]["checksum/config"]
-        != new["metadata"]["annotations"]["checksum/config"]
-    )
     assert [i["name"] for i in new["spec"]["initContainers"]] == ["initialize-users"]
     assert ("PersistentVolumeClaim", "review-history") not in after
     assert all(
         r["metadata"]["annotations"]["helm.sh/resource-policy"] == "keep"
+        and r["metadata"]["annotations"]["argocd.argoproj.io/sync-options"]
+        == "Prune=false,Delete=false"
         for (kind, _), r in before.items()
         if kind == "PersistentVolumeClaim"
     )
+
+
+@pytest.mark.integration
+@pytest.mark.requires_helm
+@pytest.mark.contract
+@pytest.mark.parametrize(
+    "change,expected", [("config", "review-backend"), ("nginx", "review-frontend")]
+)
+def test_configuration_changes_roll_only_the_consuming_workload(tmp_path, change, expected):
+    chart = tmp_path / snapshot.CHART
+    shutil.copytree(ROOT / snapshot.CHART, chart)
+    values = [tmp_path / validate_helm.MINIKUBE_VALUES]
+    before = validate_helm.validate_resources(validate_helm.render(tmp_path, values))
+    settings = []
+    if change == "config":
+        settings.append("config.queueCapacity=6")
+    else:
+        nginx = chart / "files/nginx.conf"
+        nginx.write_text(nginx.read_text() + "\n# updated frontend configuration\n")
+    after = validate_helm.validate_resources(validate_helm.render(tmp_path, values, settings))
+    changed = {
+        name
+        for (kind, name), resource in before.items()
+        if kind == "Deployment"
+        and resource["spec"]["template"] != after[kind, name]["spec"]["template"]
+    }
+    assert changed == {expected}
+
+
+@pytest.mark.integration
+@pytest.mark.requires_helm
+@pytest.mark.contract
+def test_retired_model_cache_values_do_not_change_resources():
+    values = [ROOT / validate_helm.MINIKUBE_VALUES]
+    before = validate_helm.validate_resources(validate_helm.render(ROOT, values))
+    after = validate_helm.validate_resources(
+        validate_helm.render(
+            ROOT,
+            values,
+            settings=[
+                "persistence.modelCache.size=12Gi",
+                "persistence.modelCache.existingClaim=retained-model-cache",
+            ],
+        )
+    )
+    assert after == before
+    assert {name for kind, name in after if kind == "PersistentVolumeClaim"} == {
+        "review-history",
+        "review-dynamodb",
+    }
 
 
 @pytest.mark.integration

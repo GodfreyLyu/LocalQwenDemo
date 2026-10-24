@@ -27,10 +27,12 @@ DynamoDB Local, frontend, monitoring, Kubernetes components and other workloads 
 additional capacity. Ollama also requires the GPU resource described in its
 [Chart guide](../../deploy/helm/local-ollama/README.md).
 
-The application Chart requests three PVCs: 12 GiB for the unused legacy backend model
-cache, 10 GiB for history/queue/sessions and 1 GiB for accounts. Ollama adds a 4 GiB
-model PVC; optional Prometheus monitoring adds a 5 GiB PVC. These requests do not
+The application Chart requests two PVCs: 10 GiB for history/queue/sessions and
+1 GiB for accounts. Ollama adds a 4 GiB model PVC; optional Prometheus monitoring
+adds a 5 GiB PVC. These requests do not
 reserve physical host disk, and declared sizes are not measured usage.
+Older installations may still retain an unused backend model-cache PVC; see the
+[storage reference](architecture.md#storage) for upgrade retention.
 
 For the Docker-driver workflow, `doctor` separately measures host memory pressure,
 Docker capacity, node allocatable resources, existing requests/limits and available

@@ -142,7 +142,7 @@ function Auth({
             />
           </label>
           {error && (
-            <div role="alert" className="notice error">
+            <div role="alert" className="notice">
               {error}
             </div>
           )}
@@ -273,7 +273,6 @@ function Workspace({
         } else {
           setPendingId(null);
           locked.current = false;
-          setMessage(review.error_message ?? '');
           requestKey.current = null;
           void refreshHistory();
         }
@@ -504,7 +503,7 @@ function Workspace({
             <RuntimePanel runtime={runtime} />
           </header>
           {message && (
-            <div role="alert" className="notice error">
+            <div role="alert" className="notice">
               <span>{message}</span>
               {deliveryUncertain && !expired && (
                 <button

@@ -474,9 +474,6 @@ h2 {
   padding-top: 8px;
   overflow: auto;
 }
-.editor-container > .cm-theme {
-  height: 100%;
-}
 .cm-editor {
   font-size: 13px;
 }

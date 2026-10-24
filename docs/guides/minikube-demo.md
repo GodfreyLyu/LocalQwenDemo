@@ -127,9 +127,9 @@ before running `verify`, which owns its own temporary forwarding process.
 `verify` creates test accounts and a real review. It checks authentication, CSRF,
 account isolation, model identity, and persisted results. By default, it confirms that
 workloads are idle and blocks new submissions before restarting the local database and
-backend. It then checks that the retained legacy backend cache is unchanged and that
-accounts, cookies and review history survived. This does not test Ollama's separate
-model PVC or restart Ollama. `--skip-restart` produces a partial result and exits
+backend. It then checks that the selected Ollama model's digest and reported size are
+unchanged and that accounts, cookies and review history survived. This does not test
+Ollama's separate model PVC or restart Ollama. `--skip-restart` produces a partial result and exits
 nonzero, not a persistence pass. No browser automation is implied; manual UI acceptance
 remains separate.
 

@@ -29,8 +29,6 @@ def source(tmp_path):
     shutil.copytree(ROOT / snapshot.OLLAMA_CHART, root / snapshot.OLLAMA_CHART)
     shutil.copytree(ROOT / snapshot.ARGOCD, root / snapshot.ARGOCD)
     shutil.copytree(ROOT / "deploy/images", root / "deploy/images")
-    for name in snapshot.DEPLOY_FILES:
-        shutil.copyfile(ROOT / name, root / name)
     (root / "backend/app/main.py").write_text("print('backend')\n")
     (root / "frontend/main.js").write_text("console.log('frontend')\n")
     (root / "README.md").write_text("source docs")

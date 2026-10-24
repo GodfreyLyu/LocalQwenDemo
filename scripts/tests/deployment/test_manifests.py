@@ -93,11 +93,14 @@ def test_chart_preserves_product_contract_and_has_no_cloud_resources(resources):
         assert forbidden not in serialized
     claims = [r for r in resources if r["kind"] == "PersistentVolumeClaim"]
     assert {r["metadata"]["name"] for r in claims} == {
-        "review-model-cache",
         "review-history",
         "review-dynamodb",
     }
     assert all(r["spec"]["storageClassName"] == "standard" for r in claims)
+    backend = resource(resources, "Deployment", "review-backend")["spec"]["template"]["spec"]
+    assert {v["name"] for v in backend["volumes"]} == {"history", "tmp"}
+    for container in backend["containers"] + backend["initContainers"]:
+        assert all(m["mountPath"] in {"/data", "/tmp"} for m in container["volumeMounts"])
 
 
 @pytest.mark.integration

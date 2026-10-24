@@ -117,9 +117,9 @@ Ollama server or GPU memory.
 
 The backend image installs Python 3.12 and application/HTTP dependencies only.
 No tokenizers, Hugging Face Hub, Torch or Transformers are needed. Ollama owns model
-weights and its separate PVC. The old backend cache PVC is retained but unused;
-neither startup nor evaluation downloads tokenizer files. Existing review history
-and old cache files are preserved. `MODEL_ID`, `MODEL_REVISION`, `HF_HOME`,
+weights and its separate PVC. The application no longer provisions or mounts a
+backend model cache; [existing cache PVCs are retained](architecture.md#storage).
+Neither startup nor evaluation downloads tokenizer files. `MODEL_ID`, `MODEL_REVISION`, `HF_HOME`,
 `MODEL_BACKEND`, Helm `model.backend`, and CLI `--model-backend` are retired.
 There is no in-process Transformers adapter or automatic fallback.
 

@@ -100,13 +100,21 @@ DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_threa
 | PVC                  | Mounted by                       | Data / configured size                                                |
 | -------------------- | -------------------------------- | --------------------------------------------------------------------- |
 | `review-history`     | Backend at `/data`               | `reviews.sqlite3`: queue, review bodies, history and sessions; 10 GiB |
-| `review-model-cache` | Backend at `/models/huggingface` | Legacy cache retained but unused by Ollama adapter; 12 GiB                 |
 | `review-dynamodb`    | DynamoDB Local at `/data`        | Account records and password hashes; 1 GiB                            |
 
 The signing key is a separate `review-secrets` Kubernetes Secret. Host-side deployment
 state is also separate: it records target/build/acceptance evidence and private credentials,
-not application history. Default undeploy retains all three PVCs and signing material.
+not application history. Default undeploy retains both application PVCs and signing material.
 Hostpath capacity declarations are not disk reservations or backups.
+
+Older releases created a `review-model-cache` PVC for in-process Hugging Face models.
+The application no longer creates or mounts it. Its existing Helm keep and Argo CD
+`Prune=false,Delete=false` annotations retain it during upgrades; this change does not
+delete its data. Argo CD installations need the
+[cache retirement annotation](../guides/gitops.md#retire-the-legacy-backend-cache)
+before syncing the removal to keep the application Synced.
+Old `persistence.modelCache` values remain accepted but are ignored.
+Ollama's separate model PVC remains in use.
 
 `backend/app/persistence/storage.py` provides parameterized SQLite queries, explicit transactions, and schema versioning through `PRAGMA user_version`. Version 1 is created atomically; unknown versions fail startup. Future schema changes must introduce explicit ordered migrations before increasing the supported version. SQLite uses WAL, `synchronous=FULL`, and a five-second busy timeout. Each operation creates and closes its own connection.
 
@@ -191,8 +199,8 @@ safe across workers. None of those distributed capabilities is implemented here.
 The application and independent Ollama service have separate Helm Charts under
 `deploy/helm`. Approved release snapshots pin their images. Deploy with standard Helm
 commands or let Argo CD reconcile the release branch, using one manager per deployment.
-The application references a stable external signing Secret and uses three PVCs for
-history/queue/sessions, the backend model cache and DynamoDB Local accounts. Ollama
+The application references a stable external signing Secret and uses two PVCs for
+history/queue/sessions and DynamoDB Local accounts. Ollama
 has its own model PVC. See the [Helm guide](../guides/helm-release.md) and
 [GitOps guide](../guides/gitops.md) for ownership and storage retention.
 
