@@ -97,9 +97,9 @@ These logs omit exception text, endpoints, credentials and account data.
 
 ## Backup and recovery
 
-The application has three PVCs: SQLite history/queue/sessions, DynamoDB Local
-accounts, and a retained legacy backend cache. Ollama does not use that cache; its
-models live on a fourth PVC owned by the independent Ollama release. See the
+The application has two PVCs: SQLite history/queue/sessions and DynamoDB Local
+accounts. Models live on a separate PVC owned by the independent Ollama release.
+Older installations may also retain the retired backend cache. See the
 [storage reference](../reference/architecture.md#storage) for paths and sizes.
 A consistent SQLite backup requires its backup API or an explicitly
 coordinated idle shutdown; copying only the database file during WAL writes is unsafe.

@@ -89,9 +89,8 @@ The single backend process stores submissions in SQLite and returns a job ID. It
 background coordinator claims one job at a time, calls Ollama, and saves the result.
 The browser polls for progress and completed reviews. DynamoDB Local stores accounts.
 
-The application Chart creates three PVCs: review history, accounts, and a legacy
-backend model cache that is retained but unused. The independent Ollama Chart has
-its own model PVC. Model weights are not baked into application images. See the
+The application Chart creates two PVCs: review history and accounts. The independent
+Ollama Chart has its own model PVC. Model weights are not baked into application images. See the
 [architecture reference](docs/reference/architecture.md) for the request flow,
 queue lifecycle and storage details.
 

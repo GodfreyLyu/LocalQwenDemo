@@ -25,7 +25,6 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name | quote }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap-review-config.yaml") . | sha256sum }}
-        checksum/nginx: {{ .Files.Get "files/nginx.conf" | sha256sum }}
     spec:
       automountServiceAccountToken: false
       containers:
@@ -73,12 +72,10 @@ spec:
           name: tmp
         - mountPath: /data
           name: history
-        - mountPath: /models/huggingface
-          name: model-cache
       initContainers:
 {{- if .Values.volumePermissions.enabled }}
       - args:
-        - import os; [(os.chown(p, 10001, 10001), os.chmod(p, 0o770)) for p in ['/data', '/models/huggingface']]
+        - import os; os.chown('/data', 10001, 10001); os.chmod('/data', 0o770)
         command:
         - python
         - -c
@@ -107,8 +104,6 @@ spec:
         volumeMounts:
         - mountPath: /data
           name: history
-        - mountPath: /models/huggingface
-          name: model-cache
 {{- end }}
       - name: initialize-users
         image: {{ include "review.image" .Values.backend.image | quote }}
@@ -153,7 +148,4 @@ spec:
       - name: history
         persistentVolumeClaim:
           claimName: {{ default "review-history" .Values.persistence.history.existingClaim | quote }}
-      - name: model-cache
-        persistentVolumeClaim:
-          claimName: {{ default "review-model-cache" .Values.persistence.modelCache.existingClaim | quote }}
       imagePullSecrets: {{ .Values.imagePullSecrets | toJson }}

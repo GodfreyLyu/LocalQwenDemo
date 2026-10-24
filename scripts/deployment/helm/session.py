@@ -372,7 +372,7 @@ class Session:
         generated = {
             r["metadata"]["name"] for r in resources if r["kind"] == "PersistentVolumeClaim"
         }
-        for key in ("history", "modelCache", "dynamodb"):
+        for key in ("history", "dynamodb"):
             name = values["persistence"][key]["existingClaim"]
             if name:
                 pvc = self.target.object("pvc", name)

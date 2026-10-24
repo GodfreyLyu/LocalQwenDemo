@@ -13,7 +13,7 @@ ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     HOME=/tmp
 RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --no-create-home \
       --shell /usr/sbin/nologin app \
-    && mkdir -p /data /models/huggingface && chown -R 10001:10001 /data /models
+    && mkdir -p /data && chown 10001:10001 /data
 COPY --from=build /opt/venv /opt/venv
 WORKDIR /service
 USER 10001:10001

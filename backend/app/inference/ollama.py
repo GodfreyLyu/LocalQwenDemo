@@ -323,7 +323,6 @@ class OllamaModel:
 
         async def generate():
             async with self._client() as client:
-                await self._identity(client)
                 bodies = []
                 for section, title, _ in SECTION_SPECS:
                     check_deadline(stop, deadline)

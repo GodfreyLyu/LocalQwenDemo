@@ -220,7 +220,13 @@ the selected model and safe startup events. Preserve partial downloads and exist
 
 ## Dependency maintenance
 
-`backend/requirements.lock`, `requirements-dev.lock`, `requirements-model.lock`, and `frontend/package-lock.json` pin resolved dependencies. The backend Dockerfile installs only the application and Ollama HTTP client dependencies; it contains no Torch or Transformers. To update Python locks deliberately, use `uv pip compile` with Python 3.12; review and rerun all relevant checks. Review Docker base image tags before updating the local deployment.
+`backend/requirements.lock`, `backend/requirements-dev.lock`, and
+`frontend/package-lock.json` pin resolved dependencies. The empty
+`backend/requirements-model.*` files and `model` extra remain compatibility inputs;
+Ollama owns the model dependencies. The backend Dockerfile installs only application
+and HTTP client dependencies, with no Torch or Transformers. To update Python locks,
+use `uv pip compile` with Python 3.12, then review and rerun the relevant checks.
+Review Docker base image tags before updating the local deployment.
 
 ## Instance labels in the workbench
 

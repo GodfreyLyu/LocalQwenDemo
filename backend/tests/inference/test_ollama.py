@@ -37,6 +37,7 @@ def settings(**kwargs):
 
 class Server:
     def __init__(self):
+        self.paths = []
         self.payloads = []
         self.name = "qwen3:1.7b"
         self.version = "0.24.0"
@@ -53,6 +54,7 @@ class Server:
         self.fail_connection = False
 
     async def __call__(self, request):
+        self.paths.append(request.url.path)
         if self.fail_connection:
             raise httpx.ConnectError("PRIVATE_URL", request=request)
         if request.url.path == "/api/version":
@@ -121,6 +123,7 @@ def test_real_three_section_contract_and_observed_identity(adapter):
     assert all(f"## {title}" in result for title in ("Summary", "Findings", "Suggestions"))
     assert all(body in result for body in BODIES)
     assert len(server.payloads) == 3
+    assert server.paths.count("/api/tags") == 4
     assert sum(p["options"]["num_predict"] for p in server.payloads) == 384
     assert all(p["think"] is False and p["stream"] is True for p in server.payloads)
     assert all(p["options"]["num_ctx"] == 4096 for p in server.payloads)
@@ -131,6 +134,32 @@ def test_real_three_section_contract_and_observed_identity(adapter):
     assert identity["model_id"] == "qwen3:1.7b"
     assert identity["quantization"] == "Q4_K_M" and identity["device"] == "gpu"
     assert identity["model_source"] == "ollama_api"
+
+
+@pytest.mark.component
+@pytest.mark.contract
+@pytest.mark.parametrize("completed_sections", [0, 1, 2, 3])
+def test_model_identity_change_rejects_review_before_more_generation(
+    adapter, monkeypatch, completed_sections
+):
+    model, server = adapter
+
+    async def handler(request):
+        if request.url.path == "/api/tags" and len(server.payloads) == completed_sections:
+            server.digest = "b" * 64
+        return await server(request)
+
+    client = httpx.AsyncClient(
+        base_url="http://localhost:11434",
+        transport=httpx.MockTransport(handler),
+        trust_env=False,
+    )
+    monkeypatch.setattr(model, "_client", lambda: client)
+    with pytest.raises(AppError) as error:
+        model.review(SOURCE, "python", threading.Event())
+    assert error.value.code == "ollama_model_mismatch"
+    assert len(server.payloads) == completed_sections
+    assert client.is_closed
 
 
 @pytest.mark.component
@@ -245,6 +274,7 @@ def test_deadline_during_client_setup_closes_client_without_starting_generation(
         model.review(SOURCE, "python", threading.Event())
     assert error.value.code == "inference_timeout"
     assert server.payloads == []
+    assert server.paths == []
     assert client.is_closed
 
 

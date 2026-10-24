@@ -126,6 +126,8 @@ drift. Their names match Helm release names to preserve labels and the Ollama Se
 URL. Follow the order shown above for the first deployment. Later updates to the two
 Applications are independent and are not applied as one transaction. Backend readiness
 checks, restarts and sync retries handle temporary Ollama unavailability.
+Before approving the first release that removes the old backend cache, follow the
+[cache retirement step](#retire-the-legacy-backend-cache) below.
 
 After verifying the child Applications, run the following command from the main source
 checkout:
@@ -152,13 +154,49 @@ review backend separately validates its selected model. Standard Helm installs s
 `helm test` and do not render the Argo Job unless enabled explicitly. See
 [Argo Helm hooks](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/).
 
-The four application and Ollama PVCs have the Helm keep annotation and the Argo
+### Retire the legacy backend cache
+
+For an existing Argo-managed installation, prepare the old `review-model-cache` PVC
+before merging the deployment PR that removes its template. Fresh installations and
+Helm-only deployments do not need this step. If an external cache claim was used,
+leave it with its original owner.
+
+Inspect the old claim using the actual application context and namespace:
+
+```bash
+kubectl --context minikube -n local-review-demo get pvc review-model-cache -o yaml
+```
+
+If it is absent, there is nothing to migrate. Otherwise verify it belongs to the
+`local-review` application, is Bound, and retains `helm.sh/resource-policy: keep`
+and `argocd.argoproj.io/sync-options: Prune=false,Delete=false`. Record its UID and
+volume name for the post-upgrade check, then add this annotation to that claim only:
+
+```bash
+kubectl --context minikube -n local-review-demo annotate pvc review-model-cache argocd.argoproj.io/compare-options=IgnoreExtraneous --overwrite
+```
+
+This leaves data and retention settings intact. Without it, a retained resource
+removed from Git leaves the application OutOfSync: `Prune=false` prevents deletion,
+while `IgnoreExtraneous` excludes it from sync comparison. See Argo CD's
+[prune behavior](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#no-prune-resources)
+and [compare options](https://argo-cd.readthedocs.io/en/stable/user-guide/compare-options/).
+After the approved release syncs, verify the claim still has the same UID and volume,
+and the application is Synced and Healthy. The first cleanup upgrade changes Pod
+templates and performs the normal Recreate rollout; later configuration changes
+restart only the workloads that consume that configuration.
+
+### Storage retention
+
+The three application and Ollama PVCs have the Helm keep annotation and the Argo
 `Prune=false,Delete=false` annotations. Deleting a namespace or cluster still deletes its storage; these
 annotations are not backups. Bootstrap does not delete or recreate namespaces or signing
 keys. Before applying an Application for an existing Helm-managed workload, record its
 exact values, image digests and PVCs. Plan the end of Helm management and verify that
 Argo renders matching resources before transferring ownership. Never let Helm and Argo
 upgrade one workload concurrently, or blindly uninstall a release to perform migration.
+Older backend cache PVCs retain their existing protection even though current Charts
+no longer create or mount them; see the [storage reference](../reference/architecture.md#storage).
 
 Finish acceptance by submitting a real code review through the frontend and
 checking saved history. GPU admission is not model-quality or load acceptance.

@@ -16,7 +16,6 @@ CHART = "deploy/helm/local-review"
 OLLAMA_CHART = "deploy/helm/local-ollama"
 CHARTS = (CHART, OLLAMA_CHART)
 COMPONENTS = ("backend", "frontend", "ollama")
-DEPLOY_FILES = ()
 ARGOCD = "deploy/argocd"
 FORMAT = 3
 SHA = re.compile(r"^[0-9a-f]{40}$")
