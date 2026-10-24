@@ -332,7 +332,6 @@
       "required": [
         "storageClass",
         "history",
-        "modelCache",
         "dynamodb"
       ],
       "properties": {
@@ -357,11 +356,9 @@
         },
         "modelCache": {
           "type": "object",
+          "deprecated": true,
+          "description": "Ignored compatibility input for retained values from older releases; no cache PVC is created or mounted.",
           "additionalProperties": false,
-          "required": [
-            "size",
-            "existingClaim"
-          ],
           "properties": {
             "size": {
               "type": "string"

@@ -55,9 +55,6 @@ persistence:
   history:
     size: 10Gi
     existingClaim: ''
-  modelCache:
-    size: 12Gi
-    existingClaim: ''
   dynamodb:
     size: 1Gi
     existingClaim: ''
