@@ -50,6 +50,17 @@ public internet access have not been validated.
    confirm that inference works. Ollama GPU inference has a separate Helm test or
    Argo CD PostSync check.
 
+To start this repository's application, Ollama, Argo CD and monitoring endpoint
+forwards in the background, run:
+
+```bash
+python3 scripts/minikube_endpoints.py
+```
+
+It prints each service and local address, then returns while forwarding continues.
+See the [script guide](scripts/README.md#common-manual-commands) for status, stop,
+port selection and logs.
+
 The local values file disables NetworkPolicy isolation. If you need isolation, follow
 the Helm guide to enable policies with a CNI that enforces them. Optional monitoring
 is covered in the [platform setup](infra/local-platform/README.md#monitoring) and

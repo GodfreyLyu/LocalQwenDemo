@@ -163,3 +163,66 @@ prometheus-node-exporter:
   resources:
     requests: {cpu: 25m, memory: 64Mi}
     limits: {cpu: 200m, memory: 128Mi}
+  # Minikube's hostPath plugin does not implement kubelet PVC usage statistics.
+  # Export allocated directory bytes through the existing node-exporter scrape.
+  extraArgs:
+    - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/containerd/.+|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+    - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|erofs)$
+    - --collector.textfile.directory=/run/pvc-metrics
+  sidecarVolumeMount:
+    - name: pvc-metrics
+      mountPath: /run/pvc-metrics
+      readOnly: false
+  sidecarHostVolumeMounts:
+    - name: review-pvcs
+      hostPath: /tmp/hostpath-provisioner/local-review-demo
+      mountPath: /host-pvcs/local-review-demo
+      readOnly: true
+    - name: ollama-pvcs
+      hostPath: /tmp/hostpath-provisioner/local-inference
+      mountPath: /host-pvcs/local-inference
+      readOnly: true
+  sidecars:
+    - name: hostpath-pvc-usage
+      image: docker.io/library/busybox:1.37.0-musl@sha256:5cec3fc171c87218698e85a52af7087de727372aae264a787b8112901a5b0092
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        runAsUser: 0
+        runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+          add: [DAC_READ_SEARCH]
+      resources:
+        requests: {cpu: 5m, memory: 8Mi}
+        limits: {cpu: 50m, memory: 32Mi}
+      command: [/bin/sh, -ec]
+      args:
+        - |
+          pvc_root="${PVC_ROOT:-/host-pvcs}"
+          output="${TEXTFILE_DIRECTORY:-/run/pvc-metrics}/hostpath-pvcs.prom"
+          while :; do
+            {
+              printf '# HELP local_hostpath_pvc_used_bytes Allocated directory bytes from du, not a filesystem quota.\n# TYPE local_hostpath_pvc_used_bytes gauge\n'
+              printf '# HELP local_hostpath_pvc_last_success_timestamp_seconds Last successful directory measurement.\n# TYPE local_hostpath_pvc_last_success_timestamp_seconds gauge\n'
+              for namespace in local-review-demo local-inference; do
+                for directory in "$pvc_root/$namespace"/*; do
+                  [ -d "$directory" ] && [ ! -L "$directory" ] || continue
+                  claim="${directory##*/}"
+                  case "$claim" in *[!a-z0-9.-]*) continue ;; esac
+                  # A partial/failed du must never become a zero or partial usage sample.
+                  if usage=$(du -sk "$directory"); then
+                    kib="${usage%%[[:space:]]*}"
+                    case "$kib" in ''|*[!0-9]*) continue ;; esac
+                    printf 'local_hostpath_pvc_used_bytes{claim_namespace="%s",persistentvolumeclaim="%s"} %s\n' "$namespace" "$claim" "$((kib * 1024))"
+                    printf 'local_hostpath_pvc_last_success_timestamp_seconds{claim_namespace="%s",persistentvolumeclaim="%s"} %s\n' "$namespace" "$claim" "$(date +%s)"
+                  fi
+                done
+              done
+            } > "$output.tmp"
+            chmod 644 "$output.tmp"
+            mv "$output.tmp" "$output"
+            [ "${COLLECT_ONCE:-0}" = 1 ] && break
+            sleep 30
+          done
