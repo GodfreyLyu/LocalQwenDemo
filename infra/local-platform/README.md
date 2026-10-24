@@ -200,17 +200,20 @@ metrics use a separate writable memory volume. The dashboard prefers kubelet
 volume statistics when available and omits fallback samples older than 120 seconds.
 PVC requests are displayed separately and are not enforced hostPath quotas.
 
-All monitoring UIs remain ClusterIP services. To forward them alongside Argo CD,
-the review app and Ollama from this repository in the background, run this from
-the repository root:
+All monitoring UIs use ClusterIP services. From the main source checkout, start
+background forwards for the monitoring UIs, Argo CD, the review app and Ollama:
 
 ```bash
 python3 scripts/minikube_endpoints.py
 ```
 
-The command prints each service's local endpoint and returns. See the
-[script guide](../../scripts/README.md#common-manual-commands) for status and stop
-commands. For individual foreground forwards, use separate terminals as needed:
+The command prints each service's local address and state, then returns while
+forwarding continues. It selects only this repository's eight configured services.
+See the [endpoint guide](../../scripts/README.md#background-minikube-endpoints)
+for prerequisites, status and stop commands, port settings and logs.
+
+To forward an individual monitoring service in the foreground, use one of the
+commands below. Stop the background launcher first if it is using the same port:
 
 ```bash
 kubectl --context minikube -n monitoring port-forward service/monitoring-grafana 3000:80

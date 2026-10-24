@@ -8,8 +8,9 @@ scripts and `bash` for shell scripts. The check scripts and Minikube shell entry
 point accept `REVIEW_PYTHON` to override the interpreter path.
 The backend development dependencies supply Ruff, pytest, HTTPX, PyYAML, boto3 and
 the local service doubles. Check commands expect these tools to be installed.
-The independent `minikube_endpoints.py` launcher needs only Python 3.10+ and
-kubectl on PATH; it does not need the backend virtual environment.
+The endpoint launcher is an exception: `minikube_endpoints.py` runs on macOS or
+Linux with Python 3.10+ and kubectl on PATH. It uses only the Python standard
+library, so no backend virtual environment is needed.
 
 - **Automatic invocation**: run by CI, test tools, or another entry point. The table
   identifies the caller; you do not need to run these steps individually.
@@ -41,21 +42,25 @@ and manual uses carry both labels.
 | `release/publish.py` | **Automatic invocation** | The release workflow calls `prepare`, `publish`, and `supersede`, or `prepare-rollback`, `check-images` and `publish`; deployment validation calls `verify`; post-merge tagging calls `finalize`. These steps depend on workflow context. Use the workflows to start releases, rollbacks or tagging. |
 | `release/snapshot.py` | **Automatic invocation** | The release workflow calls `render --plan … --output … --backend-digest … --frontend-digest … --ollama-digest …` to generate a deployment snapshot. This script does not deploy to a cluster. |
 
-## Common manual commands
+## Background Minikube endpoints
 
-To access the running Minikube application and platform services in the background:
+With Minikube and the deployed services already running, start the endpoint
+launcher from the root of the main source checkout:
 
 ```bash
 python3 scripts/minikube_endpoints.py
 ```
 
-The command returns after each selected forward has either confirmed its own local
-listener or reported a startup problem. It prints the endpoints, Kubernetes service
-and state. Forwarding stays active after the command and terminal exit. A detached
-supervisor retries interrupted forwards, including after Pod replacement; the
-addresses stay the same. A suspended laptop or stopped cluster interrupts access
-until connectivity returns. This launcher reads cluster resources and starts local
-processes; it does not deploy workloads or change the global kubectl context.
+The command prints a table with each service's local address, Kubernetes service
+and forwarding state, then returns. The forwards keep running in the background
+after the command finishes or you close the terminal. You do not need to add `&`
+or run a separate terminal for each service.
+
+The launcher is included in the main source checkout, not in generated
+`deployment-release` snapshots. It works with Helm and Argo CD deployments on
+Docker-driver or krunkit clusters. It reads cluster resources and starts local
+forwarding processes; it does not deploy services, start Minikube or switch the
+global kubectl context.
 
 | Endpoint key | Preferred local endpoint | Kubernetes service/port |
 | --- | --- | --- |
@@ -68,49 +73,93 @@ processes; it does not deploy workloads or change the global kubectl context.
 | `prometheus` | `http://127.0.0.1:9090` | `monitoring/monitoring-kube-prometheus-prometheus:9090` |
 | `alertmanager` | `http://127.0.0.1:9093` | `monitoring/monitoring-kube-prometheus-alertmanager:9093` |
 
-Only the eight services above are selected, as defined by this repository's
+The launcher selects only the eight services above, defined by this repository's
 `deploy/helm/local-review`, `deploy/helm/local-ollama` and `infra/local-platform`
 configuration. Other projects' services, including Spark and Flink, are excluded.
 Internal DNS, webhooks, exporters, controller APIs and duplicate headless service
-addresses are not forwarded. Missing services or those without ready running Pods
-are explicitly `SKIPPED`. Restart the launcher to rediscover them when they become ready.
-`READY` confirms the owned kubectl process and its reachable TCP listener; use the
-application's normal health and acceptance checks to verify application behavior.
-DynamoDB is an API endpoint rather than a browser UI.
-Argo CD uses its existing cluster TLS certificate, which a browser may ask you to
-accept. Application and Grafana credentials remain the ones already configured.
+addresses are not forwarded. Service names and namespaces are fixed to this
+layout; for a deployment in another namespace, use an explicit kubectl
+port-forward or the Helm CLI's foreground forwarding command.
 
-All forwards bind to `127.0.0.1`. The frontend uses the port in the deployed
-`review-config` ConfigMap's `ALLOWED_ORIGIN`, preserving browser authentication.
-An occupied frontend port or explicitly pinned port produces an error. Other
-occupied preferred ports get an available port; always use the printed address.
-Minikube Ollama prefers 11435 to coexist with host Ollama on 11434.
+### Addresses and ports
+
+All forwards bind to `127.0.0.1`. Open the printed frontend URL exactly as shown;
+the default is `http://localhost:8080`. Its port must match `ALLOWED_ORIGIN` in the
+deployed `review-config` ConfigMap so browser authentication continues to work.
+
+If the frontend port or an explicitly pinned port is already in use, startup
+fails. For other services, the launcher chooses an available port when the
+preferred one is occupied. Always use the address in the output. Minikube Ollama
+defaults to port 11435 so it can run alongside host Ollama on port 11434.
+
+DynamoDB is an API endpoint, not a browser UI. Argo CD uses the cluster's existing
+TLS certificate, which your browser may ask you to accept. Use the application,
+Argo CD and Grafana credentials you already configured.
+
+### Check status, stop or change settings
+
+Display the current endpoint table:
 
 ```bash
 python3 scripts/minikube_endpoints.py status
 ```
 
+Stop the background supervisor and its forwarding processes:
+
 ```bash
 python3 scripts/minikube_endpoints.py stop
 ```
 
-Repeating the start command reuses the running supervisor. To change ports or
-rediscover services, stop it and then start again with the desired options:
+Running the start command again reuses the existing forwards. To change ports or
+rediscover services, stop the launcher first, then start it with the new settings:
 
 ```bash
 python3 scripts/minikube_endpoints.py --port grafana=3001 --port ollama=11436
 ```
 
-The default kubeconfig context is explicitly `minikube`; `--context NAME` selects
-another one. Logs, the initial plan and the latest `endpoints.json` snapshot live
-in `.local/endpoints/CONTEXT/` inside this checkout. `--state-dir PATH` selects
-another private directory; repeat it and `--context` for start/status/stop. Keep
-that directory's path short enough for a Unix domain socket (under 100 bytes).
-The live control socket is authoritative; cached JSON alone does not imply that a
-forward is running. A startup or status result with a failing selected forward exits
-nonzero while the supervisor continues retrying; inspect its log and run status.
-`stop` stops only the supervisor's own forwarding children. Stop these forwards
-before using deployment verification that needs the same frontend port.
+The default kubeconfig context is `minikube`. Use `--context NAME` to select
+another cluster with the same service layout. `--state-dir PATH` selects a private
+directory for logs and control files. If you use either option, repeat it when
+starting, checking or stopping the launcher. `--port KEY=PORT` can be repeated to
+pin local ports from 1024 to 65535; a frontend override must still match the
+deployed origin. `--timeout SECONDS` sets the startup timeout for each forward
+(default: 20 seconds, greater than zero and at most 300).
+
+### Readiness, retries and logs
+
+`READY` means the launcher's kubectl process has announced its local listener and
+the launcher has connected to it. It does not verify application health, login or
+inference. Use the normal application health and acceptance checks for those.
+
+Services that are missing, lack a Pod selector or have no ready running Pods are
+shown as `SKIPPED`. Stop and start the launcher to discover them again when they
+become available. For forwards it has started, the supervisor retries after
+interruptions, including Pod replacement, while keeping the same local ports.
+Access is interrupted while the laptop is asleep or the cluster is unavailable.
+
+If a forward fails during startup, the command reports the problem and exits with
+a nonzero status while the supervisor continues retrying. Other forwards can stay
+available. Inspect the logs and run the status command to check recovery. A
+service with an incompatible port is shown as `ERROR` and requires a restart
+after its configuration is corrected. If no configured services have ready Pods,
+the launcher exits without starting a supervisor.
+
+The status command exits successfully when at least one service is `READY` and
+all other services are either `READY` or `SKIPPED`. It exits with a nonzero status
+if no supervisor is running or a selected forward is starting, retrying or in error.
+
+Logs, `plan.json` and the latest `endpoints.json` snapshot are stored under
+`.local/endpoints/CONTEXT/` in this checkout. Each forwarded service has its own
+log, such as `frontend.log`; `supervisor.log` records supervisor errors. The status
+command queries the live supervisor. A saved JSON snapshot alone does not show
+whether the forwards are still running. Keep a custom state directory's absolute
+path under 90 bytes to leave room for the Unix control socket filename.
+
+The stop command ends only the launcher's own forwarding processes. Stop the
+launcher before running deployment verification or starting local development
+servers that need the same ports.
+
+## Common manual commands
 
 Choose the offline check that matches the scope you need. The full suite already
 includes the script checks:
@@ -212,7 +261,7 @@ point does not start a cluster. For krunkit GPU clusters, use
 [standard Helm deployment](../docs/guides/helm-release.md); for instances managed by
 Argo CD, follow the [GitOps workflow](../docs/guides/gitops.md).
 
-Every operational command requires `--profile NAME`. Keep `--namespace` and
+Every Helm CLI command requires `--profile NAME`. Keep `--namespace` and
 `--release` consistent across commands; `-f` supplies values and `--state-root`
 selects private local records. The CLI also provides `status`, `logs`, `rollback`
 and `undeploy`. Undeploy retains data by default; purging it requires explicit
