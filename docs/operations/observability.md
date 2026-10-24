@@ -91,7 +91,19 @@ defines original-submission versus per-attempt timings and missing-generation se
 The Kubernetes node is the Minikube VM, not the macOS host. Container/node CPU and
 memory do not measure host swap pressure. Apple silicon/krunkit GPU utilization remains
 `not_measured`; device allocation and model placement are not utilization counters.
-Some hostpath volumes do not expose usage series, so missing PVC usage remains unknown.
+Minikube's hostPath plugin does not expose `kubelet_volume_stats_*` usage series.
+The local platform adds a read-only `du -sk` collector to node-exporter, scanning
+the provisioner directories in `local-review-demo` and `local-inference` every
+30 seconds. The PVC panels prefer kubelet statistics and fall back to these
+allocated directory bytes, omitting failed measurements and samples older than
+120 seconds. Missing usage remains unknown. Retained, unmounted claims can appear.
+The requested-size line comes from the PVC specification; hostPath requests are
+not enforced quotas or the capacity of the shared VM filesystem.
+
+The **Ollama namespace** and **Ollama release** dropdowns discover running Ollama
+containers through kube-state-metrics. Release names are extracted from Deployment
+Pod names, and release options refresh when the namespace changes. They filter
+dashboard measurements; they do not navigate to another application.
 
 ## Validate configuration changes
 

@@ -135,6 +135,7 @@ def test_retention_and_resource_budgets_are_bounded(values):
         values["grafana"]["resources"],
         values["kube-state-metrics"]["resources"],
         values["prometheus-node-exporter"]["resources"],
+        values["prometheus-node-exporter"]["sidecars"][0]["resources"],
         operator["resources"],
         *[values["grafana"]["sidecar"]["resources"]] * 2,
         *[operator["prometheusConfigReloader"]["resources"]] * 2,
@@ -147,8 +148,8 @@ def test_retention_and_resource_budgets_are_bounded(values):
             assert 0 < request <= limit
     assert sum(parse_quantity(b["requests"]["cpu"]) for b in budgets) <= 0.5
     assert sum(parse_quantity(b["limits"]["cpu"]) for b in budgets) <= 3
-    assert sum(parse_quantity(b["requests"]["memory"]) for b in budgets) <= 1.25 * 1024**3
-    assert sum(parse_quantity(b["limits"]["memory"]) for b in budgets) <= 3.25 * 1024**3
+    assert sum(parse_quantity(b["requests"]["memory"]) for b in budgets) <= 1288 * 1024**2
+    assert sum(parse_quantity(b["limits"]["memory"]) for b in budgets) <= 3360 * 1024**2
 
 
 def test_only_unexposed_control_plane_targets_and_related_rules_are_disabled(values):

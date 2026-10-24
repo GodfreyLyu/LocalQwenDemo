@@ -174,7 +174,7 @@ The configured budget uses a 30-second scrape/evaluation interval, one-day reten
 a 4 GiB TSDB retention cap and a 5 Gi PVC on `standard`. Time and size limits both
 apply; the earlier limit wins. WAL and head-block space still need free disk, and
 hostpath PVC size is not a reservation or backup. Running monitoring containers request
-340m CPU and 1.25 GiB memory in total, with memory limits of 3.25 GiB; check node
+345m CPU and 1288 MiB memory in total, with memory limits of 3360 MiB; check node
 allocatable minus existing requests as well as actual usage before installation.
 Grafana requests 384 MiB and has a 768 MiB limit to leave room for dashboard queries
 and plugins.
@@ -190,6 +190,15 @@ controller-manager, scheduler and kube-proxy endpoints. Node exporter observes t
 Linux VM, not macOS host pressure. Container metrics for `review-ollama` describe
 model-server resources; backend container metrics do not. GPU device allocation is
 not a GPU utilization measurement.
+
+The node-exporter Pod includes a small BusyBox sidecar that measures allocated
+bytes with `du -sk` every 30 seconds for Minikube hostPath PVCs in
+`local-review-demo` and `local-inference`. Only those provisioner directories are
+mounted read-only; the collector has no Kubernetes API token and only the
+`DAC_READ_SEARCH` capability to traverse workload-owned directories. Textfile
+metrics use a separate writable memory volume. The dashboard prefers kubelet
+volume statistics when available and omits fallback samples older than 120 seconds.
+PVC requests are displayed separately and are not enforced hostPath quotas.
 
 All monitoring UIs remain ClusterIP services. Use separate terminals as needed:
 

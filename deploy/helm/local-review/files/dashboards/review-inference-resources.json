@@ -636,7 +636,7 @@
     {
       "title": "Application persistent volume usage",
       "type": "timeseries",
-      "description": "Available only when the storage driver exposes kubelet volume statistics. Missing data is not zero disk usage.",
+      "description": "Used bytes: kubelet volume statistics when available; otherwise Minikube hostPath directory allocation measured by du every 30s. Fallback samples older than 120s are omitted. Requested bytes are the PVC specification, not a filesystem capacity or enforced quota. Retained, unmounted PVCs may also appear. Missing usage is unknown, not zero.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -680,7 +680,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kubelet_volume_stats_used_bytes{namespace=\"$namespace\"}",
+          "expr": "max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"$namespace\"}) or on (namespace, persistentvolumeclaim) (label_replace(max by (claim_namespace, persistentvolumeclaim) (local_hostpath_pvc_used_bytes{claim_namespace=\"$namespace\"} and (time() - local_hostpath_pvc_last_success_timestamp_seconds{claim_namespace=\"$namespace\"} < 120)), \"namespace\", \"$1\", \"claim_namespace\", \"(.+)\") and on (namespace, persistentvolumeclaim) kube_persistentvolumeclaim_info{namespace=\"$namespace\"})",
           "legendFormat": "{{persistentvolumeclaim}} used",
           "range": true,
           "refId": "A"
@@ -691,8 +691,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kubelet_volume_stats_capacity_bytes{namespace=\"$namespace\"}",
-          "legendFormat": "{{persistentvolumeclaim}} capacity",
+          "expr": "max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=\"$namespace\"})",
+          "legendFormat": "{{persistentvolumeclaim}} requested (not quota)",
           "range": true,
           "refId": "B"
         }
@@ -702,7 +702,7 @@
     {
       "title": "Ollama persistent volume usage",
       "type": "timeseries",
-      "description": "Available only when the storage driver exposes kubelet volume statistics.",
+      "description": "Used bytes: kubelet volume statistics when available; otherwise Minikube hostPath directory allocation measured by du every 30s. Fallback samples older than 120s are omitted. Requested bytes are the PVC specification, not a filesystem capacity or enforced quota. Retained, unmounted PVCs may also appear. Missing usage is unknown, not zero.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -746,7 +746,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kubelet_volume_stats_used_bytes{namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"}",
+          "expr": "max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"}) or on (namespace, persistentvolumeclaim) (label_replace(max by (claim_namespace, persistentvolumeclaim) (local_hostpath_pvc_used_bytes{claim_namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"} and (time() - local_hostpath_pvc_last_success_timestamp_seconds{claim_namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"} < 120)), \"namespace\", \"$1\", \"claim_namespace\", \"(.+)\") and on (namespace, persistentvolumeclaim) kube_persistentvolumeclaim_info{namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"})",
           "legendFormat": "{{persistentvolumeclaim}} used",
           "range": true,
           "refId": "A"
@@ -757,8 +757,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kubelet_volume_stats_capacity_bytes{namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"}",
-          "legendFormat": "{{persistentvolumeclaim}} capacity",
+          "expr": "max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace=\"$ollama_namespace\",persistentvolumeclaim=~\"$ollama_release-.*\"})",
+          "legendFormat": "{{persistentvolumeclaim}} requested (not quota)",
           "range": true,
           "refId": "B"
         }
@@ -810,24 +810,49 @@
       {
         "name": "ollama_namespace",
         "label": "Ollama namespace",
-        "type": "constant",
-        "query": "__OLLAMA_NAMESPACE__",
+        "type": "query",
+        "query": {
+          "query": "label_values(kube_pod_container_info{container=\"ollama\"}, namespace)",
+          "refId": "ollama_namespaceVariableQuery"
+        },
         "current": {
           "text": "__OLLAMA_NAMESPACE__",
           "value": "__OLLAMA_NAMESPACE__"
         },
-        "hide": 0
+        "hide": 0,
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(kube_pod_container_info{container=\"ollama\"}, namespace)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false
       },
       {
         "name": "ollama_release",
         "label": "Ollama release",
-        "type": "constant",
-        "query": "__OLLAMA_RELEASE__",
+        "type": "query",
+        "query": {
+          "query": "label_values(kube_pod_container_info{namespace=\"$ollama_namespace\",container=\"ollama\"}, pod)",
+          "refId": "ollama_releaseVariableQuery"
+        },
         "current": {
           "text": "__OLLAMA_RELEASE__",
           "value": "__OLLAMA_RELEASE__"
         },
-        "hide": 0
+        "hide": 0,
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(kube_pod_container_info{namespace=\"$ollama_namespace\",container=\"ollama\"}, pod)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "regex": "/^(.*)-[a-z0-9]+-[a-z0-9]+$/"
       }
     ]
   },
@@ -838,5 +863,5 @@
   "timezone": "browser",
   "title": "Local Review / Inference & Resources",
   "uid": "review-inference-__NAMESPACE_HASH__",
-  "version": 1
+  "version": 2
 }
