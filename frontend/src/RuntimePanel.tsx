@@ -8,6 +8,17 @@ import type { RuntimeState } from './runtime';
 
 export function RuntimePanel({ runtime }: { runtime: RuntimeState }) {
   const [title, detail] = servicePresentation(runtime);
+  const acceptingSubmissions = canSubmit(runtime);
+  let statusClass = 'failed';
+  if (acceptingSubmissions) {
+    statusClass = 'completed';
+  } else if (
+    runtime.info?.service_status === 'model_loading' ||
+    runtime.connection === 'checking'
+  ) {
+    statusClass = 'queued';
+  }
+
   return (
     <section className="runtime-panel" aria-label="Instance runtime">
       <div role="status" aria-label="Service status">
@@ -25,14 +36,11 @@ export function RuntimePanel({ runtime }: { runtime: RuntimeState }) {
           </strong>
           <span aria-hidden="true">·</span>
           <strong className="service-status">
-            <span
-              className={`status-dot ${canSubmit(runtime) ? 'completed' : runtime.info?.service_status === 'model_loading' || runtime.connection === 'checking' ? 'queued' : 'failed'}`}
-              aria-hidden="true"
-            />
+            <span className={`status-dot ${statusClass}`} aria-hidden="true" />
             {title}
           </strong>
         </div>
-        {!canSubmit(runtime) && runtime.connection !== 'checking' && (
+        {!acceptingSubmissions && runtime.connection !== 'checking' && (
           <p className="runtime-detail">{detail}</p>
         )}
       </div>

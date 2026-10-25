@@ -106,41 +106,51 @@ class Store:
     def create_review(
         self, user_id: str, request_id: str, language: str, source: str, capacity: int
     ) -> CreateReviewResult:
+        """Deduplicate, check capacity and enqueue under the same write lock."""
         with self.connection(write=True) as db:
-            old = db.execute(
+            existing = db.execute(
                 "SELECT * FROM reviews WHERE user_id = ? AND client_request_id = ?",
                 (user_id, request_id),
             ).fetchone()
-            if old:
-                if old["source_code"] != source or old["language"] != language:
+            # A retry must find its saved job even if the queue has since filled up.
+            if existing:
+                if existing["source_code"] != source or existing["language"] != language:
                     raise AppError(
                         "idempotency_conflict", "This request key has different input.", 409
                     )
-                return CreateReviewResult(review=cast(ReviewRecord, dict(old)), created=False)
-            active = db.execute(
+                return CreateReviewResult(review=cast(ReviewRecord, dict(existing)), created=False)
+
+            # Capacity counts waiting jobs; the single running job gets one extra slot.
+            active_count = db.execute(
                 "SELECT count(*) FROM reviews WHERE status IN ('queued','running')"
             ).fetchone()[0]
-            if active >= capacity + 1:
+            if active_count >= capacity + 1:
                 raise AppError("queue_full", "The review queue is full. Try again later.", 429)
-            queued = db.execute("SELECT count(*) FROM reviews WHERE status = 'queued'").fetchone()[
-                0
-            ]
-            if queued >= capacity:
+            queued_count = db.execute(
+                "SELECT count(*) FROM reviews WHERE status = 'queued'"
+            ).fetchone()[0]
+            if queued_count >= capacity:
                 raise AppError("queue_full", "The review queue is full. Try again later.", 429)
             if db.execute(
                 "SELECT 1 FROM reviews WHERE user_id = ? AND status IN ('queued','running')",
                 (user_id,),
             ).fetchone():
                 raise AppError("review_active", "A review is already active for your account.", 409)
-            review_id, now = str(uuid4()), time.time()
+
+            review_id = str(uuid4())
+            now = time.time()
             db.execute(
-                "INSERT INTO reviews(review_id,user_id,client_request_id,language,source_code,"
-                "status,created_at,updated_at) VALUES (?,?,?,?,?,'queued',?,?)",
+                """
+                INSERT INTO reviews (
+                    review_id, user_id, client_request_id, language, source_code,
+                    status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)
+                """,
                 (review_id, user_id, request_id, language, source, now, now),
             )
             row = db.execute("SELECT * FROM reviews WHERE review_id=?", (review_id,)).fetchone()
             return CreateReviewResult(
-                review=cast(ReviewRecord, dict(row)), created=True, queue_depth=queued + 1
+                review=cast(ReviewRecord, dict(row)), created=True, queue_depth=queued_count + 1
             )
 
     def queue_depth(self) -> int:
@@ -168,7 +178,7 @@ class Store:
 
     def history(self, user_id: str, limit: int, before: str | None = None) -> HistoryRecord:
         with self.connection() as db:
-            args: list[str | float | int] = [user_id]
+            parameters: list[str | float | int] = [user_id]
             cursor_filter = ""
             if before:
                 cursor = db.execute(
@@ -177,15 +187,17 @@ class Store:
                 ).fetchone()
                 if not cursor:
                     raise AppError("invalid_cursor", "Invalid history cursor.", 400)
+                # Review IDs break ties when multiple rows share a creation timestamp.
                 cursor_filter = " AND (created_at,review_id) < (?,?)"
-                args.extend([cursor[0], before])
-            args.append(limit + 1)
+                parameters.extend([cursor[0], before])
+            # Read one extra row to determine whether another page exists.
+            parameters.append(limit + 1)
             rows = db.execute(
                 "SELECT review_id,language,status,error_code,created_at,updated_at FROM reviews "
                 "WHERE user_id=?"
                 + cursor_filter
                 + " ORDER BY created_at DESC,review_id DESC LIMIT ?",
-                args,
+                parameters,
             ).fetchall()
             items = [cast(ReviewSummaryRecord, dict(row)) for row in rows[:limit]]
             return {
@@ -194,28 +206,44 @@ class Store:
             }
 
     def recover(self, max_retries: int, capacity: int) -> None:
+        """Fail exhausted attempts, requeue interrupted work and enforce current capacity."""
         with self.connection(write=True) as db:
             now = time.time()
             db.execute(
-                "UPDATE reviews SET status='failed', error_code='interrupted', "
-                "error_message='Review interrupted; retry limit reached.', updated_at=? "
-                "WHERE status='running' AND retry_count>=?",
+                """
+                UPDATE reviews
+                SET status = 'failed', error_code = 'interrupted',
+                    error_message = 'Review interrupted; retry limit reached.', updated_at = ?
+                WHERE status = 'running' AND retry_count >= ?
+                """,
                 (now, max_retries),
             )
+            # Only running rows below the retry limit remain after the update above.
             db.execute(
-                "UPDATE reviews SET status='queued',retry_count=retry_count+1,updated_at=? "
-                "WHERE status='running'",
+                """
+                UPDATE reviews
+                SET status = 'queued', retry_count = retry_count + 1, updated_at = ?
+                WHERE status = 'running'
+                """,
                 (now,),
             )
+            # If capacity shrank, preserve the oldest queued submissions first.
             db.execute(
-                "UPDATE reviews SET status='failed',error_code='queue_recovery_limit', "
-                "error_message='Queue capacity was reduced. Submit a new review.',updated_at=? "
-                "WHERE review_id IN (SELECT review_id FROM reviews WHERE status='queued' "
-                "ORDER BY created_at LIMIT -1 OFFSET ?)",
+                """
+                UPDATE reviews
+                SET status = 'failed', error_code = 'queue_recovery_limit',
+                    error_message = 'Queue capacity was reduced. Submit a new review.',
+                    updated_at = ?
+                WHERE review_id IN (
+                    SELECT review_id FROM reviews WHERE status = 'queued'
+                    ORDER BY created_at LIMIT -1 OFFSET ?
+                )
+                """,
                 (now, capacity),
             )
 
     def claim(self) -> ReviewRecord | None:
+        """Select the oldest queued job and mark it running in one transaction."""
         with self.connection(write=True) as db:
             row = db.execute(
                 "SELECT * FROM reviews WHERE status='queued' ORDER BY created_at LIMIT 1"

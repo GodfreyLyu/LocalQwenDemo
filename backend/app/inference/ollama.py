@@ -8,7 +8,8 @@ import logging
 import re
 import threading
 import time
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("review")
 MIN_OLLAMA_VERSION = (0, 24, 0)
 CONTEXT_ERROR = "the input length exceeds the context length"
+MAX_STREAM_CHARACTERS = 1_000_000
 
 
 def invalid_model() -> AppError:
@@ -79,7 +81,7 @@ class OllamaModel:
         if response.status_code != 200:
             raise AppError("ollama_unavailable", "Ollama could not process the request.", 503)
 
-    async def _json(self, client, method, path, **kwargs):
+    async def _json(self, client: httpx.AsyncClient, method: str, path: str, **kwargs) -> dict:
         response = await client.request(method, path, **kwargs)
         self._status(response)
         value = response.json()
@@ -87,9 +89,13 @@ class OllamaModel:
             raise AppError("invalid_model_response", "Ollama returned an invalid response.", 502)
         return value
 
-    async def _identity(self, client) -> str:
+    async def _identity(self, client: httpx.AsyncClient) -> str:
         data = await self._json(client, "GET", "/api/tags")
-        matches = [m for m in data.get("models", []) if m.get("name") == self.settings.ollama_model]
+        matches = [
+            model
+            for model in data.get("models", [])
+            if model.get("name") == self.settings.ollama_model
+        ]
         if not matches:
             raise AppError(
                 "ollama_model_missing", "The configured Ollama model is not installed.", 503
@@ -106,14 +112,22 @@ class OllamaModel:
             raise invalid_model()
         return digest
 
-    def _run(self, operation, stop: threading.Event, *, timeout: float | None = None):
-        async def bounded():
-            async def cancelled():
+    def _run[T](
+        self,
+        operation: Callable[[], Coroutine[Any, Any, T]],
+        stop: threading.Event,
+        *,
+        timeout: float | None = None,
+    ) -> T:
+        """Bridge the worker thread to async I/O with a shared stop signal and deadline."""
+
+        async def bounded() -> T:
+            async def wait_for_stop() -> None:
                 while not stop.is_set():
                     await asyncio.sleep(0.05)
 
             request = asyncio.create_task(operation())
-            cancellation = asyncio.create_task(cancelled())
+            cancellation = asyncio.create_task(wait_for_stop())
             try:
                 done, _ = await asyncio.wait(
                     [request, cancellation],
@@ -143,7 +157,7 @@ class OllamaModel:
                 "invalid_model_response", "Ollama returned an invalid response.", 502
             ) from None
 
-    def _startup_metadata(self, operation):
+    def _startup_metadata[T](self, operation: Callable[[], Coroutine[Any, Any, T]]) -> T:
         # New Pod DNS/network policy propagation can lag container startup. Retry
         # only connection failures, never missing models or incompatible identities.
         deadline = time.monotonic() + 60
@@ -173,7 +187,7 @@ class OllamaModel:
                 time.sleep(delay)
 
     def load(self) -> None:
-        async def metadata():
+        async def metadata() -> dict:
             async with self._client() as client:
                 version = await self._json(client, "GET", "/api/version")
                 match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", version.get("version", ""))
@@ -207,7 +221,7 @@ class OllamaModel:
                 raise invalid_model()
             self.quantization = shown.get("details", {}).get("quantization_level")
 
-        async def probe():
+        async def probe() -> None:
             async with self._client() as client:
                 await self._identity(client)
                 messages = build_prompt_messages(
@@ -219,16 +233,60 @@ class OllamaModel:
         with startup_stage("startup_generation"):
             self._run(probe, threading.Event())
 
-    async def _observe_device(self, client):
+    async def _observe_device(self, client: httpx.AsyncClient) -> None:
         self.device = None
         data = await self._json(client, "GET", "/api/ps")
         for model in data.get("models", []):
             if "sha256:" + model.get("digest", "").removeprefix("sha256:") == self.digest:
-                size, vram = model.get("size"), model.get("size_vram")
+                size = model.get("size")
+                vram = model.get("size_vram")
                 if type(size) is int and size > 0 and type(vram) is int and vram >= 0:
-                    self.device = "cpu" if vram == 0 else "gpu" if vram >= size else "mixed"
+                    if vram == 0:
+                        self.device = "cpu"
+                    elif vram >= size:
+                        self.device = "gpu"
+                    else:
+                        self.device = "mixed"
 
-    async def _chat(self, client, messages, limit, seed, metrics):
+    async def _check_chat_status(self, response: httpx.Response) -> None:
+        """Recognize context-limit errors before applying the general HTTP status mapping."""
+        if response.status_code == 200:
+            return
+        await response.aread()
+        try:
+            value = response.json()
+        except ValueError:
+            value = {}
+        if isinstance(value, dict) and isinstance(value.get("error"), str):
+            if CONTEXT_ERROR in value["error"]:
+                raise token_limit()
+        self._status(response)
+
+    def _record_completion(self, item: dict, limit: int, metrics: SectionMetrics) -> None:
+        """Validate terminal token counts before publishing them as observations."""
+        input_tokens = item.get("prompt_eval_count")
+        # Exact type checks reject booleans, which Python otherwise treats as integers.
+        if type(input_tokens) is not int or input_tokens <= 0:
+            raise invalid_model()
+        metrics.input_tokens = input_tokens
+        if input_tokens > self.settings.model_max_input_tokens:
+            raise token_limit()
+
+        output_tokens = item.get("eval_count")
+        if type(output_tokens) is not int or not 0 <= output_tokens <= limit:
+            raise invalid_model()
+        metrics.generated_tokens = output_tokens
+        metrics.output_tokens_observed = True
+        metrics.limit_reached = output_tokens >= limit or item.get("done_reason") == "length"
+
+    async def _chat(
+        self,
+        client: httpx.AsyncClient,
+        messages: list[dict[str, str]],
+        limit: int,
+        seed: int,
+        metrics: SectionMetrics,
+    ) -> str:
         started = time.monotonic()
         payload = {
             "model": self.settings.ollama_model,
@@ -245,24 +303,17 @@ class OllamaModel:
                 **self.settings.generation_parameters,
             },
         }
-        fragments, finished, received = [], False, 0
+        fragments: list[str] = []
+        finished = False
+        received_characters = 0
         try:
             async with client.stream("POST", "/api/chat", json=payload) as response:
-                if response.status_code != 200:
-                    await response.aread()
-                    try:
-                        value = response.json()
-                    except ValueError:
-                        value = {}
-                    if isinstance(value, dict) and isinstance(value.get("error"), str):
-                        if CONTEXT_ERROR in value["error"]:
-                            raise token_limit()
-                    self._status(response)
+                await self._check_chat_status(response)
                 async for line in response.aiter_lines():
                     if not line:
                         continue
-                    received += len(line)
-                    if received > 1_000_000:
+                    received_characters += len(line)
+                    if received_characters > MAX_STREAM_CHARACTERS:
                         raise invalid_model()
                     item = json.loads(line)
                     if not isinstance(item, dict):
@@ -287,20 +338,7 @@ class OllamaModel:
                             metrics.first_token_ms = round((time.monotonic() - started) * 1000)
                         fragments.append(content)
                     if item.get("done") is True:
-                        count = item.get("prompt_eval_count")
-                        if type(count) is not int or count <= 0:
-                            raise invalid_model()
-                        metrics.input_tokens = count
-                        if count > self.settings.model_max_input_tokens:
-                            raise token_limit()
-                        count = item.get("eval_count")
-                        if type(count) is not int or not 0 <= count <= limit:
-                            raise invalid_model()
-                        metrics.generated_tokens = count
-                        metrics.output_tokens_observed = True
-                        metrics.limit_reached = (
-                            count >= limit or item.get("done_reason") == "length"
-                        )
+                        self._record_completion(item, limit, metrics)
                         finished = True
                         break
             if not finished:
@@ -314,12 +352,12 @@ class OllamaModel:
     def review(self, source: str, language: str, stop: threading.Event) -> str:
         metrics = GenerationMetrics(
             output_token_limit=self.settings.model_max_output_tokens,
-            sections={s: SectionMetrics() for s, _, _ in SECTION_SPECS},
+            sections={section: SectionMetrics() for section, _, _ in SECTION_SPECS},
         )
         limits = allocate_section_token_limits(self.settings.model_max_output_tokens)
         deadline = time.monotonic() + self.settings.inference_timeout_seconds
 
-        async def generate():
+        async def generate() -> str:
             async with self._client() as client:
                 bodies = []
                 for section, title, _ in SECTION_SPECS:
@@ -347,7 +385,7 @@ class OllamaModel:
             return self._run(generate, stop)
         finally:
             metrics.duration_seconds = sum(
-                (s.generation_ms or 0) / 1000 for s in metrics.sections.values()
+                (section.generation_ms or 0) / 1000 for section in metrics.sections.values()
             )
             logger.info("model_generation_finished", extra=metrics.fields())
             if self.metrics is not None:
