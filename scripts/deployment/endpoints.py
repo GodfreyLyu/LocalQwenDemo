@@ -38,7 +38,7 @@ ENDPOINTS = (
     Endpoint("frontend", "Review app", "local-review-demo", "review-frontend", 8080, 8080),
     Endpoint("backend", "Review API", "local-review-demo", "review-backend", 8000, 8000),
     Endpoint("dynamodb", "DynamoDB API", "local-review-demo", "review-dynamodb", 8000, 8001),
-    Endpoint("ollama", "Minikube Ollama API", "local-inference", "review-ollama", 11434, 11435),
+    Endpoint("inference", "LLM Thrift", "local-inference", "review-ollama", 9091, 9091, "thrift"),
     Endpoint("argocd", "Argo CD", "argocd", "argocd-server", 443, 8443, "https"),
     Endpoint("grafana", "Grafana", "monitoring", "monitoring-grafana", 80, 3000),
     Endpoint(

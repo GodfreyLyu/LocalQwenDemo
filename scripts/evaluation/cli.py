@@ -1,4 +1,4 @@
-"""Plan or evaluate the fixed synthetic suite against an explicitly selected Ollama service."""
+"""Plan or evaluate the synthetic suite through an explicitly selected Thrift worker."""
 
 import argparse
 import sys
@@ -29,22 +29,14 @@ def main(argv=None):
     )
     parser.add_argument("--dry-run", action="store_true", help="validate and save a plan only")
     parser.add_argument("--case", choices=("all", *CASE_IDS), default="all")
-    parser.add_argument("--ollama-base-url", default="http://localhost:11434")
-    parser.add_argument("--ollama-model-digest", default=None)
+    parser.add_argument("--thrift-host", default="127.0.0.1")
+    parser.add_argument("--thrift-port", type=int, default=9091)
     from app.model_config import ModelSettings
 
-    for name, field in ModelSettings.model_fields.items():
-        if name in {
-            "ollama_base_url",
-            "ollama_model_digest",
-            "model_max_output_tokens",
-            "inference_timeout_seconds",
-            "model_inference_concurrency",
-        }:
-            continue
-        parser.add_argument(
-            "--" + name.replace("_", "-"), type=type(field.default), default=field.default
-        )
+    parser.add_argument("--expected-model-id", default=None)
+    parser.add_argument("--expected-model-revision", default=None)
+    parser.add_argument("--model-temperature", type=float, default=None)
+    parser.add_argument("--model-top-p", type=float, default=None)
     parser.add_argument("--max-output-tokens", type=int, default=384)
     parser.add_argument("--timeout-seconds", type=float, default=300)
     parser.add_argument(
@@ -59,14 +51,15 @@ def main(argv=None):
     try:
         suite = load_fixtures()
         settings = settings_for(
-            ollama_base_url=args.ollama_base_url,
-            ollama_model_digest=args.ollama_model_digest,
+            thrift_host=args.thrift_host,
+            thrift_port=args.thrift_port,
             model_max_output_tokens=args.max_output_tokens,
             inference_timeout_seconds=args.timeout_seconds,
             **{
                 name: getattr(args, name)
                 for name in ModelSettings.model_fields
-                if hasattr(args, name) and name not in {"ollama_base_url", "ollama_model_digest"}
+                if hasattr(args, name)
+                and name not in {"model_max_output_tokens", "inference_timeout_seconds"}
             },
         )
         selected = list(CASE_IDS) if args.case == "all" else [args.case]
@@ -83,8 +76,8 @@ def main(argv=None):
         write_report(directory, report)
         if not args.run_real_model:
             print(
-                f"Plan only: {len(selected)} selected case(s); {settings.ollama_model} "
-                f"at {settings.ollama_model_digest}; Ollama, serial; "
+                f"Plan only: {len(selected)} selected case(s); {settings.expected_model_id} "
+                f"at {settings.expected_model_revision}; Ollama, serial; "
                 f"{settings.model_max_output_tokens} output tokens / "
                 f"{settings.inference_timeout_seconds:g} seconds; Ollama tokenizer."
             )

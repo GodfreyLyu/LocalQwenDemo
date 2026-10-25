@@ -1,11 +1,13 @@
 FROM python:3.12-slim-bookworm AS build
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /build
-COPY requirements.lock ./
+COPY backend/requirements.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.lock
-COPY pyproject.toml ./
-COPY app ./app
+COPY contracts /contracts
+RUN /opt/venv/bin/pip install --no-deps /contracts
+COPY backend/pyproject.toml ./
+COPY backend/app ./app
 RUN /opt/venv/bin/pip install --no-deps --no-cache-dir .
 
 FROM python:3.12-slim-bookworm

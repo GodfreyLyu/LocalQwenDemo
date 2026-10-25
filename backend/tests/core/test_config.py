@@ -14,14 +14,6 @@ def test_release_sha_is_optional_but_must_be_a_git_style_hex_digest():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("concurrency", ["0", "2", "8"])
-def test_environment_cannot_enable_parallel_inference(monkeypatch, concurrency):
-    monkeypatch.setenv("MODEL_INFERENCE_CONCURRENCY", concurrency)
-    with pytest.raises(ValidationError):
-        Settings(dynamodb_endpoint_url="http://127.0.0.1:8001", signing_secret="test-secret-" * 4)
-
-
-@pytest.mark.unit
 @pytest.mark.security
 def test_removed_cloud_environment_is_rejected_without_leaking_signing_secret():
     secret = "this-secret-must-not-appear-in-startup-logs"
@@ -38,14 +30,13 @@ def test_removed_cloud_environment_is_rejected_without_leaking_signing_secret():
 @pytest.mark.unit
 @pytest.mark.contract
 def test_model_selection_and_sampling_are_configurable_from_environment(monkeypatch):
-    monkeypatch.setenv("OLLAMA_MODEL", "llama3.2:1b")
-    monkeypatch.setenv("MODEL_CONTEXT_TOKENS", "8192")
-    monkeypatch.setenv("MODEL_MAX_INPUT_TOKENS", "4096")
+    monkeypatch.setenv("EXPECTED_MODEL_ID", "llama3.2:1b")
     monkeypatch.setenv("MODEL_TEMPERATURE", "0.1")
     config = Settings(dynamodb_endpoint_url="http://localhost:8001", signing_secret="x" * 32)
-    assert config.ollama_model == "llama3.2:1b"
-    assert config.model_context_tokens == 8192
-    assert config.generation_parameters["temperature"] == 0.1
+    assert config.expected_model_id == "llama3.2:1b"
+    assert config.model_temperature == 0.1
+    assert "model_context_tokens" not in type(config).model_fields
+    assert "ollama_base_url" not in type(config).model_fields
 
 
 @pytest.mark.unit
@@ -53,11 +44,11 @@ def test_model_selection_and_sampling_are_configurable_from_environment(monkeypa
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"model_context_tokens": 2048},
+        {"model_max_output_tokens": 0},
         {"model_top_p": 0},
         {"model_temperature": -1},
-        {"model_keep_alive": "-1"},
-        {"ollama_model": "model-without-tag"},
+        {"thrift_socket_timeout_seconds": 0},
+        {"expected_model_revision": "latest"},
     ],
 )
 def test_invalid_model_configuration_is_rejected(overrides):

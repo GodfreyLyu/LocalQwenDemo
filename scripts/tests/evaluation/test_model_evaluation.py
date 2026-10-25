@@ -87,7 +87,7 @@ def test_plan_only_has_no_model_cache_or_network_side_effects(monkeypatch, tmp_p
     out = tmp_path / "reports"
     monkeypatch.setattr(config_module, "OUTPUT_ROOT", out)
     blocked = Mock(side_effect=AssertionError("must not run"))
-    monkeypatch.setattr(runner_module, "OllamaModel", blocked)
+    monkeypatch.setattr(runner_module, "ThriftReviewModel", blocked)
     monkeypatch.setattr(runner_module, "supervise", blocked)
     monkeypatch.setattr(socket.socket, "connect", blocked)
     cache = tmp_path / "absent"
@@ -112,8 +112,8 @@ def test_env_does_not_change_fixed_configuration(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("MODEL_MAX_OUTPUT_TOKENS=64\nSIGNING_SECRET=bad\n")
     settings = config_module.settings_for()
-    assert settings.ollama_model == "qwen3:1.7b"
-    assert settings.ollama_base_url == "http://localhost:11434"
+    assert settings.expected_model_id is None
+    assert settings.thrift_host == "127.0.0.1"
     assert settings.model_max_output_tokens == 384 and settings.inference_timeout_seconds == 300
 
 
@@ -155,7 +155,7 @@ def test_cli_invalid_inputs_are_sanitized(args, capsys):
 def test_preconditions_fail_without_worker(monkeypatch, tmp_path):
     monkeypatch.setattr(config_module, "OUTPUT_ROOT", tmp_path / "reports")
     dependency_versions = dict.fromkeys(config_module.DEPENDENCIES, "test")
-    dependency_versions["httpx"] = None
+    dependency_versions["thrift"] = None
     monkeypatch.setattr(report_module, "versions", lambda: dependency_versions)
     spy = Mock(side_effect=AssertionError("must not start"))
     monkeypatch.setattr(runner_module, "supervise", spy)
@@ -281,10 +281,8 @@ def test_cli_selects_model_context_and_sampling_without_tokenizer(monkeypatch, t
         ev.main(
             [
                 "--dry-run",
-                "--ollama-model",
+                "--expected-model-id",
                 "llama3.2:1b",
-                "--model-context-tokens",
-                "8192",
                 "--model-temperature",
                 "0.1",
             ]
@@ -294,7 +292,7 @@ def test_cli_selects_model_context_and_sampling_without_tokenizer(monkeypatch, t
     report = json.loads(next(tmp_path.glob("*/report.json")).read_text())
     params = report["parameters"]
     assert params["model_id"] == "llama3.2:1b"
-    assert params["context_tokens"] == 8192
+    assert "context_tokens" not in params
     assert params["generation"]["temperature"] == 0.1
     assert params["tokenizer"] == "ollama"
 
@@ -314,7 +312,7 @@ def test_fresh_private_reports_and_plan_metadata(monkeypatch, tmp_path):
         assert report["git"]["revision"] and type(report["git"]["dirty"]) is bool
         assert len(report["fixture_sha256"]) == len(report["implementation_sha256"]) == 64
         assert not report["parameters"]["offline"]
-        assert not report["parameters"]["downloads_allowed"]
+        assert not report["parameters"]["client_downloads_allowed"]
         assert report["started_at"] and report["timezone"] and report["utc_offset"]
         assert "signing_secret" not in path.read_text().lower()
 
@@ -338,7 +336,12 @@ class FakeRuntimeModel:
     """Exercise the real worker/report boundary with synthetic content and deliberately noisy IO."""
 
     def __init__(self, settings):
-        self.digest = settings.ollama_model_digest
+        self.digest = settings.expected_model_revision
+        self.info = SimpleNamespace(
+            model_id="qwen3:1.7b",
+            limits=SimpleNamespace(max_input_tokens=2048),
+            defaults=SimpleNamespace(max_output_tokens=128),
+        )
         self.device = "gpu"
         self.quantization = "Q4_K_M"
 
@@ -354,7 +357,7 @@ class FakeRuntimeModel:
 @pytest.mark.integration
 def test_real_worker_lifecycle_with_fake_model(monkeypatch, tmp_path, settings, case, capfd):
     # Fork preserves these in-memory doubles. No model libraries are imported or loaded.
-    monkeypatch.setattr(runner_module, "OllamaModel", FakeRuntimeModel)
+    monkeypatch.setattr(runner_module, "ThriftReviewModel", FakeRuntimeModel)
     report = report_module.build_report(
         settings, config_module.load_fixtures(), [case["id"]], True, False
     )
@@ -364,7 +367,7 @@ def test_real_worker_lifecycle_with_fake_model(monkeypatch, tmp_path, settings, 
     assert report["status"] == "needs_manual_review"
     assert report["load"]["status"] == "passed"
     assert report["parameters"]["device"] == "gpu"
-    assert report["parameters"]["model_revision"] == settings.ollama_model_digest
+    assert report["parameters"]["model_revision"] == settings.expected_model_revision
     assert SECRET not in str(capfd.readouterr()) and SECRET not in json.dumps(report)
 
 
@@ -405,7 +408,7 @@ class LoadFailureModel(FakeRuntimeModel):
 def test_worker_preflight_and_load_failures_remain_sanitized(
     monkeypatch, tmp_path, settings, case, capfd
 ):
-    monkeypatch.setattr(runner_module, "OllamaModel", LoadFailureModel)
+    monkeypatch.setattr(runner_module, "ThriftReviewModel", LoadFailureModel)
     report = report_module.build_report(
         settings, config_module.load_fixtures(), [case["id"]], True, False
     )

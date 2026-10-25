@@ -49,7 +49,7 @@ backend/.venv/bin/python -m pip install -r backend/requirements-dev.lock
 ```
 
 ```bash
-backend/.venv/bin/python -m pip install --no-deps -e backend
+backend/.venv/bin/python -m pip install --no-deps -e contracts -e backend
 ```
 
 On another platform, replace `REVIEW_PYTHON_BASE` with the absolute path of a persistent Python 3.12 executable. Do not create this project environment from an interpreter under `/private/tmp`, `/tmp`, an IDE cache, or another location that may be cleaned on restart. Also do not substitute Python 3.13 or newer: the project metadata intentionally rejects it.
@@ -130,12 +130,13 @@ backend/.venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(48))'
 The loopback-only `COOKIE_SECURE=false` setting permits HTTP development; Origin,
 HttpOnly, SameSite and CSRF protections remain enabled.
 
-Start Ollama with `qwen3:1.7b` installed. Then start the backend from its own
-directory so the settings file and relative data paths resolve correctly:
+Install and start the independent inference project using the
+[Thrift setup guide](apache-thrift.md#run-the-projects-independently). It starts its
+own Ollama child; the selected loopback `OLLAMA_PORT` (default 11434) must be free. Keep service execution policy in
+`inference-service/.env` and backend auth/connection settings in `backend/.env`.
+The backend uses `THRIFT_HOST=127.0.0.1` and port 9091 for host development.
 
-```bash
-cd backend
-```
+From `backend/`, start FastAPI in another terminal:
 
 ```bash
 .venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
@@ -170,11 +171,11 @@ DynamoDB Local above when accounts need to persist.
 The fake model returns deterministic output for UI/API checks. It does not establish
 real-model quality or Minikube acceptance.
 
-For real inference with emulated accounts, start local Ollama with the selected model
-installed, then run `backend/.venv/bin/python scripts/local_demo.py` from the repository
-root. Docker is not needed. The harness defaults to `http://localhost:11434` and accepts
-`--ollama-base-url`. For backend and Helm model settings, see the
-[model reference](../reference/model.md).
+For real inference with emulated accounts, start the inference service, then run `backend/.venv/bin/python scripts/local_demo.py`
+from the repository root. Docker is not needed. The harness connects to
+`127.0.0.1:9091` by default and accepts `--thrift-host` and `--thrift-port`.
+See the [Thrift walkthrough](apache-thrift.md) for the service boundary and
+[model reference](../reference/model.md) for generation settings.
 
 ## Success criteria and tests
 
@@ -189,7 +190,8 @@ responsibilities and the [testing guide](../testing/README.md) for test coverage
 
 Use `app.api.*`, `app.inference.*` and `app.persistence.*` for their respective
 implementations. `app.inference.model` defines the model protocol, and
-`app.inference.ollama` supplies the real adapter.
+`app.inference.rpc.client` supplies the backend's real adapter. The separate
+service uses `llm_service.ollama` for native loopback HTTP calls; the applications share only `contracts`.
 
 ### Optional interface documentation
 
@@ -220,12 +222,23 @@ the selected model and safe startup events. Preserve partial downloads and exist
 
 ## Dependency maintenance
 
-`backend/requirements.lock`, `backend/requirements-dev.lock`, and
-`frontend/package-lock.json` pin resolved dependencies. Ollama owns the model
-dependencies. The backend Dockerfile installs only application
-and HTTP client dependencies, with no Torch or Transformers. To update Python locks,
-use `uv pip compile` with Python 3.12, then review and rerun the relevant checks.
-Review Docker base image tags before updating the local deployment.
+Each application owns its runtime and development lockfiles. The local contract
+is installed separately with `--no-deps`; the resolver script supplies its local
+source during resolution, so no private PyPI upload or absolute path enters a lock.
+Install `uv`, then run the command for the project being changed:
+
+```bash
+backend/.venv/bin/python scripts/lock_dependencies.py --project backend
+```
+
+```bash
+inference-service/.venv/bin/python scripts/lock_dependencies.py --project inference-service
+```
+
+Review dependency changes, reinstall that environment's locks, and run its checks.
+The inference RPM stack is pinned separately in its Dockerfile; other Fedora
+packages still resolve from the OS repositories. Published image digests are the
+reproducible deployment artifact.
 
 ## Instance labels in the workbench
 

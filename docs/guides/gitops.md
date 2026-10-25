@@ -13,6 +13,9 @@ Ollama's image contains the Vulkan runtime, not model weights. Every deployment
 uses a digest. Unchanged components reuse both their digest and original source
 SHA. Chart-only changes do not rebuild images. Backend-only changes preserve the
 Ollama Chart version, ConfigMap checksum and Pod template.
+The inference project has an independent image in the existing Ollama release.
+Its single entry point supervises Ollama and RPC; the model PVC and Argo Application
+keep their ownership. Shared contract changes rebuild both Python images.
 
 The workflow opens an immutable `release-candidate/*` PR to `deployment-release`.
 It validates the exact candidate directly, independent of PR event delivery.
@@ -124,8 +127,10 @@ kubectl --context minikube -n argocd wait application/local-review --for=jsonpat
 Both apps automatically track deployment-release, prune obsolete workloads and self-heal
 drift. Their names match Helm release names to preserve labels and the Ollama Service
 URL. Follow the order shown above for the first deployment. Later updates to the two
-Applications are independent and are not applied as one transaction. Backend readiness
-checks, restarts and sync retries handle temporary Ollama unavailability.
+Applications reconcile independently, rather than as one transaction. Within the
+application release, the worker validates Ollama before listening and the backend
+waits for its Thrift handshake. Startup retries and Pod restarts can recover
+temporary dependency failures; a Ready observation alone does not prove a saved review.
 Before approving the first release that removes the old backend cache, follow the
 [cache retirement step](#retire-the-legacy-backend-cache) below.
 
@@ -168,10 +173,11 @@ resources or the global kubectl context.
 
 The Ollama Application skips Helm test hooks and enables a separate `PostSync` Job when
 model bootstrap is enabled. The Job calls the Service to generate text and verify the
-bootstrap model, digest, and full GPU placement. It does not request a second GPU slot.
+pinned model, digest, and full GPU placement. It does not request a second GPU slot.
 A failed Job fails sync. Service readiness checks the process and API after initial
 preparation; it does not require a fixed model to remain loaded or on the GPU. The
-review backend separately validates its selected model. Standard Helm installs support
+review worker separately validates its selected model, and the backend checks that
+worker's identity and generation policy. Standard Helm installs support
 `helm test` and do not render the Argo Job unless enabled explicitly. See
 [Argo Helm hooks](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/).
 

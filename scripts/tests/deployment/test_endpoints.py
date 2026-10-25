@@ -30,7 +30,7 @@ if "get" in args:
             ("local-review-demo", "review-frontend", 8080),
             ("local-review-demo", "review-backend", 8000),
             ("monitoring", "monitoring-grafana", 80),
-            ("local-inference", "review-ollama", 11434),
+            ("local-inference", "review-ollama", 9091),
             ("flink-lab", "flink-jobmanager", 8081),
             ("spark", "spark-connect-server", 4040),
             ("another-project", "review-frontend", 8080),

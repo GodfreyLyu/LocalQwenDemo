@@ -11,7 +11,7 @@ from app.api.routes import auth, health, metrics, reviews, runtime
 from app.config import Settings
 from app.coordinator import Coordinator
 from app.inference.model import ReviewModel
-from app.inference.ollama import OllamaModel
+from app.inference.rpc.client import ThriftReviewModel
 from app.logging import configure_logging
 from app.monitoring import Metrics
 from app.persistence.storage import Store
@@ -49,7 +49,7 @@ def create_app(
     app.state.store = store = Store(config.data_dir)
     app.state.metrics = monitoring = Metrics(store, config.queue_capacity)
     app.state.users = user_store = users or DynamoUsers(config)
-    app.state.model = review_model = model or OllamaModel(config, metrics=monitoring)
+    app.state.model = review_model = model or ThriftReviewModel(config, metrics=monitoring)
     app.state.coordinator = Coordinator(store, user_store, review_model, config, monitoring)
     app.state.limiter = limiter = RateLimiter()
     app.state.review_service = ReviewService(

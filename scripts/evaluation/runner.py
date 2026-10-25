@@ -4,7 +4,7 @@ import os
 import time
 
 from app.config import Settings  # noqa: E402
-from app.inference.ollama import OllamaModel  # noqa: E402
+from app.inference.rpc.client import ThriftReviewModel  # noqa: E402
 from evaluation.config import DRAIN_SECONDS, LOAD_TIMEOUT_SECONDS
 from evaluation.metrics import MetricCapture, peak_rss_mib
 from evaluation.quality import aggregate, evaluate_case, manual_review
@@ -29,17 +29,19 @@ def worker(connection, configuration, cases, manual):
     started = time.monotonic()
     phase = "model_load_failed"
     try:
-        model = OllamaModel(settings)
+        model = ThriftReviewModel(settings)
         model.load()
         connection.send(
             (
                 "load",
                 {
                     "status": "passed",
-                    "model_id": settings.ollama_model,
+                    "model_id": model.info.model_id,
                     "model_revision": model.digest,
                     "device": model.device,
                     "quantization": model.quantization,
+                    "service_limits": vars(model.info.limits),
+                    "service_defaults": vars(model.info.defaults),
                     "seconds": round(time.monotonic() - started, 3),
                     "peak_process_rss_mib": peak_rss_mib(),
                 },
@@ -85,7 +87,14 @@ def supervise(report, settings, cases, directory, manual, context=None):
                     break
                 if event[0] == "load":
                     report["load"] = event[1]
-                    for name in ("model_id", "model_revision", "device", "quantization"):
+                    for name in (
+                        "model_id",
+                        "model_revision",
+                        "device",
+                        "quantization",
+                        "service_limits",
+                        "service_defaults",
+                    ):
                         if name in event[1]:
                             report["parameters"][name] = event[1][name]
                 elif event[0] == "stage":

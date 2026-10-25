@@ -6,7 +6,7 @@ environment at `backend/.venv`. The full check suite also requires frontend
 dependencies, Git, kubectl, and Helm. Use `backend/.venv/bin/python` for Python
 scripts and `bash` for shell scripts. The check scripts and Minikube shell entry
 point accept `REVIEW_PYTHON` to override the interpreter path.
-The backend development dependencies supply Ruff, pytest, HTTPX, PyYAML, boto3 and
+The backend development dependencies supply Ruff, pytest, Apache Thrift, HTTPX, PyYAML, boto3 and
 the local service doubles. Check commands expect these tools to be installed.
 The endpoint launcher is an exception: `minikube_endpoints.py` runs on macOS or
 Linux with Python 3.10+ and kubectl on PATH. It uses only the Python standard
@@ -33,7 +33,9 @@ and manual uses carry both labels.
 | `validate_helm.py` | **Automatic invocation / Manual entry point** | Called by script checks and release workflows. Run `backend/.venv/bin/python scripts/validate_helm.py` locally; add `--root /path/to/snapshot --snapshot` to validate a snapshot. |
 | `validate_monitoring.py` | **Automatic invocation / Manual entry point** | Run `backend/.venv/bin/python scripts/validate_monitoring.py --promtool /path/to/promtool` for rendered rules, alert scenarios and dashboard queries. Accepts `--root` for candidate data; never contacts a cluster. |
 | `check_monitoring.sh` | **Automatic invocation** | CI wrapper downloads checksum-verified Prometheus 3.15.0 for Linux amd64 and calls `validate_monitoring.py`. Requires `RUNNER_TEMP`, `gh`, Helm and Python with PyYAML; outside the offline gate. |
-| `local_demo.py` | **Automatic invocation / Manual entry point** | Playwright starts it with `--fake-model` and an isolated data directory. For manual development, run `backend/.venv/bin/python scripts/local_demo.py --fake-model`. Omitting `--fake-model` uses real Ollama inference. |
+| `local_demo.py` | **Automatic invocation / Manual entry point** | Playwright starts it with `--fake-model` and an isolated data directory. For manual development, run `backend/.venv/bin/python scripts/local_demo.py --fake-model`. Real mode uses the Thrift inference worker. |
+| `generate_thrift.py` | **Manual entry point** | Regenerates checked-in bindings from `contracts/llm.thrift` using Apache Thrift 0.25.0. `--check` verifies that they match. |
+| `thrift_demo.py` | **Manual entry point** | Reads worker metadata through the generated Thrift client; `--review` explicitly runs the fixed example through real inference. See the [Thrift walkthrough](../docs/guides/apache-thrift.md). |
 | `init_local_users.py` | **Manual entry point** | Initializes DynamoDB Local from the host. Requires `DYNAMODB_ENDPOINT_URL`; see the example below. **Does not support `--help`.** |
 | `minikube_demo.sh` | **Manual entry point** | Development CLI for Docker-driver Minikube profiles: `bash scripts/minikube_demo.sh COMMAND --profile NAME`. Use standard Helm for krunkit clusters. |
 | `minikube_helm.py` | **Automatic invocation / Manual entry point** | Receives arguments from `minikube_demo.sh`. The equivalent direct command is `backend/.venv/bin/python scripts/minikube_helm.py COMMAND --profile NAME`. |
@@ -67,7 +69,7 @@ global kubectl context.
 | `frontend` | `http://localhost:8080` | `local-review-demo/review-frontend:8080` |
 | `backend` | `http://127.0.0.1:8000` | `local-review-demo/review-backend:8000` |
 | `dynamodb` | `http://127.0.0.1:8001` | `local-review-demo/review-dynamodb:8000` |
-| `ollama` | `http://127.0.0.1:11435` | `local-inference/review-ollama:11434` |
+| `inference` | `thrift://127.0.0.1:9091` | `local-inference/review-ollama:9091` |
 | `argocd` | `https://127.0.0.1:8443` | `argocd/argocd-server:443` |
 | `grafana` | `http://127.0.0.1:3000` | `monitoring/monitoring-grafana:80` |
 | `prometheus` | `http://127.0.0.1:9090` | `monitoring/monitoring-kube-prometheus-prometheus:9090` |
@@ -90,7 +92,7 @@ deployed `review-config` ConfigMap so browser authentication continues to work.
 If the frontend port or an explicitly pinned port is already in use, startup
 fails. For other services, the launcher chooses an available port when the
 preferred one is occupied. Always use the address in the output. Minikube Ollama
-defaults to port 11435 so it can run alongside host Ollama on port 11434.
+uses Thrift port 9091; native Ollama HTTP is not forwarded.
 
 DynamoDB is an API endpoint, not a browser UI. Argo CD uses the cluster's existing
 TLS certificate, which your browser may ask you to accept. Use the application,
@@ -197,8 +199,12 @@ backend/.venv/bin/python scripts/local_demo.py --fake-model
 ```
 
 The harness binds to loopback. `--port` defaults to 8000 and `--data-dir` to
-`.local/demo`. Real inference uses `--ollama-base-url`, which defaults to
-`http://localhost:11434`; Ollama handles tokenization.
+`.local/demo`. Real inference connects to an already running Thrift worker;
+`--thrift-host` defaults to `127.0.0.1` and `--thrift-port` to 9091. The worker owns
+the Ollama HTTP connection; Ollama owns tokenization. Its model settings must match
+the client. The harness reads `.env` from its working directory. When started from
+the repository root, it does not automatically read `backend/.env`; supply matching
+model settings through its environment if the worker uses custom values.
 
 In the second terminal, install frontend dependencies and start the development server:
 
@@ -267,9 +273,11 @@ selects private local records. The CLI also provides `status`, `logs`, `rollback
 and `undeploy`. Undeploy retains data by default; purging it requires explicit
 confirmation. Use `--help` for all supported options.
 
-For model evaluation, choose either a plan or a real run. A real run also requires a
-running Ollama service with the selected model installed. No extra Python model
-packages are needed:
+For model evaluation, choose either a plan or a real run. A real run requires a
+running Thrift worker backed by Ollama with the selected model installed. Worker
+model settings must match the evaluator, whose default budget/deadline are 384
+tokens and 300 seconds. See the [preparation steps](../docs/testing/model-evaluation.md#preparation)
+before running inference. No tokenizer or model-runtime Python packages are needed:
 
 ```bash
 backend/.venv/bin/python scripts/evaluate_model.py --dry-run
@@ -386,3 +394,9 @@ modules, public entry and shared path bootstrap.
 
 See the [testing guide](../docs/testing/README.md) for test coverage and
 [fixture maintenance](../docs/testing/README.md#mock-boundaries-and-fixture-maintenance).
+
+The independent service gate is `bash scripts/checks/inference.sh`. It checks both
+languages of generated bindings and runs Java/Python TCP interoperability without
+a real model. `java_thrift.py` builds the small Java example; `lock_dependencies.py`
+regenerates one application's locks using the local contract package. See the
+[Thrift guide](../docs/guides/apache-thrift.md) for setup and the real inference gate.

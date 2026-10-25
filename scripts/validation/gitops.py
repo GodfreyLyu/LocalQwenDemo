@@ -173,14 +173,27 @@ def validate_snapshot(root, manifest):
             "Argo deployment image does not match provenance",
         )
     config = app["ConfigMap", "review-config"]["data"]
+    generic = "THRIFT_HOST" in config
     require(
-        config["OLLAMA_BASE_URL"] == "http://review-ollama.local-inference.svc.cluster.local:11434",
-        "Backend must use the cluster Ollama Service",
+        config.get("THRIFT_HOST") == "review-ollama.local-inference.svc.cluster.local"
+        if generic
+        else config["OLLAMA_BASE_URL"]
+        == "http://review-ollama.local-inference.svc.cluster.local:11434",
+        "Backend must use the cluster inference Service",
     )
     ollama = rendered["review-ollama"]
-    ollama_config = ollama["ConfigMap", "review-ollama-config"]["data"]
-    # The optional bootstrap model and the application's selected model are independent.
-    if ollama_config["MODEL_BOOTSTRAP"] == "false":
+    native_config = ollama["ConfigMap", "review-ollama-config"]["data"]
+    if generic:
+        for application_key, service_key in (
+            ("EXPECTED_MODEL_ID", "MODEL_NAME"),
+            ("EXPECTED_MODEL_REVISION", "MODEL_DIGEST"),
+        ):
+            require(
+                not config.get(application_key)
+                or config[application_key] == native_config[service_key],
+                "Application model assertion differs from the inference model",
+            )
+    if not generic and native_config["MODEL_BOOTSTRAP"] == "false":
         require(
             ("Job", "review-ollama-gpu-verify") not in ollama, "Bootstrap hook must be disabled"
         )
@@ -199,10 +212,33 @@ def validate_snapshot(root, manifest):
         + manifest["images"]["ollama"]["digest"],
         "GPU test image must match runtime",
     )
-    require(
-        test_container["args"] == ["verify", "--url", "http://review-ollama:11434"],
-        "GPU verification must use the Service",
-    )
+    if generic:
+        require(
+            test_container["command"] == ["python3", "-m", "llm_service.verify"]
+            and test_container["args"] == ["--host", "review-ollama"],
+            "GPU verification must use the Thrift Service",
+        )
+        runtime = ollama["Deployment", "review-ollama"]["spec"]["template"]["spec"]
+        ports = ollama["Service", "review-ollama"]["spec"]["ports"]
+        require(
+            {p["port"] for p in ports} == {9091, 11435}, "Only Thrift and health may be exposed"
+        )
+        require(
+            not any("secretRef" in entry for entry in runtime["containers"][0]["envFrom"]),
+            "Inference must not receive application authentication secrets",
+        )
+        model_volume = next(v for v in runtime["volumes"] if v["name"] == "models")
+        require(
+            bool(model_volume["persistentVolumeClaim"]["claimName"])
+            and {m["mountPath"] for m in runtime["containers"][0]["volumeMounts"]}
+            == {"/models", "/tmp"},
+            "Inference must retain its separate model volume",
+        )
+    else:
+        require(
+            test_container["args"] == ["verify", "--url", "http://review-ollama:11434"],
+            "GPU verification must use the Service",
+        )
     require(
         "devic.es/dri" not in test_container["resources"]["requests"],
         "API verification must not compete for the GPU slot",

@@ -25,7 +25,10 @@ def validate_resources(resources):
     )
     keyed = {(r["kind"], r["metadata"]["name"]): r for r in resources}
     require(len(keyed) == len(resources), "Duplicate Kubernetes resource")
-    for component in ("backend", "frontend", "dynamodb"):
+    # Published native-HTTP snapshots remain valid rollback targets.
+    thrift = "THRIFT_HOST" in keyed["ConfigMap", "review-config"]["data"]
+    components = ("backend", "frontend", "dynamodb")
+    for component in components:
         name = "review-" + component
         deployment = keyed["Deployment", name]["spec"]
         require(deployment["replicas"] == 1, "Only single-replica deployments are supported")
@@ -69,14 +72,16 @@ def validate_resources(resources):
         "Initializer must use the backend image",
     )
     config = keyed["ConfigMap", "review-config"]["data"]
+    if thrift:
+        validate_thrift(keyed)
     require(
         all(isinstance(v, str) for v in config.values()),
         "ConfigMap values must be strings",
     )
-    require(
-        config["MODEL_INFERENCE_CONCURRENCY"] == "1",
-        "Inference concurrency must remain one",
-    )
+    if not thrift:
+        require(
+            config["MODEL_INFERENCE_CONCURRENCY"] == "1", "Inference concurrency must remain one"
+        )
     require(
         config["DYNAMODB_ENDPOINT_URL"] == "http://review-dynamodb:8000",
         "DynamoDB endpoint must remain local",
@@ -124,3 +129,54 @@ def validate_resources(resources):
                             "Ollama egress must target one private IPv4 address",
                         )
     return keyed
+
+
+def validate_thrift(keyed):
+    config = keyed["ConfigMap", "review-config"]["data"]
+    require(config["THRIFT_PORT"] == "9091", "Backend must use the inference Thrift port")
+    require(
+        not any(
+            key.startswith("OLLAMA_") or key in {"MODEL_CONTEXT_TOKENS", "MODEL_MAX_INPUT_TOKENS"}
+            for key in config
+        ),
+        "Native execution policy must not be copied into the backend",
+    )
+    require(
+        ("Deployment", "review-inference") not in keyed,
+        "Inference belongs to the existing model release, not the application release",
+    )
+    if ("NetworkPolicy", "review-backend") in keyed:
+        policy = keyed["NetworkPolicy", "review-backend"]["spec"]
+        require(
+            not any(
+                port.get("port") == 11434
+                for rule in policy.get("egress", [])
+                for port in rule.get("ports", [])
+            ),
+            "Backend must not reach native Ollama HTTP",
+        )
+        rules = [
+            rule
+            for rule in policy["egress"]
+            if any(port.get("port") == 9091 for port in rule.get("ports", []))
+        ]
+        require(
+            len(rules) == 1 and len(rules[0]["to"]) == 1, "Thrift egress must select one workload"
+        )
+        peer = rules[0]["to"][0]
+        labels = peer.get("podSelector", {}).get("matchLabels", {})
+        namespace = (
+            peer.get("namespaceSelector", {})
+            .get("matchLabels", {})
+            .get("kubernetes.io/metadata.name")
+        )
+        require(
+            labels.get("app.kubernetes.io/name") == "local-ollama"
+            and namespace
+            and config["THRIFT_HOST"]
+            == labels.get("app.kubernetes.io/instance", "")
+            + "."
+            + namespace
+            + ".svc.cluster.local",
+            "Thrift host and NetworkPolicy must select the same inference release",
+        )

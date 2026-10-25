@@ -1,6 +1,7 @@
 # Documentation
 
-LocalQwenDemo uses Ollama for code review and model evaluation. Start with the
+LocalQwenDemo reviews code through a FastAPI backend, an Apache Thrift worker and
+local Ollama inference. Start with the
 [project overview](../README.md) if you are new to the application, or choose a guide
 below for your task.
 
@@ -9,11 +10,12 @@ below for your task.
 | I want to… | Read |
 | --- | --- |
 | Understand or present the complete system | [Architecture diagrams](reference/architecture.md#system-layout), [workflow diagrams](reference/workflows.md) |
+| Learn how Apache Thrift connects the backend and worker | [Thrift walkthrough and diagrams](guides/apache-thrift.md) |
 | Set up a krunkit GPU cluster | [Local platform](../infra/local-platform/README.md) |
 | Deploy reviewed releases with Argo CD | [GitOps guide](guides/gitops.md) |
 | Track a release, roll back and fix main | [Release tags and rollback](guides/release-rollback.md) |
 | Install a release with Helm | [Helm release guide](guides/helm-release.md) |
-| Deploy the independent inference service | [Ollama Chart](../deploy/helm/local-ollama/README.md) |
+| Deploy the independent Ollama model service | [Ollama Chart](../deploy/helm/local-ollama/README.md) |
 | Build source images on Docker-driver Minikube | [Local Helm workflow](guides/minikube-demo.md) |
 | Access this project's services through background forwards | [Minikube endpoints](../scripts/README.md#background-minikube-endpoints) |
 | Develop the application | [Local development](guides/local-development.md) |
@@ -27,6 +29,7 @@ below for your task.
 | Topic | Main reference |
 | --- | --- |
 | Components, request flow, queue lifecycle and storage | [Architecture](reference/architecture.md) |
+| Thrift IDL, generated code, handshake and cancellation | [Thrift walkthrough](guides/apache-thrift.md) |
 | Authentication, review execution, recovery and release diagrams | [Workflows](reference/workflows.md) |
 | Endpoints, authentication and error responses | [API](reference/api.md) |
 | Model identity, settings, startup checks and output checks | [Model](reference/model.md) |
@@ -57,3 +60,11 @@ cluster or real-model output.
 
 Use source, manifests, CLI help and tests to check documented behavior. Keep private
 state, credentials, user histories, weights and runtime logs outside Git.
+
+The [generic Thrift guide](guides/apache-thrift.md) explains both application projects,
+Python/Java clients and execution guarantees. Review the [inference migration and
+rollback procedure](operations/inference-migration.md) before deploying the refactor.
+
+The [generic service verification record](testing/generic-llm-verification-2026-10-25.md)
+distinguishes real host inference, model doubles, image checks and remaining live
+Vulkan deployment verification.

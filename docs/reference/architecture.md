@@ -3,8 +3,8 @@
 [Documentation index](../README.md)
 
 LocalQwenDemo accepts code as text, saves a review job, and generates a three-section
-review through a local Ollama service. The diagrams below describe the maintained
-Minikube deployment and the boundaries inside its backend.
+review through a Thrift worker backed by local Ollama. The diagrams below describe
+the maintained Minikube deployment, its process boundaries, and its durable data.
 
 | View | What it explains |
 | --- | --- |
@@ -24,20 +24,21 @@ configuration or device dependencies. Responses return along the same call path.
 ```mermaid
 flowchart TB
     accTitle: LocalQwenDemo Minikube system layout
-    accDescr: A browser reaches Nginx through a loopback port-forward. Nginx proxies to one FastAPI backend, which uses SQLite, DynamoDB Local and an independent Ollama service. Three PVCs preserve application and model data.
+    accDescr: A browser reaches Nginx through a loopback port-forward. Nginx proxies to one FastAPI backend, which uses SQLite, DynamoDB Local and a Thrift worker backed by independent Ollama. Three PVCs preserve application and model data.
     browser["Browser running React"]
     forward["Loopback port-forward :8080"]
     subgraph cluster["Minikube"]
         subgraph application["local-review-demo"]
             frontend["Nginx | review-frontend :8080"]
             backend["FastAPI | review-backend :8000"]
+            worker["Generic Thrift client"]
             history[("review-history | SQLite")]
             accounts["DynamoDB Local | review-dynamodb :8000"]
             accountData[("review-dynamodb | account data")]
             signing["review-secrets | signing key"]
         end
         subgraph inference["local-inference"]
-            ollama["Ollama | review-ollama :11434"]
+            ollama["LLM service + Ollama child | review-ollama :9091"]
             models[("review-ollama-models | model weights")]
         end
         gpu["krunkit GPU | devic.es/dri"]
@@ -48,18 +49,23 @@ flowchart TB
     backend -->|"Queue, history, sessions"| history
     backend -->|"Account API"| accounts
     accounts -->|"Persist accounts"| accountData
-    backend -->|"Local model API"| ollama
+    backend -->|"Thrift RPC"| worker
+    worker -->|"Thrift TCP :9091"| ollama
     ollama -->|"Load weights"| models
     signing -.->|"Environment"| backend
     gpu -.->|"Device allocation"| ollama
 ```
 
-The default release names are `local-review` and `review-ollama`. The backend
-contains one Uvicorn process, one coordinator and one inference executor
-thread. The application Chart does not install Ollama. The independent Ollama Chart
-targets ARM64 krunkit and requests the GPU device advertised by the platform's device
-plugin. [Local development](../guides/local-development.md) uses Vite's proxy and
-explicit local service endpoints instead of this Nginx/namespace layout.
+The `local-review` application release deploys three supporting/application
+workloads: frontend, backend and DynamoDB Local. The backend has one Uvicorn
+process, coordinator and client executor. The independent inference release has
+one image and entry point that owns the Thrift server, generation worker and Ollama
+child. It receives neither signing secrets nor application PVCs.
+
+The independent `review-ollama` release owns model serving and its model PVC. Its
+GPU image targets ARM64 krunkit and requests the device advertised by the platform
+plugin. [Local development](../guides/local-development.md) runs the Python processes
+directly and uses Vite's proxy instead of Nginx.
 
 Namespace boxes express deployment ownership, not network isolation. The maintained
 Minikube values disable NetworkPolicy. The signing Secret is prepared separately and
@@ -71,7 +77,8 @@ the two deployment managers and storage retention.
 The [architecture overview](../../README.md#architecture) describes the application in
 Minikube and its deployment tools. React executes in the browser; Nginx serves its static
 bundle and provides the same-origin API proxy. The background coordinator and one-thread
-inference executor run within the FastAPI process.
+Thrift client executor run within the FastAPI process. Generation runs in the
+separate inference service.
 
 ### One review, end to end
 
@@ -94,10 +101,10 @@ See the [review sequence](workflows.md#review-from-submission-to-history) and
    queue-depth snapshot. Only newly inserted reviews emit `review_submitted`.
    `ReviewAccepted` exposes three fields and the route returns 202 without waiting
    for inference. A storage failure never produces a successful acceptance response.
-5. The coordinator claims a queued review, persists its running state and sends it to
-   its sole inference executor. `OllamaModel` calls the configured local Ollama service
-   once for each section: Summary, Findings and Suggestions. All three calls share
-   one stop event and deadline; generation metrics record each call.
+5. The coordinator claims a queued review and calls `ThriftReviewModel` in its sole
+   client executor. The backend constructs Summary, Findings and Suggestions prompts
+   and performs three generic generations under one review deadline. The service
+   owns native execution and reports usage; the backend formats and validates output.
 6. The coordinator persists completion or a safe failure through `Store.finish`.
    The browser polls an owner-scoped detail query. `ReviewDetail` and `HistoryPage`
    allowlist public fields; list entries omit source/result bodies. Timestamps remain
@@ -105,38 +112,12 @@ See the [review sequence](workflows.md#review-from-submission-to-history) and
 
 ### Types and dependency boundaries
 
-This is a code-level view of one backend process, assembled by `create_app`. Arrows
-show selected calls and dependencies. The coordinator owns background work; HTTP
-submission only commits a job.
-
-```mermaid
-flowchart TB
-    accTitle: Backend responsibilities and dependency boundaries
-    accDescr: Routes submit through ReviewService and query owner-scoped history through Store. Authentication uses DynamoUsers and a shared limiter. Coordinator uses Store and the single executor to call the Ollama adapter. create_app assembles these dependencies in one process.
-    subgraph transport["HTTP boundary | app.api"]
-        guard["RequestGuard and error handlers"]
-        routes["Routes, schemas, session dependency"]
-    end
-    service["ReviewService | admission policy"]
-    coordinator["Coordinator | background loop"]
-    limiter["RateLimiter | shared quotas"]
-    store["Store | SQLite adapter"]
-    users["DynamoUsers | account adapter"]
-    executor["Inference executor | one thread"]
-    model["OllamaModel | ReviewModel protocol"]
-    guard --> routes
-    routes -->|"Submit"| service
-    routes -->|"History, detail, sessions"| store
-    routes -->|"Account checks"| users
-    routes -->|"Auth quota"| limiter
-    routes -->|"Health and runtime"| coordinator
-    service -->|"Readiness"| coordinator
-    service -->|"Submission quota"| limiter
-    service -->|"Atomic admission"| store
-    coordinator -->|"Recover, claim, finish"| store
-    coordinator -->|"Load and review"| executor
-    executor --> model
-```
+`create_app` assembles the FastAPI application. `inference-service` is independently
+packaged and starts `llm-service`, which owns both Ollama and the generated Thrift
+processor. The only shared package is `contracts`; neither application imports the
+other's implementation. The [Thrift guide](../guides/apache-thrift.md) traces the
+modules, lifecycle and request flow. The application-facing RPC vocabulary is
+messages, generation options, results, usage, deadlines and cancellation.
 
 `api/schemas.py` uses Pydantic only at the HTTP boundary: input validation, response
 allowlists and the optional OpenAPI schema. `domain.py` uses TypedDict for session,
@@ -145,6 +126,10 @@ reparsed into domain models at every layer. SQLite/DynamoDB adapters annotate th
 known row shapes; these annotations are not runtime database validation.
 `CreateReviewResult` and generation metrics are small dataclasses because
 operation metadata and mutable execution observations are not HTTP payloads.
+`contracts/llm.thrift` defines the language-neutral RPC boundary. Generated Python
+and Java types carry model information, role/content messages, generation snapshots,
+structured errors and generic results. Review section names, source-language rules
+and output validation never enter that contract or the inference implementation.
 
 `create_app` assembles settings, stores, the limiter, model, coordinator and service for
 each application instance. `api/dependencies.py` is the only route-facing adapter from
@@ -152,8 +137,11 @@ Request/app state to those typed dependencies. The service receives its Python
 dependencies explicitly and does not depend on HTTP Request or Response objects. Routes
 call `Store` directly for simple history and detail queries scoped to the authenticated
 user. Callers use `app.inference`, `app.persistence` and `app.api`.
-`app.inference.model` contains the injected model protocol; `app.inference.ollama` is
-the only real adapter.
+`app.inference.model` contains the injected model protocol;
+`app.inference.rpc.client` is the backend's real adapter. The independent service uses
+`llm_service.ollama` for loopback native HTTP calls. The
+[Thrift learning guide](../guides/apache-thrift.md) explains the IDL, transport,
+generated code, worker lifecycle and configuration handshake.
 
 ### Shared readiness and rate limits
 
@@ -168,6 +156,10 @@ is a writable-store check that also removes expired sessions. Loading, draining 
 closing skip that check. The last operational status in a shutdown health
 response is preserved even though its HTTP status is 503.
 
+These endpoints do not contact the Thrift worker or Ollama on every observation.
+The worker handshake happens at startup, and later reviews detect RPC or model
+failures. A ready observation therefore does not prove current end-to-end inference.
+
 Authentication and review admission share one `rate_limit.RateLimiter` per app.
 A lock keeps quota checking and recording atomic across worker threads. Attempts
 rejected by the limiter do not consume quota; attempts that pass it do, even if a
@@ -181,19 +173,24 @@ handling. The browser polls persisted review status and renders only sanitized
 completed Markdown.
 The cluster is accessed through an explicitly owned loopback forward, not a public ingress.
 
-One Uvicorn process and one background coordinator share a dedicated inference executor
-with one thread. Each review invokes that executor once to generate Summary, Findings
-and Suggestions in order. Generated text from one section is never used as an
-instruction for another. The [model reference](model.md#configuration-and-generation)
+The coordinator uses one client executor thread to start and poll the Thrift
+worker. That worker generates Summary, Findings and Suggestions in order. Text
+from one generated section never becomes an instruction for another. The
+[model reference](model.md#configuration-and-generation)
 defines the shared token budget, sampling policy, output validation and the limited
 removal of unfinished text when a section reaches its token limit.
 
 Ollama renders the selected model's native template and tokenizes each prompt. Requests
-set `think=false`, `truncate=false` and `shift=false`; the backend rejects unexpected
+set `think=false`, `truncate=false` and `shift=false`; the worker rejects unexpected
 thinking/tool output and checks actual prompt token counts before saving a result.
 See [model configuration](model.md) for startup checks and model switching.
 
-DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_thread`; model execution never runs on the main event loop. One backend replica and the `Recreate` rollout strategy preserve this ownership. There is no HPA, distributed queue, conversational store, external LLM, or code execution path.
+DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_thread`;
+blocking Thrift calls run in the coordinator's executor. One backend replica and
+one inference worker replica use `Recreate` rollouts. A remote cancellation request
+keeps the client draining until the worker adapter exits. Connection loss with
+uncertain execution closes admission as `inference_stuck`. There is no HPA,
+distributed queue, conversational store, external LLM, or code execution path.
 
 ## Storage
 
@@ -281,9 +278,24 @@ This does not retry other initialization stages or inference.
 
 On process restart, queued jobs are recovered. Stale running jobs are requeued once, incrementing `retry_count`. A second interruption fails them as `interrupted`. A reduced queue capacity preserves the oldest jobs and fails excess recovered work. Ordinary inference failures, empty or invalid output, and timeouts are not automatically retried; the user may make a new submission.
 
-A timed-out inference is marked failed, receives a cooperative stopping signal, and makes readiness false until its thread exits. The three section generations do not receive separate timeout windows: the 300-second minikube inference deadline covers the complete review, and stop or deadline expiry prevents another section from starting. No second inference starts during draining.
+The maintained deployment gives a complete review 300 seconds. All three section
+calls share a backend deadline and stop event. Each service generation has its own
+remaining admission-to-completion deadline; disconnecting does not remove it.
 
-If the inference thread exits within the 30-second draining window, readiness recovers, liveness remains healthy, and the Pod is not restarted. Only draining that exceeds 30 seconds enters `inference_stuck`, makes liveness false, stops the coordinator, and causes Kubernetes to restart the process. Python cannot forcibly kill a native thread. The 60-second Pod termination grace period bounds shutdown even if native execution becomes stuck. A killed running job is recovered under the documented retry policy.
+If the coordinator's own wait expires, it persists `inference_timeout`, sets its
+local stop event, and enters `inference_draining`. The client sends `cancelGeneration`
+and keeps polling until the worker publishes a terminal snapshot. A cancellation
+acknowledgement alone does not establish completion. The coordinator permits
+30 seconds for this drain; no next job starts during that wait.
+
+There are two paths to `inference_stuck`: the drain exceeds its allowance, or the
+client cannot confirm remote execution state, for example after losing an RPC
+response or detecting a changed worker instance. Either closes admission and
+makes backend liveness false. Kubernetes can then restart the backend; direct
+local development requires an operator restart. A late result cannot overwrite
+the saved failure or reopen a stuck coordinator. See the
+[recovery runbook](../operations/recovery-and-cleanup.md#thrift-worker-and-ollama-checks)
+before attempting recovery.
 
 ### Coordinator states and shutdown
 
@@ -294,31 +306,35 @@ normal processing or draining without hiding the last operational state.
 
 | State | Ready (while not closing) | Live | Next behavior |
 | --- | --- | --- | --- |
-| `model_loading` | false | true | Initialize storage/accounts, recover the queue, and verify the selected model through Ollama |
+| `model_loading` | false | true | Initialize stores, recover the queue, and verify the Thrift worker's model identity and service readiness |
 | `ready` | true | true | Claim and execute jobs serially |
 | `inference_draining` | false | true | Wait for the timed-out executor future; never start another job |
 | `inference_stuck` | false | false | Stop claiming jobs; late thread exit cannot restore readiness |
 | `startup_or_storage_failure` | false | false | Stop the worker loop; restart/recovery is required |
 
-If inference exits during the drain window, the coordinator returns to `ready`, whether
-inference stopped cooperatively, succeeded late or failed. The stored job remains failed
-with a timeout; a late result does not replace it. Shutdown sets `closing`, clears
-readiness through the property, signals the stop event and waits for a bounded grace
-period before cancelling the coordinator task. Loading or draining finishing during
-shutdown cannot reopen admission. Python cannot forcibly stop a stuck worker thread;
-process termination is the final local bound. The Ollama adapter normally cancels its
-HTTP operation and closes the connection, while Ollama handles remote generation cleanup.
+Confirmed worker completion within the drain window restores `ready`; the stored
+job remains failed with its timeout. An adapter-reported timeout that has already
+returned can fail the job without entering this drain path.
+
+Shutdown sets `closing`, closes admission, signals cancellation and waits for the
+configured grace period, which defaults to 20 seconds. It also interrupts a client
+waiting for its startup handshake. Backend Pods have a 60-second termination grace;
+inference Pods retain 45 seconds. The inference runtime closes admission, stops and
+reaps its Ollama process group, joins the worker and closes listeners. Cancellation
+is terminal only after native operation exit. Model reload on cancellation can
+outlast the backend drain window; see the recovery guide before reopening admission.
 
 ## Design tradeoffs and scaling boundary
 
-The implementation deliberately has one Uvicorn process, one coordinator and one
-inference executor thread. This limits the application to one active review at a time;
-HTTP handlers and database operations can still execute in worker threads. It is
-appropriate for a local demonstration, not a multi-worker deployment guarantee.
-`MODEL_INFERENCE_CONCURRENCY=1` is validated, and deployment starts Uvicorn with one
-worker and one replica. Increasing Uvicorn workers would create more Ollama clients,
-coordinators and limiters, allowing concurrent inference requests and conflicting
-queue recovery across processes.
+The implementation has one Uvicorn process, one coordinator, one Thrift client
+executor thread and at most one active worker generation thread. HTTP handlers and
+database operations can still execute in their own worker threads. This arrangement
+supports the local demonstration; it is not a distributed ownership scheme.
+The service enforces one active native operation, and deployment starts Uvicorn with one
+worker and one replica. Increasing Uvicorn workers would create more Thrift clients,
+coordinators and limiters, with conflicting queue recovery and request ownership.
+The service's bounded admission gate prevents overlapping model calls, but does not provide
+distributed queue ownership or make this a supported multi-worker deployment.
 
 SQLite keeps queue admission, idempotency, history and session revocation together with
 short transactions and no separate broker. WAL supports concurrent readers, while writes
@@ -387,13 +403,15 @@ backend/app/
     routes/                   # auth, reviews, health, runtime and internal metrics
     auth.py, dependencies.py, schemas.py, middleware.py, http_errors.py
   inference/
-    model.py, ollama.py, prompts.py, generation.py, review_output.py, identity.py
+    model.py, settings.py, prompts.py, generation.py, review_output.py, identity.py
+    rpc/
+      client.py, transport.py     # Generated bindings are a separate contracts package
   persistence/
     storage.py, users.py, local_dynamodb.py, users_startup.py, initialize_users.py
 ```
 
 The root owns application assembly, business coordination and shared diagnostics.
-`api` owns HTTP transport; `inference` owns model execution and pure generation rules;
+`api` owns HTTP transport; `inference` owns review orchestration, RPC calls and pure application rules;
 `persistence` owns local storage and account-store startup checks. `startup.py` stays
 at the root because it is shared safe diagnostics, not the account retry mechanism.
 
@@ -424,7 +442,8 @@ Use these sources when auditing or changing the design:
 | HTTP protection and error mapping | [middleware.py](../../backend/app/api/middleware.py), [http_errors.py](../../backend/app/api/http_errors.py) |
 | Durable admission, recovery and sessions             | [storage.py](../../backend/app/persistence/storage.py)                                                       |
 | Single executor, readiness and cancellation/draining | [coordinator.py](../../backend/app/coordinator.py)                                               |
-| Inference and model/context verification | [ollama.py](../../backend/app/inference/ollama.py) |
+| Inference and model/context verification | [service adapter](../../inference-service/src/llm_service/ollama.py) |
+| Thrift contract, client, handler and server | [llm.thrift](../../contracts/llm.thrift), [client](../../backend/app/inference/rpc), [service](../../inference-service/src/llm_service) |
 | Prometheus metrics and read-only collection | [monitoring.py](../../backend/app/monitoring.py), [metrics.py](../../backend/app/api/routes/metrics.py) |
 | Prompt, output and generation policy | [prompts.py](../../backend/app/inference/prompts.py), [review_output.py](../../backend/app/inference/review_output.py), [generation.py](../../backend/app/inference/generation.py) |
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |

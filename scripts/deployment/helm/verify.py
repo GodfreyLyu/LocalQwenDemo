@@ -62,8 +62,10 @@ def verify(session):
 
         cache_before = cache_inventory(backend_python)
         expected = {
-            "model_id": config["OLLAMA_MODEL"],
-            "model_revision": config["OLLAMA_MODEL_DIGEST"],
+            "model_id": config.get("EXPECTED_MODEL_ID", config.get("OLLAMA_MODEL")),
+            "model_revision": config.get(
+                "EXPECTED_MODEL_REVISION", config.get("OLLAMA_MODEL_DIGEST")
+            ),
         }
         require(expected["model_revision"], "Acceptance requires a pinned model identity.")
         credentials = {

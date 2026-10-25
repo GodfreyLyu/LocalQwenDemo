@@ -186,9 +186,9 @@ tests:
 - name: an old OOM reason without recent restarts is not a new OOM
   interval: 1m
   input_series:
-  - series: kube_pod_container_status_last_terminated_reason{namespace="local-inference",pod="review-ollama-abc",container="ollama",reason="OOMKilled"}
+  - series: kube_pod_container_status_last_terminated_reason{namespace="local-inference",pod="review-ollama-abc",container="inference",reason="OOMKilled"}
     values: 1x30
-  - series: kube_pod_container_status_restarts_total{namespace="local-inference",pod="review-ollama-abc",container="ollama"}
+  - series: kube_pod_container_status_restarts_total{namespace="local-inference",pod="review-ollama-abc",container="inference"}
     values: 3x30
   promql_expr_test:
   - expr: count(ALERTS{alertname="ReviewContainerOOMKilled",alertstate="firing"})
@@ -206,9 +206,9 @@ tests:
 - name: a recent Ollama OOM restart fires independently of backend memory
   interval: 1m
   input_series:
-  - series: kube_pod_container_status_last_terminated_reason{namespace="local-inference",pod="review-ollama-abc",container="ollama",reason="OOMKilled"}
+  - series: kube_pod_container_status_last_terminated_reason{namespace="local-inference",pod="review-ollama-abc",container="inference",reason="OOMKilled"}
     values: 0x4 1x15
-  - series: kube_pod_container_status_restarts_total{namespace="local-inference",pod="review-ollama-abc",container="ollama"}
+  - series: kube_pod_container_status_restarts_total{namespace="local-inference",pod="review-ollama-abc",container="inference"}
     values: 0x4 1x15
   promql_expr_test:
   - expr: count(ALERTS{alertname="ReviewContainerOOMKilled",alertstate="firing"})

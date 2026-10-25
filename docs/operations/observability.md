@@ -123,14 +123,19 @@ The Helm CLI returns the backend container's last 100 log lines without further
 filtering. The backend emits the structured events defined by the
 [log contract](../reference/observability.md#safe-application-log-contract). Keep
 diagnostic exports limited to those fields; exclude credentials and user content.
+The Thrift worker has a separate text stream. Use the
+[worker inspection commands](recovery-and-cleanup.md#thrift-worker-and-ollama-checks)
+to check its startup and RPC state; its text logs do not have the same JSON fields.
 
 ## Correlate before drawing conclusions
 
 Confirm profile, cluster/namespace UID, Pod UID, container ID/start time, restart count
 and running image before comparing logs or cgroup counters. Different container instances
 have unrelated cumulative counters. Check startup stages and fixed errors, queue wait,
-section generation/first-content durations and token counts. Ollama owns inference;
-backend preparation/thread metrics are null.
+section generation/first-content durations and token counts. The backend imports
+generic generation measurements from terminal Thrift snapshots and assigns them to application sections. Its busy/duration metrics
+describe the client executor, including polling and drain; they do not directly
+measure the remote worker or GPU. Ollama owns model inference.
 First-token time is part of generation time, not an extra phase to add again.
 
 Check host memory pressure and swap, node allocatable resources and workload

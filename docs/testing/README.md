@@ -2,8 +2,8 @@
 
 [Documentation index](../README.md)
 
-The maintained deployment runs on an existing Minikube cluster and uses an
-independent Ollama service. Offline tests check application behavior and deployment
+The maintained deployment runs on an existing Minikube cluster, with a separate
+generic Thrift service supervising its own Ollama child. Offline tests check application behavior and deployment
 tooling without a live cluster, model download or real inference. Real-model and
 deployment acceptance are separate checks.
 
@@ -22,7 +22,7 @@ Tests stay with their owning components and are grouped by domain:
 backend/tests/
   api/          # Authentication, review workflows, health, logging and HTTP contracts
   core/         # Configuration and rate limiting
-  inference/    # Prompts/output, Ollama transport, coordinator and opt-in model smoke
+  inference/    # Prompts/output, Thrift TCP, Ollama HTTP, coordinator and real-model checks
   persistence/  # SQLite, local DynamoDB transport and startup
   support.py    # Model double and API helpers; fixtures live in conftest.py
 scripts/tests/
@@ -119,6 +119,8 @@ and verify that requests cannot fall back to real cloud services.
 | --- | --- | --- |
 | Backend | `backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/context/startup/logging contracts; Moto accounts and model doubles |
 | Local transport | Backend local-DynamoDB tests | Missing/remote endpoints rejected; SDK host credentials/profiles/metadata/proxies cannot replace local transport |
+| Thrift RPC | `backend/.venv/bin/pytest backend/tests/inference/test_thrift.py` | Real TCP client/processor with mocked Ollama HTTP; policy handshake, results/metrics, cancellation, deadlines and uncertain execution |
+| Real Thrift process | `RUN_REAL_MODEL=1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py::test_real_fastapi_review_persists_remote_identity` | Opt-in FastAPI → TCP Thrift → separate worker process → local Ollama, including persisted model provenance |
 | Minikube | `scripts/check_minikube_demo.sh` | Helm lifecycle, resource ownership, forwarding, queue fencing, storage retention and purge; simulated cluster APIs and real loopback fixtures |
 | Release and charts | Shared script gate | Helm rendering, GitOps, snapshot/provenance and simulated publishing with local Git remotes |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |
@@ -211,8 +213,10 @@ for manual publishing pauses and actual recovery acceptance.
 
 ## Explicit real-model smoke and quality evaluation
 
-The opt-in [model smoke](../reference/model.md) and [fixed-suite evaluator](model-evaluation.md)
-call the configured Ollama service, which loads model weights and uses CPU, GPU, and
+The opt-in [native and Thrift process checks](../reference/model.md#dependencies-and-verification)
+and [fixed-suite evaluator](model-evaluation.md) exercise real inference. The native
+smoke calls Ollama directly; the process check and evaluator use Thrift. Ollama loads
+model weights and uses CPU, GPU, and
 memory resources as available. For comparable runs, keep the model digest, quantization,
 prompts, sampling settings, budgets, quality rules, and service configuration fixed.
 Evaluation plans have status `not_run`; they are not successful reviews. The default
@@ -278,3 +282,16 @@ fixtures with the required loopback permissions rather than skipping assertions.
 binaries may require a separate install; report unavailable browser checks accurately.
 Ignored operator files, existing databases, cached weights and old state are not test
 fixtures and must not be rewritten or deleted by the gate.
+
+## Independent inference checks
+
+[The Thrift guide](../guides/apache-thrift.md#regenerate-test-and-build) documents
+the service's own virtual environment, generated-binding drift checks, Java example,
+real TCP/processor tests, bounded-registry tests, native HTTP doubles and real child
+process tests. Run `bash scripts/checks/inference.sh` after installing that project's
+locked test dependencies. Generic service tests do not require the backend package.
+Real model checks remain explicit opt-in tests; image and manifest verification alone
+do not establish Vulkan inference on a live krunkit node.
+
+See the [2026-10-25 verification record](generic-llm-verification-2026-10-25.md)
+for the refactor's concrete checks and deployment verification limits.

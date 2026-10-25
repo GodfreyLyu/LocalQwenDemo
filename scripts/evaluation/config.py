@@ -8,7 +8,7 @@ TOOL_VERSION = "3.1.0"
 FIXTURES = ROOT / "scripts/evaluation/fixtures-v1.json"
 OUTPUT_ROOT = ROOT / ".local/model-evaluations"
 CASE_IDS = ("hello_world", "average", "square", "first_item", "sql_injection", "prompt_injection")
-DEPENDENCIES = ("httpx",)
+DEPENDENCIES = ("thrift", "local-llm-contract")
 MANUAL_CHECKS = (
     "semantic_correctness",
     "no_fabricated_findings",
@@ -26,8 +26,7 @@ class EvaluationError(Exception):
 
 def settings_for(
     *,
-    ollama_base_url="http://localhost:11434",
-    ollama_model_digest=None,
+    expected_model_revision=None,
     model_max_output_tokens=384,
     inference_timeout_seconds=300,
     **model_overrides,
@@ -37,10 +36,10 @@ def settings_for(
     defaults.update(
         signing_secret="synthetic-evaluation-only-" * 2,
         dynamodb_endpoint_url="http://127.0.0.1:8001",
-        ollama_base_url=ollama_base_url,
-        ollama_model_digest=ollama_model_digest,
-        model_inference_concurrency=1,
-        model_max_input_tokens=2048,
+        thrift_host="127.0.0.1",
+        thrift_port=9091,
+        thrift_startup_timeout_seconds=60,
+        expected_model_revision=expected_model_revision,
         model_max_output_tokens=model_max_output_tokens,
         inference_timeout_seconds=inference_timeout_seconds,
     )

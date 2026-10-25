@@ -83,7 +83,8 @@ jobs:
         if: steps.plan.outputs.backend_build == 'true'
         uses: docker/build-push-action@v6
         with:
-          context: ./backend
+          context: .
+          file: backend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.plan.outputs.backend_repository }}:sha-${{ github.sha }}
@@ -111,7 +112,8 @@ jobs:
         if: steps.plan.outputs.ollama_build == 'true'
         uses: docker/build-push-action@v6
         with:
-          context: ./deploy/images/ollama-vulkan
+          context: .
+          file: inference-service/Dockerfile
           platforms: linux/arm64
           push: true
           tags: ${{ steps.plan.outputs.ollama_repository }}:sha-${{ github.sha }}

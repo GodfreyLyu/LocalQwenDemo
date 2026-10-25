@@ -188,7 +188,9 @@ API server, kubelet/cAdvisor, workload, node and storage monitoring remain enabl
 The Minikube profile disables scraping and associated rules for unexposed etcd,
 controller-manager, scheduler and kube-proxy endpoints. Node exporter observes the
 Linux VM, not macOS host pressure. Container metrics for `review-ollama` describe
-model-server resources; backend container metrics do not. GPU device allocation is
+model-server resources; backend and Thrift worker container metrics do not. The
+backend measures API/queue/RPC work, while the worker handles RPC and Ollama HTTP.
+GPU device allocation is
 not a GPU utilization measurement.
 
 The node-exporter Pod includes a small BusyBox sidecar that measures allocated

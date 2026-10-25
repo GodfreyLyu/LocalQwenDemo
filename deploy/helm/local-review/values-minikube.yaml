@@ -1,7 +1,3 @@
-# Local learning environment. Apply after release-values.yaml.
-# Copy to an ignored/local file before adding machine-specific overrides.
-model:
-  ollamaBaseUrl: http://review-ollama.local-inference.svc.cluster.local:11434
 persistence:
   storageClass: standard
 signingSecret:
@@ -11,8 +7,5 @@ config:
   allowedOrigin: http://localhost:8080
   cookieSecure: false
   deploymentEnvironment: minikube
-# This profile intentionally provides no NetworkPolicy isolation.
-# To enable it, use an enforcing CNI; cluster Ollama selectors come from values.yaml.
 networkPolicy:
   enabled: false
-  ollamaHostCidr: ''

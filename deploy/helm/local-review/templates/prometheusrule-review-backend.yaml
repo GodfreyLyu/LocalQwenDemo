@@ -94,7 +94,7 @@ spec:
     - alert: ReviewContainerRestarts
       expr: >-
         increase(kube_pod_container_status_restarts_total{namespace={{ .Release.Namespace | quote }},container=~"review-backend|review-frontend|review-dynamodb"}[15m]) >= 3
-        or increase(kube_pod_container_status_restarts_total{namespace={{ .Values.monitoring.ollamaNamespace | quote }},pod=~{{ printf "%s-.*" .Values.monitoring.ollamaRelease | quote }},container="ollama"}[15m]) >= 3
+        or increase(kube_pod_container_status_restarts_total{namespace={{ .Values.monitoring.ollamaNamespace | quote }},pod=~{{ printf "%s-.*" .Values.monitoring.ollamaRelease | quote }},container="inference"}[15m]) >= 3
       for: 2m
       labels:
         severity: warning
@@ -108,7 +108,7 @@ spec:
           kube_pod_container_status_last_terminated_reason{namespace={{ .Release.Namespace | quote }},container=~"review-backend|review-frontend|review-dynamodb",reason="OOMKilled"} == 1
           and on (namespace, pod, container) increase(kube_pod_container_status_restarts_total{namespace={{ .Release.Namespace | quote }}}[15m]) > 0
         ) or (
-          kube_pod_container_status_last_terminated_reason{namespace={{ .Values.monitoring.ollamaNamespace | quote }},pod=~{{ printf "%s-.*" .Values.monitoring.ollamaRelease | quote }},container="ollama",reason="OOMKilled"} == 1
+          kube_pod_container_status_last_terminated_reason{namespace={{ .Values.monitoring.ollamaNamespace | quote }},pod=~{{ printf "%s-.*" .Values.monitoring.ollamaRelease | quote }},container="inference",reason="OOMKilled"} == 1
           and on (namespace, pod, container) increase(kube_pod_container_status_restarts_total{namespace={{ .Values.monitoring.ollamaNamespace | quote }}}[15m]) > 0
         )
       for: 1m

@@ -75,37 +75,50 @@ See [security](security.md) for the full policy.
 A 202 response confirms durable acceptance, not a completed review. Once the insert
 commits, the coordinator can claim it independently of the HTTP response. Browser
 polling and background execution overlap; the diagram shows them as parallel paths.
-The Worker lane combines the coordinator and its sole executor. Submission uses
+The Coordinator lane combines the backend coordinator and its client executor.
+The Inference lane is a separate Thrift worker. This diagram shows normal completion;
+timeout and uncertain execution are covered [below](#service-startup-timeout-and-recovery).
+Submission uses
 `POST /api/v1/reviews`; polling uses `GET /api/v1/reviews/{review_id}`.
 
 ```mermaid
 sequenceDiagram
     accTitle: Durable asynchronous review from submission to saved result
-    accDescr: FastAPI commits the job before returning 202. The browser polls owner-scoped detail while the coordinator independently claims the job, calls Ollama serially and persists a terminal result. The browser renders the saved Markdown after completion.
+    accDescr: FastAPI commits the job before returning 202. The browser polls owner-scoped detail while the coordinator independently claims the job, calls the Thrift worker and persists a terminal result. The browser renders the saved Markdown after completion.
     participant Browser
     participant API as FastAPI
     participant SQLite
-    participant Worker
+    participant Worker as Coordinator
+    participant Inference as Thrift worker
     participant Ollama
-    Browser->>API: POST review, request ID, CSRF
-    API->>SQLite: Admit and commit queued job
-    SQLite-->>API: Review ID and status
+    Browser->>API: POST review<br/>request ID and CSRF
+    API->>SQLite: Commit queued job
+    SQLite-->>API: Review ID, status
     par Response and polling
-        API-->>Browser: 202, review ID and status
+        API-->>Browser: 202, review ID, status
         loop Until terminal
             Browser->>API: GET review detail
-            API->>SQLite: Read for session owner
+            API->>SQLite: Owner-scoped read
             SQLite-->>API: Saved detail
             API-->>Browser: 200, saved detail
         end
     and Background execution
-        Worker->>SQLite: Claim job, commit running
+        Worker->>SQLite: Claim, mark running
         SQLite-->>Worker: Claimed job
-        loop Three sections in order
-            Worker->>Ollama: Check digest, stream section
-            Ollama-->>Worker: Text and token counts
+        Worker->>Inference: startGeneration
+        Inference-->>Worker: RUNNING snapshot
+        par Worker generates
+            loop Summary, Findings, Suggestions
+                Inference->>Ollama: HTTP digest check<br/>and section stream
+                Ollama-->>Inference: Text and token counts
+            end
+        and Backend polls worker
+            loop Until terminal RPC snapshot
+                Worker->>Inference: getGeneration
+                Inference-->>Worker: State or terminal<br/>result and metrics
+            end
         end
-        Worker->>SQLite: Save result or safe error
+        Worker->>SQLite: Save result or error
     end
     Browser->>Browser: Render result or error
 ```
@@ -113,15 +126,17 @@ sequenceDiagram
 Polling normally repeats after 1.5 seconds while active, or after 3 seconds following
 a retryable polling failure. A page reload reads history and resumes polling an
 active job. History lists omit source/result bodies; opening a detail loads them.
-The browser receives complete saved results, while streaming stays between the
-backend and Ollama. Submitted code is never executed.
+The browser receives complete saved results. Token streaming stays between the
+Thrift worker and Ollama; backend polling uses snapshots with no partial text.
+Submitted code is never executed.
 
 If submission delivery is unconfirmed, the UI retains the exact payload and request
 ID in memory and lets the user retry explicitly. It does not automatically resubmit.
 The admission rules below determine whether that retry returns an existing job.
 
 Sources: [review routes](../../backend/app/api/routes/reviews.py),
-[browser workflow](../../frontend/src/App.tsx), [coordinator](../../backend/app/coordinator.py),
+[browser workflow](../../frontend/src/Workspace.tsx), [coordinator](../../backend/app/coordinator.py),
+[Thrift client](../../backend/app/inference/rpc/client.py),
 [Markdown rendering](../../frontend/src/Markdown.tsx).
 
 ## Admission and idempotency
@@ -174,56 +189,29 @@ Sources: [ReviewService](../../backend/app/review_service.py),
 
 ## Model validation and generation
 
-At backend startup, `OllamaModel.load` checks the server version, local model digest,
-completion capability and context size, then performs a one-token generation probe.
-Startup metadata transport/unavailability failures have a 60-second retry budget;
-missing models and incompatible metadata fail immediately. The generation probe
-runs once. The backend neither downloads a missing model nor selects a fallback.
+The inference service starts its Ollama child, validates native version, pinned
+revision, capabilities and context, then performs a generic warmup and GPU check.
+Only then does it open Thrift. The backend handshakes for identity and public limits;
+it does not mirror execution configuration.
 
-For a claimed job, the single executor follows this pipeline. All three sections
-share one stop event and one 300-second deployment deadline. The total deployment
-output budget is 384 tokens, split into 72 / 176 / 136 tokens.
+The backend allocates one 384-token review budget across Summary (72), Findings
+(176) and Suggestions (136). For each section it builds its own role/content
+messages from the original source and language, then calls `startGeneration` and
+polls by request ID. Each generation receives the remaining review deadline. The
+service validates generic native results and token limits; the backend normalizes
+sections, trims permitted unfinished tails and validates the complete review.
+Generated sections never feed later prompts. A human still evaluates correctness.
 
-```mermaid
-flowchart TB
-    accTitle: Three-section Ollama generation and validation
-    accDescr: The executor allocates one review-wide budget and checks cancellation, deadline and model identity before each independent section. Ollama streams text and actual token counts. The backend normalizes section bodies, validates the assembled review, then returns it for persistence or fails the job safely.
-    budgets["Claimed review | allocate section budgets"]
-    guard["Check stop, deadline and digest"]
-    chat["Original-source prompt to Ollama /api/chat"]
-    section["Check stream, token counts and section body"]
-    more{"More sections?"}
-    finalChecks["Recheck digest and observe device"]
-    validate["Assemble and validate full review"]
-    result["Return complete Markdown"]
-    failed["Return safe job error"]
-    budgets --> guard --> chat --> section --> more
-    more -->|"Yes"| guard
-    more -->|"No"| finalChecks
-    finalChecks --> validate --> result
-    guard -.->|"Stopped, expired or mismatch"| failed
-    chat -.->|"API error"| failed
-    section -.->|"Invalid or over budget"| failed
-    finalChecks -.->|"API or identity error"| failed
-    validate -.->|"Invalid review"| failed
-```
+On a lost response, the client uses `getGeneration` rather than repeating a start.
+On timeout it requests `cancelGeneration` and waits for confirmed native exit.
+The service owns process-group termination and pinned-model recovery. See the
+[Thrift guide](../guides/apache-thrift.md) for registry expiry, duplicate behavior,
+Python/Java interoperability, startup/shutdown and failure semantics.
 
-Each prompt repeats the original source and language; generated sections are not
-fed into later prompts. Ollama owns tokenization and the model's native template.
-Requests disable thinking, truncation and context shifting. Exact input-token
-validation happens in the worker using Ollama's terminal counts, after acceptance;
-it is not an admission-time estimate. Unexpected thinking/tool output, incomplete
-streams, excess tokens and invalid review structure fail the whole job.
-
-The adapter only removes an unfinished suffix under the documented capped-section
-rule. It publishes no partial review. Successful persistence records the selected
-model tag and actual digest. Output validation checks format and a limited source
-connection; a human still needs to assess the findings.
-
-Sources: [Ollama adapter](../../backend/app/inference/ollama.py),
-[prompts](../../backend/app/inference/prompts.py), [budgets](../../backend/app/inference/generation.py),
+Sources: [service adapter](../../inference-service/src/llm_service/ollama.py),
+[backend orchestration](../../backend/app/inference/rpc/client.py),
+[prompts](../../backend/app/inference/prompts.py),
 [output checks](../../backend/app/inference/review_output.py).
-See [model configuration](model.md) for defaults and error details.
 
 ## Durable job lifecycle
 
@@ -260,15 +248,15 @@ Sources: [Store.recover, claim and finish](../../backend/app/persistence/storage
 
 ## Service startup timeout and recovery
 
-Coordinator state describes the backend process, independently of any saved job.
-`ready` remains the operational state during normal execution, so other accounts
-can queue work. The process never starts a second inference while the first local
-executor call is still draining.
+Coordinator state describes the backend process, independently of a saved job or
+RPC snapshot. `ready` remains the operational state during normal execution, so
+other accounts can queue work. The backend never starts another review while its
+client call is draining. The worker independently rejects overlapping operations.
 
 ```mermaid
 stateDiagram-v2
     accTitle: Backend coordinator startup and timeout recovery
-    accDescr: The coordinator starts loading, initializes stores, recovers the queue and verifies the model before becoming ready. A coordinator wait timeout enters draining. A returning executor restores readiness within 30 seconds, otherwise the coordinator becomes stuck. Initialization or worker-loop storage errors are fatal states requiring restart.
+    accDescr: The coordinator initializes stores, recovers the queue and validates an idle Thrift worker before becoming ready. A coordinator deadline enters draining. Confirmed completion within the drain allowance restores readiness. Uncertain execution can move ready or draining directly to stuck; an expired drain also becomes stuck. Startup and storage errors require recovery.
     state "model_loading" as loading
     state "ready" as readyState
     state "inference_draining" as draining
@@ -278,14 +266,16 @@ stateDiagram-v2
     loading --> readyState: Startup checks pass
     loading --> failure: Startup error
     readyState --> draining: Timeout
+    readyState --> stuck: Remote execution uncertain
     readyState --> failure: Storage or loop error
-    draining --> readyState: Drained
-    draining --> stuck: Drain expires
+    draining --> readyState: Completion confirmed
+    draining --> stuck: Drain expires or execution uncertain
     draining --> failure: Write error
 ```
 
-Startup order is SQLite initialization → account-store check → queue recovery →
-model validation/probe → final writable SQLite check. The account-store stage
+Backend startup order is SQLite initialization → account-store check → queue recovery
+→ worker handshake → final writable SQLite check. Worker startup separately performs
+Ollama validation/probe before opening the RPC listener. The account-store stage
 retries only allowlisted transport failures, serially, within a 120-second retry
 budget; an in-flight SDK call is allowed to finish. In Kubernetes, an init container
 first ensures the users table exists. See [startup recovery](../operations/recovery-and-cleanup.md).
@@ -294,7 +284,7 @@ first ensures the users table exists. See [startup recovery](../operations/recov
 | --- | --- | --- | --- |
 | `model_loading` | No | Yes | Wait for initialization |
 | `ready` | Yes, if writable SQLite check passes | Yes | Admit and claim jobs |
-| `inference_draining` | No | Yes | Signal stop, wait for local executor exit |
+| `inference_draining` | No | Yes | Send worker cancellation and wait for confirmed completion |
 | `inference_stuck` | No | No | Stop coordinator; Kubernetes liveness restart |
 | `startup_or_storage_failure` | No | No | Restart/recovery required |
 
@@ -308,8 +298,8 @@ transactional limits.
 Shutdown sets a separate `closing` flag, closes admission, signals cancellation and
 waits for a bounded grace period. Runtime reports `shutting_down`; the last
 operational state is retained. A late thread exit cannot recover from `stuck` or
-reopen admission while closing. The Pod termination grace period is 60 seconds;
-Python cannot forcibly kill the native thread. An adapter-reported timeout that
+reopen admission while closing. The backend Pod termination grace period is 60 seconds; the worker Pod gets
+30 seconds. Python cannot forcibly kill the generation thread. An adapter-reported timeout that
 has already returned can fail a job without entering the coordinator drain path.
 
 Sources: [coordinator](../../backend/app/coordinator.py),
@@ -359,12 +349,14 @@ approved desired state, not successful deployment, and a tagging failure does no
 block Argo CD from syncing an already merged snapshot.
 
 For a fresh environment, prepare the cluster, StorageClass, namespaces, GPU platform
-and external Secrets, then deploy Ollama before the application. Ollama reuses its
-model PVC and, with bootstrap enabled, downloads a missing model and verifies its
-pinned digest. Its readiness then checks process/API availability rather than GPU
-residency. A separate Helm test or Argo CD PostSync hook proves bootstrap-model GPU
-inference. The backend independently probes its selected review model. Complete a
-real review through the UI and check saved history after deployment.
+and external Secrets, then deploy the inference release before the application.
+It reuses the model PVC, optionally downloads a missing pinned model, and checks
+capabilities/context and GPU warmup before opening RPC. A separate Helm test or
+Argo PostSync hook performs real generation over Thrift. The backend checks actual
+identity and readiness, while its application prompts remain independent. Complete
+a real UI review and check saved history after deployment. For an existing instance,
+use the [coordinated migration and rollback](../operations/inference-migration.md).
+
 
 An audited rollback uses the same snapshot validation and manual approval, while
 recovering the deployment before normal releases resume:
@@ -395,7 +387,7 @@ Sources: [quality checks](../../.github/workflows/ci.yml),
 [candidate workflow](../../.github/workflows/release-candidate.yml),
 [snapshot validation](../../.github/workflows/deployment-validation.yml),
 [tag finalization](../../.github/workflows/release-finalize.yml),
-[Argo Applications](../../deploy/argocd), [Ollama runtime](../../deploy/images/ollama-vulkan/runtime.py).
+[Argo Applications](../../deploy/argocd), [Ollama runtime](../../inference-service/src/llm_service/runtime.py).
 Use the [GitOps](../guides/gitops.md), [Helm](../guides/helm-release.md),
 [platform](../../infra/local-platform/README.md) and [rollback](../guides/release-rollback.md)
 guides for executable steps.

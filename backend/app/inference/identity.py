@@ -3,7 +3,7 @@
 from typing import Literal, NotRequired, TypedDict
 
 from app.inference.model import ReviewModel
-from app.inference.ollama import OllamaModel
+from app.inference.rpc.client import ThriftReviewModel
 
 
 class ModelIdentity(TypedDict):
@@ -17,10 +17,10 @@ class ModelIdentity(TypedDict):
 
 
 def model_identity(model: ReviewModel) -> ModelIdentity:
-    if isinstance(model, OllamaModel):
+    if isinstance(model, ThriftReviewModel):
         return {
             "inference_mode": "real",
-            "model_id": model.settings.ollama_model,
+            "model_id": model.info.model_id if model.info else None,
             "model_revision": model.digest,
             "model_source": "ollama_api",
             "device": model.device,

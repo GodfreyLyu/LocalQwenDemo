@@ -1,24 +1,27 @@
-# Current-model evaluation through Ollama
+# Current-model evaluation through Thrift and Ollama
 
-The evaluator uses the application's `OllamaModel`, prompts, three serial section
-requests, seed policy and output validator. Run commands from the repository root.
+The evaluator uses the application's `ThriftReviewModel` client. The remote worker
+uses `OllamaModel`, prompts, three serial section requests, seed policy and output
+validator. Run commands from the repository root.
 
 ## Evaluation flow
 
 Evaluation calls the same inference adapter directly, using checked-in synthetic
 fixtures. It bypasses the application HTTP API, accounts, durable queue and browser.
-The parent supervises a disposable client worker; Ollama remains an independent
-service. This is a model evaluation, separate from deployment acceptance.
+The parent supervises a disposable client process; the Thrift worker and Ollama
+remain independent services. This evaluates model output, separately from deployment
+acceptance. In the diagram, service responses return along the call path.
 
 ```mermaid
 flowchart TB
     accTitle: Plan or evaluate the synthetic review suite
-    accDescr: CLI settings and fixed fixtures form a private evaluation plan. Plan mode saves not_run without contacting Ollama. Real mode supervises one serial client worker, validates the model and runs cases through the production Ollama adapter. Automatic checks and explicit human judgments determine the aggregate result. Crashes and watchdog expiry fail the run.
+    accDescr: CLI settings and fixed fixtures form a private plan. Plan mode contacts neither inference service. Real mode supervises a disposable Thrift client that checks the independent worker and runs serial cases through it to Ollama. Automatic checks and explicit human judgments determine the result; client failure or watchdog expiry fails the run.
     inputs["CLI settings and synthetic fixtures"]
     mode{"Real model requested?"}
     plan["Plan only | not_run"]
-    worker["Supervised worker | model preflight"]
-    cases["Serial cases through OllamaModel"]
+    client["Supervised Thrift client | serial cases"]
+    worker["Independent inference worker"]
+    ollama["Ollama | model generation"]
     checks["Automatic checks and human judgments"]
     aggregate["Aggregate case outcomes"]
     failure["Mark run failed"]
@@ -26,9 +29,12 @@ flowchart TB
     inputs --> mode
     mode -->|"No"| plan
     plan --> report
-    mode -->|"Yes"| worker
-    worker --> cases --> checks --> aggregate --> report
-    worker -.->|"Crash or watchdog expiry"| failure
+    mode -->|"Yes"| client
+    client -->|"Thrift :9091"| worker
+    worker -->|"Loopback HTTP inside inference workload"| ollama
+    client -->|"Completed case"| checks
+    checks --> aggregate --> report
+    client -.->|"Failure or watchdog expiry"| failure
     failure --> report
 ```
 
@@ -46,13 +52,16 @@ Sources: [CLI](../../scripts/evaluation/cli.py),
 Install the backend development environment and start Ollama 0.24.0 or newer
 with the chosen local model already installed. No tokenizer cache or optional model
 Python dependencies are needed. The evaluator never downloads a model.
+Start the independent service using the [Thrift setup guide](../guides/apache-thrift.md).
+It supervises Ollama itself and enforces model pin, context, sampling defaults and
+resource limits. The evaluator uses the backend's application-owned prompts,
+section orchestration and validation through the generic Thrift client.
 
-The default endpoint is `http://localhost:11434`, and the default model is
-`qwen3:1.7b`. Use `--ollama-base-url`, `--ollama-model` and optionally
-`--ollama-model-digest` to select another installed model. Without an explicit digest,
-the adapter captures it at startup and checks it throughout the run.
-Validation and sampling use the application's model settings; the token budget and
-deadline below match the Helm deployment defaults.
+Use `--thrift-host` and `--thrift-port` to select the service. Optional
+`--expected-model-id` / `--expected-model-revision` assert its model identity;
+`--model-temperature` and `--model-top-p` are per-generation application overrides.
+Service defaults and limits are recorded from the handshake during a real run.
+No native URL or complete mirrored generation configuration is required.
 
 ## Plan and run
 
@@ -68,8 +77,9 @@ backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case avera
 backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case all
 ```
 
-Omitting the mode flags also produces a plan. Plan mode does not construct a model,
-contact Ollama, load model dependencies or download anything. Exit 0 with
+Omitting the mode flags also produces a plan. Plan mode needs the installed backend
+dependencies, but constructs no model adapter, contacts neither inference service,
+and downloads no model files. Exit 0 with
 `status=not_run` means a valid plan, not an inference pass.
 
 Defaults match the maintained deployment's 2048 input tokens, 384 total output tokens
@@ -116,8 +126,10 @@ hints are diagnostics only. A production quality rejection fails evaluation.
 | `failed` / 1 | Dependency/service/runtime/quality/metrics/manual failure |
 | Argument error / 2 | Invalid or incompatible options |
 
-The opt-in backend smoke test uses a smaller budget and permits controlled output
-rejection. It establishes transport/inference behavior, not quality acceptance.
+The [native adapter smoke test](../reference/model.md#dependencies-and-verification)
+uses a smaller budget and permits a controlled output rejection. The separate
+Thrift process test requires a saved completed review. Neither replaces semantic
+acceptance through this evaluator.
 
 ## Reports and supervision
 
@@ -131,13 +143,17 @@ model digest and budgets before comparing runs with historical reports.
 Reports contain typed metrics and categorical judgments, never source, prompts, output,
 seeds, credentials or arbitrary exception messages. Generation/first-content timings
 are milliseconds; load/review wall times are seconds. Process RSS is the evaluator
-client's lifetime high-water mark: it excludes Ollama weights, server and GPU memory.
+client's lifetime high-water mark: it excludes the inference worker process,
+Ollama weights, server and GPU memory.
 
-The parent supervises one serial HTTP client worker. Load/preflight has a 600-second
-watchdog; review has its configured timeout plus 30 seconds to stop. The parent can
-terminate only its worker, not the external Ollama service. Adapter cancellation closes
-the HTTP connection; Ollama owns remote cleanup. There is no inference retry or fallback.
-Manual reading time is excluded from inference timing.
+The parent supervises one serial Thrift client process. Load/preflight has a
+600-second parent watchdog; the client's worker-startup retry allowance is 60 seconds.
+Each case has its configured review timeout plus a 30-second watchdog allowance.
+The parent can terminate its client process, not the independent Thrift worker or
+Ollama. The remote worker's request timer remains active if that client disappears.
+Confirm its idle state before another run; killing the evaluator does not prove
+that generation has stopped. There is no inference retry or fallback. Manual
+reading time is excluded from inference timing.
 
 Historical [CPU reports](../reports/verification-2026-09-10-to-13.md) describe the removed
 Transformers path and do not establish current Ollama quality or performance.

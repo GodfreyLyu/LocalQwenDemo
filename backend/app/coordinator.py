@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from app.config import Settings
 from app.domain import ReviewRecord
-from app.errors import AppError
+from app.errors import AppError, InferenceUncertain
 from app.inference.identity import model_identity
 from app.inference.model import ReviewModel
 from app.monitoring import Metrics
@@ -135,6 +135,9 @@ class Coordinator:
             self._transition(CoordinatorState.DRAINING)
             timed_out = True
             error = AppError("inference_timeout", "Review timed out. Try a shorter submission.")
+        except InferenceUncertain as exc:
+            self._transition(CoordinatorState.STUCK)
+            error = exc
         except AppError as exc:
             error = exc
         except Exception:
@@ -215,6 +218,9 @@ class Coordinator:
                 lambda done: done.exception() if not done.cancelled() else None
             )
             return
+        except InferenceUncertain:
+            self._transition(CoordinatorState.STUCK)
+            return
         except Exception:
             pass
         self._transition(CoordinatorState.READY)
@@ -223,6 +229,9 @@ class Coordinator:
         self._closing = True
         self._shutdown.set()
         self.stop.set()
+        close_model = getattr(self.model, "close", None)
+        if close_model is not None:
+            close_model()
         try:
             await asyncio.wait_for(asyncio.shield(self.task), self.settings.shutdown_grace_seconds)
         except (TimeoutError, asyncio.CancelledError):

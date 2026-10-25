@@ -14,9 +14,10 @@ without a matching release are rejected; there is no automatic ownership takeove
 Install the Python environment described in [local development](local-development.md),
 Helm 3.17+ or Helm 4, kubectl, Docker and Minikube. Use an existing single-node
 Docker-driver profile, a usable `standard` StorageClass, and an Ollama Service at
-`review-ollama.local-inference.svc.cluster.local:11434` with the Chart's pinned model.
+`review-ollama.local-inference.svc.cluster.local:9091` with the Chart's pinned model.
 The local profile disables NetworkPolicy isolation. If enabling policies, use an
-enforcing CNI; defaults select the Ollama release's namespace and Pods. Host Ollama
+enforcing CNI. The backend calls the independent inference release on Thrift 9091; native HTTP
+stays on loopback inside that workload. Host Ollama
 requires explicit URL and policy overrides described in the [Helm guide](helm-release.md).
 For the krunkit GPU cluster, use standard Helm commands instead of this script.
 
@@ -53,7 +54,7 @@ Private registry credentials remain an explicit external prerequisite.
 
 `up` builds native backend/frontend images using the Docker layer cache, assigns
 unique tags, verifies architecture and loaded CRI contents, and loads them into the
-selected Minikube. It uses `pullPolicy: Never` for these local images and clears
+selected Minikube. The inference project has its own image and entry point. It uses `pullPolicy: Never` for these local images and clears
 any inherited backend/frontend digest. It does not deploy published release
 images: use standard Helm and `release-values.yaml` for that workflow.
 

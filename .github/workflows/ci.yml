@@ -29,15 +29,33 @@ jobs:
         run: |
           python -m venv backend/.venv
           backend/.venv/bin/pip install -r backend/requirements-dev.lock
-          backend/.venv/bin/pip install --no-deps -e backend
+          backend/.venv/bin/pip install --no-deps -e contracts -e backend
       - name: Lint and test Python
         working-directory: backend
         run: |
           .venv/bin/ruff check --config pyproject.toml app tests
           .venv/bin/ruff format --check --config pyproject.toml app tests
-          .venv/bin/ruff check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
-          .venv/bin/ruff format --check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
           .venv/bin/pytest tests -m 'not real_model and not requires_cluster'
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Thrift compiler
+        run: |
+          mkdir -p .local/thrift
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -w /work thrift:0.25.0 thrift --version
+          printf '#!/bin/sh\nexec docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:$PWD" -w "$PWD" -v /tmp:/tmp thrift:0.25.0 thrift "$@"\n' > .local/thrift/thrift
+          chmod +x .local/thrift/thrift
+          echo "$PWD/.local/thrift" >> "$GITHUB_PATH"
+      - name: Independent inference and Java checks
+        run: |
+          python -m venv inference-service/.venv
+          inference-service/.venv/bin/pip install -r inference-service/requirements-dev.lock
+          inference-service/.venv/bin/pip install --no-deps -e contracts -e inference-service
+          bash scripts/checks/inference.sh
+      - name: Build independent backend image
+        run: docker build -f backend/Dockerfile -t review-backend:ci .
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
@@ -94,17 +112,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/check_monitoring.sh
 
+  inference-image:
+    name: ARM64 inference image
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -f inference-service/Dockerfile -t review-inference:ci .
+
   main-ci:
     # Required by branch protection; keep this check name stable.
     name: main-ci
     if: always()
-    needs: [application, configuration]
+    needs: [application, configuration, inference-image]
     runs-on: ubuntu-latest
     steps:
       - name: Check required results
         env:
           APPLICATION_RESULT: ${{ needs.application.result }}
+          INFERENCE_IMAGE_RESULT: ${{ needs.inference-image.result }}
           CONFIGURATION_RESULT: ${{ needs.configuration.result }}
         run: |
           test "$APPLICATION_RESULT" = success
           test "$CONFIGURATION_RESULT" = success
+          test "$INFERENCE_IMAGE_RESULT" = success

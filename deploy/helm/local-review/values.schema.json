@@ -3,6 +3,7 @@
   "additionalProperties": false,
   "required": [
     "backend",
+    "inference",
     "frontend",
     "dynamodb",
     "imagePullSecrets",
@@ -402,36 +403,18 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "ollamaBaseUrl",
-        "ollamaModel",
-        "ollamaModelDigest",
-        "maxInputTokens",
+        "expectedId",
+        "expectedRevision",
         "maxOutputTokens",
-        "timeoutSeconds",
-        "contextTokens",
-        "keepAlive",
-        "temperature",
-        "topP",
-        "topK",
-        "minP",
-        "repeatPenalty"
+        "timeoutSeconds"
       ],
       "properties": {
-        "ollamaBaseUrl": {
+        "expectedId": {
           "type": "string"
         },
-        "ollamaModel": {
-          "type": "string",
-          "pattern": "^[a-zA-Z0-9._/-]+:[a-zA-Z0-9._-]+$"
-        },
-        "ollamaModelDigest": {
+        "expectedRevision": {
           "type": "string",
           "pattern": "^$|^sha256:[a-f0-9]{64}$"
-        },
-        "maxInputTokens": {
-          "type": "integer",
-          "minimum": 128,
-          "maximum": 131072
         },
         "maxOutputTokens": {
           "type": "integer",
@@ -439,43 +422,9 @@
           "maximum": 32768
         },
         "timeoutSeconds": {
-          "type": "integer",
-          "minimum": 1,
+          "type": "number",
+          "exclusiveMinimum": 0,
           "maximum": 600
-        },
-        "contextTokens": {
-          "type": "integer",
-          "minimum": 256,
-          "maximum": 131072
-        },
-        "keepAlive": {
-          "type": "string",
-          "pattern": "^(0|[1-9][0-9]*[smh])$"
-        },
-        "temperature": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 2
-        },
-        "topP": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "maximum": 1
-        },
-        "topK": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1000
-        },
-        "minP": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "repeatPenalty": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "maximum": 2
         }
       }
     },
@@ -547,26 +496,20 @@
       "additionalProperties": false,
       "required": [
         "enabled",
-        "ollamaHostCidr",
-        "ollamaNamespace",
-        "ollamaRelease"
+        "inferenceNamespace",
+        "inferenceRelease"
       ],
       "properties": {
         "enabled": {
           "type": "boolean"
         },
-        "ollamaHostCidr": {
+        "inferenceNamespace": {
           "type": "string",
-          "description": "One private IPv4 host /32; required for host Ollama with enabled policies and an empty ollamaNamespace.",
-          "pattern": "^$|^(10\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|172\\.(1[6-9]|2[0-9]|3[01])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|192\\.168\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))/32$"
+          "minLength": 1
         },
-        "ollamaNamespace": {
+        "inferenceRelease": {
           "type": "string",
-          "pattern": "^$|^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
-        },
-        "ollamaRelease": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]{0,51}[a-z0-9])?$"
+          "minLength": 1
         }
       }
     },
@@ -670,6 +613,37 @@
         "ollamaRelease": {
           "type": "string",
           "pattern": "^[a-z0-9]([a-z0-9-]{0,51}[a-z0-9])?$"
+        }
+      }
+    },
+    "inference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "port",
+        "socketTimeoutSeconds",
+        "recoverySeconds"
+      ],
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "socketTimeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "recoverySeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 60
         }
       }
     }

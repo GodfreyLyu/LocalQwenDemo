@@ -26,3 +26,14 @@ class AppError(Exception):
         self.status = status
         self.validation_reason = validation_reason
         super().__init__(message)
+
+
+class InferenceUncertain(AppError):
+    """A remote call lost its execution state; admission must fail closed."""
+
+    def __init__(self):
+        super().__init__(
+            "inference_stuck",
+            "Inference state could not be confirmed. The service needs recovery.",
+            503,
+        )

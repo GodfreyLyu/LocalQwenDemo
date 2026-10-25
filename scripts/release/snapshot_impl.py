@@ -42,6 +42,8 @@ def inputs(root):
         p
         for p in tracked
         if p.startswith("backend/app/")
+        or p.startswith("contracts/python/")
+        or p in {"contracts/pyproject.toml", "contracts/llm.thrift", ".dockerignore"}
         or p
         in {
             "backend/Dockerfile",
@@ -51,7 +53,22 @@ def inputs(root):
         }
     ]
     frontend = [p for p in tracked if p.startswith("frontend/")]
-    ollama = [p for p in tracked if p.startswith("deploy/images/ollama-vulkan/")]
+    ollama = [
+        p
+        for p in tracked
+        if p.startswith(
+            ("deploy/images/ollama-vulkan/", "inference-service/src/", "contracts/python/")
+        )
+        or p
+        in {
+            "contracts/pyproject.toml",
+            "contracts/llm.thrift",
+            "inference-service/Dockerfile",
+            "inference-service/requirements.lock",
+            "inference-service/pyproject.toml",
+            ".dockerignore",
+        }
+    ]
     deployment = [
         p
         for p in tracked

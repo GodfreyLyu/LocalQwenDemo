@@ -21,11 +21,14 @@ settings. The maintained Argo CD application uses the smaller profile from
 | --- | --- | --- |
 | Backend, base Chart | 2 / 2 CPUs | 4 / 6 GiB |
 | Backend, `values-minikube-ollama.yaml` | 100m / 1 CPU | 256 / 768 MiB |
-| Ollama, default Chart | 250m / 2 CPUs | 1 / 3 GiB |
+| Frontend | 25m / 200m | 32 / 96 MiB |
+| DynamoDB Local | 100m / 500m | 256 / 512 MiB |
+| Combined inference + Ollama, default Chart | 250m / 2 CPUs | 1 / 3 GiB |
 
-DynamoDB Local, frontend, monitoring, Kubernetes components and other workloads need
-additional capacity. Ollama also requires the GPU resource described in its
-[Chart guide](../../deploy/helm/local-ollama/README.md).
+Monitoring, Kubernetes components and other workloads need additional capacity.
+The independently packaged inference image owns RPC, native process state, model
+weights and GPU use in one container. See its
+[Chart guide](../../deploy/helm/local-ollama/README.md) for the preserved GPU setup.
 
 The application Chart requests two PVCs: 10 GiB for history/queue/sessions and
 1 GiB for accounts. Ollama adds a 4 GiB model PVC; optional Prometheus monitoring
@@ -53,11 +56,11 @@ cause of the timing difference. Measure the current Ollama container and record 
 model, hardware and workload when comparing performance; see the
 [measurement guidance](observability.md#inference-and-startup-measurement-boundaries).
 
-There is one backend replica and one inference worker. Rollout/recovery can interrupt
-availability; there is no horizontal scaling, distributed queue or high availability.
-The coordinator retains its drain/stuck protection for unresponsive worker calls.
-Ollama cancellation closes the local HTTP operation; the Ollama service owns remote
-generation cleanup. See the [model reference](model.md) for adapter behavior.
+There is one backend replica and one combined inference replica. Both use `Recreate` rollouts, so updates and recovery
+interrupt availability. There is no horizontal scaling, distributed queue or high
+availability. The coordinator closes admission if a drain exceeds its allowance
+or remote execution becomes uncertain. Cancellation reaps the native process group and reloads the pinned model; see the
+[Thrift guide](../guides/apache-thrift.md) for the execution guarantees.
 
 ## Storage and network limits
 

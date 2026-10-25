@@ -10,7 +10,9 @@
     "gpu",
     "resources",
     "startupTimeoutSeconds",
-    "verification"
+    "verification",
+    "generation",
+    "networkPolicy"
   ],
   "properties": {
     "image": {
@@ -70,8 +72,7 @@
         "context",
         "cpuThreads",
         "pullIfMissing",
-        "waitSeconds",
-        "bootstrap"
+        "waitSeconds"
       ],
       "properties": {
         "name": {
@@ -99,9 +100,6 @@
           "type": "integer",
           "minimum": 30,
           "maximum": 3600
-        },
-        "bootstrap": {
-          "type": "boolean"
         }
       }
     },
@@ -220,6 +218,82 @@
       ],
       "properties": {
         "argoPostSync": {
+          "type": "boolean"
+        }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxInputTokens",
+        "maxOutputTokens",
+        "defaultOutputTokens",
+        "maxDeadlineSeconds",
+        "pendingGenerations",
+        "retainedResults",
+        "resultTtlSeconds"
+      ],
+      "properties": {
+        "maxInputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 131072
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "defaultOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "maxDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600
+        },
+        "pendingGenerations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        },
+        "retainedResults": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "resultTtlSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "backendNamespace",
+        "backendRelease",
+        "allowModelPull"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "backendNamespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backendRelease": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowModelPull": {
           "type": "boolean"
         }
       }
