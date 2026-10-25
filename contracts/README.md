@@ -3,7 +3,8 @@
 `llm.thrift` is the source of truth. `python/llm_contract/generated` and
 `java/demo/llm/generated` are reproducible outputs of Apache Thrift 0.25.0.
 Python applications install this directory as the `local-llm-contract` package;
-Java applications compile the sources with `libthrift:0.25.0`.
+Java applications use the Maven library [`demo.llm:llm-client:0.1.0`](../clients/java/README.md),
+which compiles these existing sources with `libthrift:0.25.0` and includes a small handwritten SDK.
 
 Run `python3 scripts/generate_thrift.py` from the repo root; `--check` compares both
 languages byte-for-byte. The Java generation suppresses timestamp annotations so

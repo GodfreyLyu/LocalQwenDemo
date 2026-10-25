@@ -12,10 +12,14 @@ code reviews, Python source, or Summary / Findings / Suggestions.
 | `backend/` | FastAPI, auth, sessions, SQLite queue/history, DynamoDB accounts, prompts, section orchestration, review validation, Thrift client | `llm_service` |
 | `inference-service/` | Ollama child, native loopback HTTP, model pin, defaults, limits, registry, RPC processor, shutdown | `app` or backend modules |
 | `contracts/` | IDL, generated Python and Java bindings, tiny Java example | Either application's implementation |
+| `clients/java/` | Maven library containing existing Java bindings and a connection-managing SDK | Either application's implementation |
 
-Each application has its own `pyproject.toml`, runtime/development lockfiles,
+Each Python application has its own `pyproject.toml`, runtime/development lockfiles,
 Dockerfile, entry point and tests. Install `contracts` into each environment, or
 build it as a wheel. Neither application needs the other's dependencies to run.
+Java applications use [`demo.llm:llm-client:0.1.0`](../../clients/java/README.md).
+Its POM compiles the existing Java bindings together with `LlmClient`; the calling
+application receives the required runtime libraries through Maven.
 
 The inference entry point is `llm-service` (`python -m llm_service.runtime`). Its
 modules are intentionally small and direct:
@@ -31,6 +35,38 @@ The backend's `app/inference/rpc/client.py` constructs three sets of messages,
 allocates the review output budget, polls generic generations, records per-section
 observations, joins headings and validates the resulting review. Those choices are
 application behavior, so the service cannot depend on them.
+
+## The process and wire boundaries
+
+Generated bindings encode and decode the API. The backend adapter and Java SDK
+manage short RPC connections; the service's handler manages task admission and
+state. Model execution continues independently of any one RPC connection.
+
+```mermaid
+flowchart TB
+    accTitle: Application code and the generic Thrift service
+    accDescr: A calling application uses its backend adapter or Java SDK and the generated client. Framed TCP with strict binary protocol reaches Python's generated processor and handler. Only admitted tasks run on the generation worker, which calls its supervised Ollama child over loopback HTTP.
+    subgraph caller["Calling application process"]
+        application["Review backend or another application"]
+        client["Backend adapter or Java LlmClient"]
+        bindings["Generated LlmService.Client"]
+        application --> client --> bindings
+    end
+    subgraph inference["Inference container"]
+        rpc["RPC threads :9091<br/>Generated Processor<br/>InferenceHandler"]
+        worker["Generation worker | OllamaAdapter"]
+        ollama["Supervised Ollama child"]
+        rpc -->|"Admitted tasks"| worker
+        worker -->|"Loopback HTTP :11434"| ollama
+    end
+    bindings -->|"TCP :9091 | framed, strict binary"| inference
+```
+
+The Python backend and Java SDK open and close a separate connection for each RPC.
+The RPC thread returns a snapshot quickly; a different worker thread performs the
+long generation. The service keeps task state in memory, so reconnecting queries
+the same task by its instance and request IDs. The Java SDK adds no review prompts,
+polling loop or model-management behavior.
 
 ## One request, end to end
 
@@ -49,7 +85,8 @@ application behavior, so the service cannot depend on them.
 
 The wire stack is **TCP → framed transport → strict binary protocol**. Python and
 Java use the same stack, field IDs, signed 64-bit seeds and epoch milliseconds.
-Frames and strings are limited to 2 MiB; containers to 64 entries. The service
+The service limits frames and strings to 2 MiB and decoded containers to 64 entries.
+The Java SDK also bounds incoming and outgoing frames, with a 2 MiB default. The service
 supports up to 32 messages, 64,000 content characters, 128,000 result characters
 and 32 concurrent RPC connections by default. Idle connections time out after
 three seconds. This is an internal trusted-network API without TLS or RPC auth.
@@ -63,7 +100,7 @@ must explicitly set `REQUIRE_GPU=false`.
 
 | Concern | Behavior |
 | --- | --- |
-| RPC timeout | Backend uses two seconds per connection/call; this does not end model execution. |
+| RPC timeout | The Python backend uses a two-second socket timeout for connection/reads. The Java SDK configures connection and read timeouts separately. Neither is a generation deadline or a total wall-clock RPC deadline. |
 | Generation deadline | At most 300 seconds by default, measured from admission, including queue time; enforced even if all clients disconnect. |
 | Concurrency | Exactly one native generation. Up to eight pending requests. Full admission returns `overloaded`. |
 | Retention | At most 128 total live/retained entries. Every terminal result stays for 600 seconds from completion; no early eviction for a new request. Full registry returns `retention_full`. |
@@ -93,11 +130,13 @@ restart; that is a separate policy and can repeat computation after a crash.
 
 ## Startup and shutdown
 
-Startup: own an Ollama child → wait for native HTTP → check version and installed
+Service startup: own an Ollama child → wait for native HTTP → check version and installed
 revision → optionally pull a missing model → check capabilities/context → perform
-a generic warmup and GPU check → open Thrift and health listeners → backend
-initializes storage, checks accounts, recovers its queue and completes the handshake
-→ open HTTP submission admission.
+a generic warmup and GPU check → open Thrift and health listeners.
+
+Backend startup separately initializes SQLite, checks accounts, recovers its queue,
+waits for the service handshake and makes a final writable-storage check before
+opening submission admission. Its initialization can overlap service startup.
 
 Shutdown: close admission → request cancellation of queued/active work → stop and
 reap Ollama and its runner → join the generation worker → close RPC and health
@@ -156,25 +195,31 @@ In another terminal, from `backend/` with DynamoDB Local initialized:
 .venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
 ```
 
-From the repo root, a generic client needs only `contracts` and the Thrift runtime:
+From the repo root, the generic Python example uses only `contracts` and the
+Thrift runtime. Running it submits a real generation to the selected service:
 
 ```bash
 backend/.venv/bin/python scripts/thrift_demo.py --prompt 'Translate Hello to French.'
 ```
 
 ```bash
-backend/.venv/bin/python scripts/java_thrift.py --request-id java-demo-1
+backend/.venv/bin/python scripts/java_thrift.py
 ```
 
-The Java script downloads SHA-256-pinned TCP dependencies to `.local/java-thrift`,
-compiles the checked-in generated Java sources and the single `Generate.java`, and
-runs it. It needs a JDK (Java 21+); no full Java application or Maven project is required.
-Use a fresh request ID for new work. The demos intentionally print synthetic output;
-the server does not log it.
+The Java script delegates to the [Java SDK Maven build](../../clients/java/README.md),
+then runs the external `Generate.java` example against the packaged JAR. It needs
+JDK 11+ and Maven 3.9+. Dependencies and plugins are pinned in `clients/java/pom.xml`;
+bindings are compiled directly from `contracts/java`, with no second copy or manual JAR list.
+Use a fresh request ID for new work. The demos print the response to a synthetic
+prompt; the server does not log it. The response comes from the selected service,
+so running a demo against the real service performs real model inference.
 
 ## Regenerate, test and build
 
-Install Apache Thrift **0.25.0**. Generated files must not be edited by hand.
+Install Apache Thrift **0.25.0** to regenerate or check bindings. The combined
+inference gate also needs JDK 11+, Maven 3.9+ and the inference-service development
+environment. Normal Maven packaging uses checked-in bindings and does not invoke
+the Thrift compiler. Generated files must not be edited by hand.
 
 ```bash
 python3 scripts/generate_thrift.py
@@ -182,6 +227,12 @@ python3 scripts/generate_thrift.py
 
 ```bash
 python3 scripts/generate_thrift.py --check
+```
+
+Build and test the plain Java library JAR:
+
+```bash
+mvn -f clients/java/pom.xml clean package
 ```
 
 ```bash
@@ -192,9 +243,13 @@ backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_clust
 bash scripts/checks/inference.sh
 ```
 
-The inference gate includes real generated processors/clients over TCP, a Java and
-Python shared-ID test, model-double execution tests, mocked native HTTP translation
-and real child-process lifecycle tests. These are not real model inference. Opt-in
+The inference gate includes real generated processors/clients over TCP, a Java/Python
+shared-ID test, Java SDK timeout/error/cleanup/concurrency tests, an independent
+Maven consumer, model doubles, mocked native HTTP and real child-process lifecycle
+tests. It installs the SDK into the selected local Maven repository to build the
+consumer outside the checkout. It neither publishes remotely nor runs real model
+inference. The [SDK guide](../../clients/java/README.md) covers local installation,
+dependency declarations and connection behavior. Opt-in
 real review tests require a separately running service:
 
 ```bash

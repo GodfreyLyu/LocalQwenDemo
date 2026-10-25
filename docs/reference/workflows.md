@@ -84,7 +84,7 @@ Submission uses
 ```mermaid
 sequenceDiagram
     accTitle: Durable asynchronous review from submission to saved result
-    accDescr: FastAPI commits the job before returning 202. The browser polls owner-scoped detail while the coordinator independently claims the job, calls the Thrift worker and persists a terminal result. The browser renders the saved Markdown after completion.
+    accDescr: FastAPI commits the job before returning 202. The browser polls saved detail while the backend coordinates three separate generic generations. Each generation is admitted, executed through Ollama and polled to a terminal snapshot before the backend builds and saves the complete review.
     participant Browser
     participant API as FastAPI
     participant SQLite
@@ -105,19 +105,22 @@ sequenceDiagram
     and Background execution
         Worker->>SQLite: Claim, mark running
         SQLite-->>Worker: Claimed job
-        Worker->>Inference: startGeneration
-        Inference-->>Worker: RUNNING snapshot
-        par Worker generates
-            loop Summary, Findings, Suggestions
-                Inference->>Ollama: HTTP digest check<br/>and section stream
+        loop Summary, Findings, Suggestions in backend
+            Worker->>Worker: Build section messages<br/>and remaining deadline
+            Worker->>Inference: startGeneration with new task ID
+            Inference-->>Worker: QUEUED snapshot
+            par Generic service executes task
+                Inference->>Ollama: Check identity, stream chat<br/>and verify result
                 Ollama-->>Inference: Text and token counts
+            and Backend polls task
+                loop Until terminal generation snapshot
+                    Worker->>Inference: getGeneration with instance and task IDs
+                    Inference-->>Worker: State or terminal<br/>result and usage
+                end
             end
-        and Backend polls worker
-            loop Until terminal RPC snapshot
-                Worker->>Inference: getGeneration
-                Inference-->>Worker: State or terminal<br/>result and metrics
-            end
+            Worker->>Worker: Normalize section output
         end
+        Worker->>Worker: Join headings and validate review
         Worker->>SQLite: Save result or error
     end
     Browser->>Browser: Render result or error
@@ -251,12 +254,13 @@ Sources: [Store.recover, claim and finish](../../backend/app/persistence/storage
 Coordinator state describes the backend process, independently of a saved job or
 RPC snapshot. `ready` remains the operational state during normal execution, so
 other accounts can queue work. The backend never starts another review while its
-client call is draining. The worker independently rejects overlapping operations.
+client call is draining. The service serializes native generation and bounds its
+pending queue; independent clients can still submit generic tasks and query snapshots.
 
 ```mermaid
 stateDiagram-v2
     accTitle: Backend coordinator startup and timeout recovery
-    accDescr: The coordinator initializes stores, recovers the queue and validates an idle Thrift worker before becoming ready. A coordinator deadline enters draining. Confirmed completion within the drain allowance restores readiness. Uncertain execution can move ready or draining directly to stuck; an expired drain also becomes stuck. Startup and storage errors require recovery.
+    accDescr: The coordinator initializes stores, recovers the queue and checks the Thrift service's model identity and readiness before becoming ready. A coordinator deadline enters draining. Confirmed completion within the drain allowance restores readiness. Uncertain execution can move ready or draining directly to stuck; an expired drain also becomes stuck. Startup and storage errors require recovery.
     state "model_loading" as loading
     state "ready" as readyState
     state "inference_draining" as draining
@@ -298,8 +302,10 @@ transactional limits.
 Shutdown sets a separate `closing` flag, closes admission, signals cancellation and
 waits for a bounded grace period. Runtime reports `shutting_down`; the last
 operational state is retained. A late thread exit cannot recover from `stuck` or
-reopen admission while closing. The backend Pod termination grace period is 60 seconds; the worker Pod gets
-30 seconds. Python cannot forcibly kill the generation thread. An adapter-reported timeout that
+reopen admission while closing. The backend Pod termination grace period is 60 seconds;
+the combined inference Pod gets 45 seconds. Python cannot forcibly kill the client
+executor thread; the service owns termination of the native process group.
+An adapter-reported timeout that
 has already returned can fail a job without entering the coordinator drain path.
 
 Sources: [coordinator](../../backend/app/coordinator.py),

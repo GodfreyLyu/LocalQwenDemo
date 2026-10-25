@@ -42,7 +42,7 @@ The inference chart maps `model` and `generation` values into its own ConfigMap.
 
 | Setting | Default / behavior |
 | --- | --- |
-| `MODEL_NAME` / `MODEL_DIGEST` | Required pinned identity for execution. |
+| `MODEL_NAME` / `MODEL_DIGEST` | Default to the pinned `qwen3:1.7b` identity above; startup verifies the configured revision. |
 | `MODEL_CONTEXT` | 4096, must cover input and maximum output budgets. |
 | `MAX_INPUT_TOKENS` / `MAX_OUTPUT_TOKENS` | 2048 / 512. Input count comes from native terminal metadata, after admission. |
 | `DEFAULT_OUTPUT_TOKENS` | 128 when omitted by an application. |
@@ -98,8 +98,10 @@ application-model split or public native HTTP endpoint in the new architecture.
 ## Verification
 
 The service tests cover native translation with mocked HTTP, process ownership with
-real children, and TCP Thrift with controlled model doubles. The Java test uses a
-real compiled generated client. These tests do not load model weights.
+real children, and TCP Thrift with controlled model doubles. The
+[Java SDK checks](../../clients/java/README.md#generate-test-and-package) add Maven
+packaging, error/timeout/cleanup/concurrency tests and an independent consumer.
+These tests do not load model weights.
 
 With a running service, opt into real review and FastAPI persistence checks:
 

@@ -45,7 +45,8 @@ The command prints the local addresses and forwarding states, then returns. Open
 the printed Grafana address (normally `http://127.0.0.1:3000`) with the external
 admin credentials. Use **Service Overview** for API responses, review outcomes and
 queue state; use **Inference & Resources** for section timings, observed token
-rates and backend/Ollama resource usage shown separately. API panels exclude
+rates and backend/combined-inference resource usage shown separately. The
+inference container includes the Thrift service and its Ollama child. API panels exclude
 health probes. Empty panels can mean no observations rather than a failure or
 zero latency. Percentiles need enough samples to be useful.
 

@@ -191,7 +191,8 @@ for offline linting and rendering. To install from main, you must also supply or
 the application images.
 
 The startup budget defaults to 3600 seconds; the worker opens its listener only
-after validating Ollama, and the backend waits for a valid idle worker. The
+after validating Ollama, and the backend checks the service's model identity and
+readiness. That handshake does not require an empty service queue. The
 65-minute Helm timeout allows
 additional scheduling and initialization time. A timeout leaves resources for
 inspection. `--wait` checks Kubernetes readiness, not a completed model review.

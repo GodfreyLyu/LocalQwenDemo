@@ -36,6 +36,7 @@ def test_shared_modules_do_not_import_command_or_legacy_layers():
         ["minikube_endpoints.py"],
         ["local_demo.py"],
         ["generate_thrift.py"],
+        ["java_thrift.py"],
         ["thrift_demo.py"],
         ["evaluate_model.py"],
         ["validate_helm.py"],

@@ -34,8 +34,10 @@ Generated findings still need human review. Output checks cannot establish that 
 review is correct. This is a local, single-node application; high availability and
 public internet access have not been validated.
 
-The repository has two application projects: `backend/` and `inference-service/`,
-with shared generated Python/Java bindings in `contracts/`. See the
+The repository has two Python application projects: `backend/` and `inference-service/`,
+with shared generated Python/Java bindings in `contracts/`. The
+[Java client library](clients/java/README.md) packages the existing Java bindings
+and a small SDK for other Maven applications. See the
 [migration and rollback plan](docs/operations/inference-migration.md) before changing
 an existing deployment.
 
@@ -91,18 +93,14 @@ scripts/minikube_demo.sh up --profile minikube
 ```
 
 ```bash
-scripts/minikube_demo.sh verify --profile minikube
-```
-
-```bash
 python3 scripts/minikube_endpoints.py
 ```
 
-`verify` creates test data and restarts the backend to check persistence. Run it
-before starting the forwards. If the endpoint launcher is already running, stop
-it first; also stop any foreground forward using the frontend port. The
-[Minikube guide](docs/guides/minikube-demo.md#status-access-and-acceptance) covers
-both forwarding options, rollback and cleanup.
+Open the forwarded UI and complete a real review. The CLI's automated `verify`
+command is currently blocked by a legacy native-model inventory helper; see the
+[Minikube guide](docs/guides/minikube-demo.md#status-access-and-acceptance) for the
+limitation, forwarding options, rollback and cleanup. Readiness alone does not
+establish inference or persistence acceptance.
 
 ## Architecture
 
@@ -154,6 +152,8 @@ and references. Common starting points are:
   [security](docs/reference/security.md).
 - [Troubleshooting and cleanup](docs/operations/recovery-and-cleanup.md).
 - [Testing](docs/testing/README.md) and [model evaluation](docs/testing/model-evaluation.md).
+- [Java SDK](clients/java/README.md), including local Maven installation and a
+  standalone consumer example.
 - [Dated reports](docs/reports/README.md), which preserve earlier results and their
   limits rather than describe the current deployment.
 
@@ -162,8 +162,11 @@ retain their original language.
 
 ## Development and contributing
 
-Follow [local development](docs/guides/local-development.md) to install Python
-dependencies and Node 24, then install frontend dependencies and run the offline checks:
+Follow [local development](docs/guides/local-development.md) to install both Python
+development environments and Node 24. The full check also needs Thrift 0.25.0,
+JDK 11+, Maven 3.9+, Git, Helm and kubectl; see the
+[complete-check prerequisites](docs/testing/README.md#local-complete-check).
+Install frontend dependencies and run the checks:
 
 ```bash
 npm --prefix frontend ci

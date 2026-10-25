@@ -15,18 +15,21 @@ inferred facts separately. Monitoring does not run synthetic reviews or repair w
 Solid arrows show collection or queries; dotted arrows show configuration supplied
 by the application Chart. The monitoring services belong to the optional Terraform
 platform in the `monitoring` namespace; application resources live in
-`local-review-demo`. Logs are read separately from the backend and worker containers.
+`local-review-demo`. The inference Chart owns the combined service in
+`local-inference`. Logs are read separately from the backend and inference containers.
 
 ```mermaid
 flowchart TB
     accTitle: Optional local monitoring and application log flow
     accDescr: The application Chart supplies ServiceMonitor, alert rules and dashboard ConfigMaps. The backend imports section measurements from terminal Thrift snapshots. Terraform's Prometheus scrapes the backend and cluster exporters; Grafana queries it and Alertmanager receives alerts. Operators read backend JSON logs and worker text logs separately.
-    subgraph application["Application resources"]
+    subgraph application["local-review-demo"]
         backend["Backend registry and /metrics"]
-        worker["LLM service | generic generation observations"]
         monitor["ServiceMonitor"]
         rules["PrometheusRule"]
         dashboards["Dashboard ConfigMaps"]
+    end
+    subgraph inference["local-inference"]
+        worker["LLM service + Ollama | inference container"]
     end
     subgraph platform["Monitoring platform"]
         prometheus["Prometheus"]
@@ -45,7 +48,7 @@ flowchart TB
     grafana -->|"Query"| prometheus
     prometheus -->|"Alert"| alerts
     backend -->|"Emit"| logs
-    backend -->|"Read terminal RPC measurements"| worker
+    backend -->|"Read terminal RPC measurements"| inference
     worker -->|"Emit"| workerLogs
     operator -->|"Read"| logs
     operator -->|"Read"| workerLogs
@@ -89,8 +92,8 @@ Scrapes do not increment HTTP metrics or emit normal request logs.
 | `review_queue_wait_seconds` | Histogram from original submission to this execution attempt starting |
 | `review_duration_seconds` | Histogram from original submission to persisted terminal state |
 | `review_execution_duration_seconds` | Monotonic client executor duration, including RPC calls, polling waits and cancellation drain |
-| `review_generation_duration_seconds` | Observed section call duration, including first-content time |
-| `review_first_content_duration_seconds` | Section call to first nonempty content |
+| `review_generation_duration_seconds` | Service-reported native chat duration for a successful section, including first-content time |
+| `review_first_content_duration_seconds` | Native chat request to first nonempty content, measured inside the service |
 | `review_input_tokens_total`, `review_generated_tokens_total` | Observed token counters by fixed section |
 | `review_output_limit_total` | Counter of completed section responses reaching their output budget |
 
@@ -122,6 +125,11 @@ The busy gauge can return to zero after a lost RPC response while remote executi
 is still uncertain. The coordinator then remains `inference_stuck`; a zero local
 gauge does not establish that another model operation can safely start. Section
 measurements can also be missing if a terminal snapshot was never received.
+
+The service measures native chat timings around its HTTP stream. These exclude
+service queueing, Thrift transport, backend polling and the identity/device checks
+outside that stream. The backend records them when it receives a successful
+generation result; failed or unobserved sections have no new timing observation.
 
 Startup validation does not increment review-generation metrics. Section latency
 histograms have zero observation-count baselines; no zero-duration observations are
@@ -207,10 +215,10 @@ Time to first content is included in generation duration; do not add it again. M
 sections remain unmeasured. Ollama placement is observed through `/api/ps` at startup
 or the last successful review.
 
-To measure inference resource use, collect counters from the Ollama container. Backend
-counters measure the API, queue and Thrift client, excluding the worker and model
-server. Worker container counters include RPC handling and the Ollama HTTP client.
-For a separately
+To measure inference resource use, collect counters from the combined `inference`
+container. It includes RPC handling, the native HTTP adapter, Ollama and its runner;
+container counters cannot separate those processes. Backend counters measure the
+API, queue and Thrift client, excluding that inference container. For a separately
 authorized single review, bind cgroup measurements to the same Pod UID,
 container ID/start time and image. Divide the change in CPU usage by elapsed wall time
 to obtain average cores used. Divide CPU seconds by generated tokens to measure CPU cost

@@ -11,6 +11,7 @@ below for your task.
 | --- | --- |
 | Understand or present the complete system | [Architecture diagrams](reference/architecture.md#system-layout), [workflow diagrams](reference/workflows.md) |
 | Learn how Apache Thrift connects the backend and worker | [Thrift walkthrough and diagrams](guides/apache-thrift.md) |
+| Use the LLM service from another Java application | [Java SDK, Maven setup and consumer example](../clients/java/README.md) |
 | Set up a krunkit GPU cluster | [Local platform](../infra/local-platform/README.md) |
 | Deploy reviewed releases with Argo CD | [GitOps guide](guides/gitops.md) |
 | Track a release, roll back and fix main | [Release tags and rollback](guides/release-rollback.md) |
@@ -30,6 +31,7 @@ below for your task.
 | --- | --- |
 | Components, request flow, queue lifecycle and storage | [Architecture](reference/architecture.md) |
 | Thrift IDL, generated code, handshake and cancellation | [Thrift walkthrough](guides/apache-thrift.md) |
+| Java library API, connection settings and Maven dependencies | [Java SDK](../clients/java/README.md) |
 | Authentication, review execution, recovery and release diagrams | [Workflows](reference/workflows.md) |
 | Endpoints, authentication and error responses | [API](reference/api.md) |
 | Model identity, settings, startup checks and output checks | [Model](reference/model.md) |

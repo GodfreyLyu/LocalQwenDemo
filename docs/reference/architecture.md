@@ -24,21 +24,23 @@ configuration or device dependencies. Responses return along the same call path.
 ```mermaid
 flowchart TB
     accTitle: LocalQwenDemo Minikube system layout
-    accDescr: A browser reaches Nginx through a loopback port-forward. Nginx proxies to one FastAPI backend, which uses SQLite, DynamoDB Local and a Thrift worker backed by independent Ollama. Three PVCs preserve application and model data.
+    accDescr: A browser reaches Nginx through a loopback port-forward. One FastAPI process contains the coordinator and Thrift client and uses SQLite and DynamoDB Local. A separate inference container owns the generic service and its loopback Ollama child. Three PVCs preserve application and model data.
     browser["Browser running React"]
     forward["Loopback port-forward :8080"]
     subgraph cluster["Minikube"]
         subgraph application["local-review-demo"]
             frontend["Nginx | review-frontend :8080"]
-            backend["FastAPI | review-backend :8000"]
-            worker["Generic Thrift client"]
+            backend["FastAPI, coordinator and Python client<br/>review-backend :8000"]
             history[("review-history | SQLite")]
             accounts["DynamoDB Local | review-dynamodb :8000"]
             accountData[("review-dynamodb | account data")]
             signing["review-secrets | signing key"]
         end
         subgraph inference["local-inference"]
-            ollama["LLM service + Ollama child | review-ollama :9091"]
+            subgraph inferenceContainer["review-ollama container"]
+                service["Generic LLM service :9091"]
+                ollama["Supervised Ollama child :11434"]
+            end
             models[("review-ollama-models | model weights")]
         end
         gpu["krunkit GPU | devic.es/dri"]
@@ -49,11 +51,11 @@ flowchart TB
     backend -->|"Queue, history, sessions"| history
     backend -->|"Account API"| accounts
     accounts -->|"Persist accounts"| accountData
-    backend -->|"Thrift RPC"| worker
-    worker -->|"Thrift TCP :9091"| ollama
+    backend -->|"Thrift TCP :9091"| service
+    service -->|"Loopback HTTP :11434"| ollama
     ollama -->|"Load weights"| models
     signing -.->|"Environment"| backend
-    gpu -.->|"Device allocation"| ollama
+    ollama -.->|"Use allocated device"| gpu
 ```
 
 The `local-review` application release deploys three supporting/application
@@ -131,6 +133,12 @@ and Java types carry model information, role/content messages, generation snapsh
 structured errors and generic results. Review section names, source-language rules
 and output validation never enter that contract or the inference implementation.
 
+The optional [Java SDK](../../clients/java/README.md) packages these same Java
+bindings with `LlmClient` and immutable connection settings. A separate Maven
+application can use the generic service without importing backend code. The review
+backend continues to use its Python adapter; the Java library is not another
+deployed workload.
+
 `create_app` assembles settings, stores, the limiter, model, coordinator and service for
 each application instance. `api/dependencies.py` is the only route-facing adapter from
 Request/app state to those typed dependencies. The service receives its Python
@@ -173,12 +181,13 @@ handling. The browser polls persisted review status and renders only sanitized
 completed Markdown.
 The cluster is accessed through an explicitly owned loopback forward, not a public ingress.
 
-The coordinator uses one client executor thread to start and poll the Thrift
-worker. That worker generates Summary, Findings and Suggestions in order. Text
-from one generated section never becomes an instruction for another. The
-[model reference](model.md#configuration-and-generation)
-defines the shared token budget, sampling policy, output validation and the limited
-removal of unfinished text when a section reaches its token limit.
+The coordinator uses one client executor thread to run the backend adapter. The
+adapter builds Summary, Findings and Suggestions messages and submits three
+generic generations in order, polling each before starting the next. The service
+has no knowledge of review sections. Generated section text never becomes an
+instruction for another section. The [model reference](model.md#application-review-behavior)
+describes token allocation, output validation and permitted removal of unfinished
+text when a section reaches its token limit.
 
 Ollama renders the selected model's native template and tokenizes each prompt. Requests
 set `think=false`, `truncate=false` and `shift=false`; the worker rejects unexpected
@@ -444,6 +453,7 @@ Use these sources when auditing or changing the design:
 | Single executor, readiness and cancellation/draining | [coordinator.py](../../backend/app/coordinator.py)                                               |
 | Inference and model/context verification | [service adapter](../../inference-service/src/llm_service/ollama.py) |
 | Thrift contract, client, handler and server | [llm.thrift](../../contracts/llm.thrift), [client](../../backend/app/inference/rpc), [service](../../inference-service/src/llm_service) |
+| Java SDK and independent consumer | [Maven module](../../clients/java/pom.xml), [LlmClient](../../clients/java/src/main/java/demo/llm/client/LlmClient.java), [consumer](../../clients/java/examples/consumer) |
 | Prometheus metrics and read-only collection | [monitoring.py](../../backend/app/monitoring.py), [metrics.py](../../backend/app/api/routes/metrics.py) |
 | Prompt, output and generation policy | [prompts.py](../../backend/app/inference/prompts.py), [review_output.py](../../backend/app/inference/review_output.py), [generation.py](../../backend/app/inference/generation.py) |
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |

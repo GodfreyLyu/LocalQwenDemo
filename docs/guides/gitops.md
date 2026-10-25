@@ -2,7 +2,8 @@
 
 The checked-in branch protection settings require PRs for changes to `main` and
 `deployment-release`. The `Quality checks` workflow supplies `main-ci`, which passes
-only when its application and configuration jobs both succeed. Release PRs require
+only when its application, configuration and ARM64 inference-image jobs all succeed.
+Release PRs require
 `deployment/snapshot`. Both branches require an up-to-date PR and resolved
 conversations, apply the same rules to administrators, and require no review approvals.
 Authors can merge their own PRs once the required checks pass.
@@ -125,10 +126,10 @@ kubectl --context minikube -n argocd wait application/local-review --for=jsonpat
 ```
 
 Both apps automatically track deployment-release, prune obsolete workloads and self-heal
-drift. Their names match Helm release names to preserve labels and the Ollama Service
-URL. Follow the order shown above for the first deployment. Later updates to the two
+drift. Their names match Helm release names to preserve labels and the inference
+Service name. Follow the order shown above for the first deployment. Later updates to the two
 Applications reconcile independently, rather than as one transaction. Within the
-application release, the worker validates Ollama before listening and the backend
+inference release, the service validates Ollama before listening; the backend
 waits for its Thrift handshake. Startup retries and Pod restarts can recover
 temporary dependency failures; a Ready observation alone does not prove a saved review.
 Before approving the first release that removes the old backend cache, follow the
@@ -174,10 +175,12 @@ resources or the global kubectl context.
 The Ollama Application skips Helm test hooks and enables a separate `PostSync` Job when
 model bootstrap is enabled. The Job calls the Service to generate text and verify the
 pinned model, digest, and full GPU placement. It does not request a second GPU slot.
-A failed Job fails sync. Service readiness checks the process and API after initial
-preparation; it does not require a fixed model to remain loaded or on the GPU. The
-review worker separately validates its selected model, and the backend checks that
-worker's identity and generation policy. Standard Helm installs support
+A failed Job fails sync. The runtime's readiness endpoint checks the adapter's
+loaded flag, child health and shutdown state. It is false during recovery, but
+does not continuously recheck native model residency or GPU placement. Startup
+and completed generations validate those properties. The backend checks model
+identity and readiness and discovers public limits/defaults through Thrift.
+Standard Helm installs support
 `helm test` and do not render the Argo Job unless enabled explicitly. See
 [Argo Helm hooks](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/).
 

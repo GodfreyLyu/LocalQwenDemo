@@ -7,6 +7,12 @@ before refactoring. Authentication/persistence implementation, application PVC
 resources, the model PVC template and krunkit Mesa repository file retain their
 existing content; inference references and container selectors changed where needed.
 
+This is a dated record of the generic-service refactor before the Maven Java SDK
+was added. Its test counts and direct-JAR Java checks describe that stage. Current
+build instructions use the [Java SDK Maven module](../../clients/java/README.md)
+and the [inference gate](README.md#independent-inference-checks); they should not be
+inferred from the historical commands or results below.
+
 ## Checks completed
 
 | Check | Result and coverage |

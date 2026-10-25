@@ -20,6 +20,14 @@ and the frontend dependencies with:
 npm --prefix frontend ci
 ```
 
+The full repository check also runs the independent inference tests and Java SDK
+build. Install the inference-service development environment using the
+[Thrift setup guide](apache-thrift.md#run-the-projects-independently), plus Apache
+Thrift 0.25.0, JDK 11+ and Maven 3.9+. Git, Helm and kubectl are needed for script
+checks. These extra tools are not required just to use the fake UI/API harness.
+See the [testing guide](../testing/README.md#local-complete-check) for the gate's
+prerequisites and boundaries.
+
 The frontend uses a same-origin Vite proxy for `/api` and `/health`; do not call port 8000 directly from browser code. Open `http://localhost:5173` rather than `127.0.0.1:5173`, because origin matching is exact.
 
 ## Python 3.12 virtual environment

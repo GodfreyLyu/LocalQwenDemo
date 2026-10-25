@@ -10,11 +10,15 @@ deployment acceptance are separate checks.
 ## Strategy and discovery
 
 The repository-root `pytest.ini` owns discovery, import paths and marker registration
-for both Python suites. A bare `backend/.venv/bin/pytest` from the repository root
+for the backend and script suites. A bare `backend/.venv/bin/pytest` from the repository root
 collects `backend/tests` and `scripts/tests`. Pass a directory explicitly for a focused
 run; this also applies when invoking pytest from `backend`. Importlib mode and
 namespace-package resolution let test directories reuse filenames and let
 multiprocessing workers import their test doubles.
+
+The independent service uses `inference-service/pytest.ini` and its own virtual
+environment. Java unit tests use Maven/JUnit. Neither is collected by the root
+pytest defaults; the complete check invokes the separate inference gate.
 
 Tests stay with their owning components and are grouped by domain:
 
@@ -22,7 +26,7 @@ Tests stay with their owning components and are grouped by domain:
 backend/tests/
   api/          # Authentication, review workflows, health, logging and HTTP contracts
   core/         # Configuration and rate limiting
-  inference/    # Prompts/output, Thrift TCP, Ollama HTTP, coordinator and real-model checks
+  inference/    # Prompts/output, RPC doubles, coordinator and opt-in real reviews
   persistence/  # SQLite, local DynamoDB transport and startup
   support.py    # Model double and API helpers; fixtures live in conftest.py
 scripts/tests/
@@ -33,14 +37,20 @@ scripts/tests/
   evaluation/   # Evaluator behavior using model doubles
   persistence/  # Local users initializer
   tooling/      # Public CLI compatibility and package dependency boundaries
-  support/      # Shared paths, deployment helpers, release helpers and Ollama double
+  support/      # Shared paths, deployment helpers and release helpers
+inference-service/tests/
+                # Generic RPC registry, native HTTP doubles, process lifecycle and Java interop
+clients/java/src/test/java/
+                # JUnit TCP tests and a Java probe for the Python interop fixture
+clients/java/examples/consumer/
+                # Independent Maven application with only the SDK dependency
 frontend/src/
   tests/        # Authentication, reviews, history, runtime and Markdown behavior
   test-support/ # Shared workspace responses and editor double
 frontend/e2e/   # Real browser/API with fake inference and Moto accounts
 ```
 
-Each Python test has exactly one primary level marker. Choose it by the boundary the
+Each backend or script test has exactly one primary level marker. Choose it by the boundary the
 test verifies, not by its filename or by whether any mock is present:
 
 | Marker | Boundary |
@@ -74,7 +84,7 @@ backend/.venv/bin/pytest backend/tests/api
 backend/.venv/bin/pytest -m 'security and not real_model and not requires_cluster'
 ```
 
-Run all Python tests that do not need a real model or live cluster:
+Run backend and script tests that do not need a real model or live cluster:
 
 ```bash
 backend/.venv/bin/pytest -m 'not real_model and not requires_cluster'
@@ -117,10 +127,12 @@ and verify that requests cannot fall back to real cloud services.
 
 | Surface | Entry | What it establishes |
 | --- | --- | --- |
-| Backend | `backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, Ollama/context/startup/logging contracts; Moto accounts and model doubles |
+| Backend | `backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, prompts/budgets/output, RPC recovery, startup and logging; Moto accounts and model doubles |
 | Local transport | Backend local-DynamoDB tests | Missing/remote endpoints rejected; SDK host credentials/profiles/metadata/proxies cannot replace local transport |
-| Thrift RPC | `backend/.venv/bin/pytest backend/tests/inference/test_thrift.py` | Real TCP client/processor with mocked Ollama HTTP; policy handshake, results/metrics, cancellation, deadlines and uncertain execution |
-| Real Thrift process | `RUN_REAL_MODEL=1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py::test_real_fastapi_review_persists_remote_identity` | Opt-in FastAPI → TCP Thrift → separate worker process → local Ollama, including persisted model provenance |
+| Backend Thrift adapter | `backend/.venv/bin/pytest backend/tests/inference/test_thrift.py` | Application prompts, budgets, errors, metrics and uncertain-execution handling with an injected RPC double |
+| Independent inference and Java | `bash scripts/checks/inference.sh` | Binding drift, real TCP client/processor tests, registry deadlines/cancellation/retention, native HTTP doubles, child lifecycle, Maven SDK tests and a standalone consumer |
+| Java SDK | `mvn -f clients/java/pom.xml test` | Real loopback Java peers check RPC values, errors, connection cleanup, read timeouts, strict framing and concurrent callers |
+| Real Thrift review | `RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py::test_real_fastapi_review_persists_remote_identity` | Opt-in FastAPI → TCP Thrift → an already running inference service → real Ollama, with saved model provenance |
 | Minikube | `scripts/check_minikube_demo.sh` | Helm lifecycle, resource ownership, forwarding, queue fencing, storage retention and purge; simulated cluster APIs and real loopback fixtures |
 | Release and charts | Shared script gate | Helm rendering, GitOps, snapshot/provenance and simulated publishing with local Git remotes |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |
@@ -148,12 +160,21 @@ scripts/check_scripts.sh
 
 ## Local complete check
 
-Install the Python 3.12 virtual environment from the dev lock, the editable backend
-package and Node 24/npm dependencies. The gate also requires Git, Helm and kubectl
-for temporary repositories and offline rendering, plus permission to bind temporary
-loopback sockets. These checks need no Docker daemon, Minikube cluster, cloud account
-or infrastructure providers. Installing dependencies requires network access, but
-the tests do not download weights or images.
+Install both Python development environments and editable packages (`contracts` plus
+their owning application), and the Node 24/npm dependencies. The gate also needs:
+
+- Git, Helm and kubectl for temporary repositories and offline rendering.
+- Apache Thrift 0.25.0 for the generated-binding drift check.
+- JDK 11+ and Maven 3.9+ for the SDK, example and independent consumer.
+- Permission to bind temporary loopback sockets.
+
+Use the [local development guide](../guides/local-development.md) for the backend
+and frontend, and [independent service setup](../guides/apache-thrift.md#run-the-projects-independently)
+for `inference-service/.venv`. No Docker daemon, Minikube cluster, cloud account or
+infrastructure provider is required when the matching Thrift compiler is installed
+locally. Maven may download dependencies/plugins on the first run; tests do not
+download model weights or container images. CI instead runs the compiler through
+the pinned `thrift:0.25.0` container image.
 
 ```bash
 bash scripts/check.sh
@@ -161,9 +182,14 @@ bash scripts/check.sh
 
 This runs Ruff lint/format checks, backend pytest, frontend lint/Vitest/build, shell syntax,
 all maintained script regressions (including release, GitOps and Ollama charts),
-manifest validation and Helm lint/render validation. It fails on the first failed
-stage. It never builds container images, deploys, migrates actual state or invokes real
-inference. Do not export `RUN_REAL_MODEL=1` during routine checks.
+manifest validation and Helm lint/render validation, then the inference gate.
+That last stage checks bindings, runs the independent Python tests, builds/tests/
+packages the Java SDK and installs it locally for the copied consumer test. Set
+`MAVEN_ARGS` to select an isolated local Maven repository if desired; see the
+[SDK guide](../../clients/java/README.md#generate-test-and-package).
+The full check stops at the first failed stage. It never builds container images,
+deploys, migrates existing application data or runs real inference. Do not export
+`RUN_REAL_MODEL=1` during routine checks.
 
 Browser checks remain a separate entry point: `npm --prefix frontend run test:e2e`.
 They are not part of `scripts/check.sh`. Real-model quality evaluation and cluster
@@ -173,6 +199,8 @@ The `Quality checks` workflow runs on pull requests to `main`, manual dispatch a
 calls from other workflows. It uses the same `scripts/check_scripts.sh` entry point
 for every script regression and offline configuration check, and separately runs the
 fake-model browser suite.
+The inference stage uses JDK 11, the service's locked Python environment and the
+pinned Thrift compiler. Its ARM64 image build is a separate CI job.
 Its `configuration` job adds Kubernetes schema checks using a downloaded, verified
 Linux tool; that network-dependent CI check is outside the local offline gate.
 
@@ -213,9 +241,10 @@ for manual publishing pauses and actual recovery acceptance.
 
 ## Explicit real-model smoke and quality evaluation
 
-The opt-in [native and Thrift process checks](../reference/model.md#dependencies-and-verification)
-and [fixed-suite evaluator](model-evaluation.md) exercise real inference. The native
-smoke calls Ollama directly; the process check and evaluator use Thrift. Ollama loads
+The opt-in [Thrift review tests](../reference/model.md#verification)
+and [fixed-suite evaluator](model-evaluation.md) exercise real inference through an
+already running service that supervises its own Ollama child. Service startup also
+performs a real generic warmup before opening RPC. Ollama loads
 model weights and uses CPU, GPU, and
 memory resources as available. For comparable runs, keep the model digest, quantization,
 prompts, sampling settings, budgets, quality rules, and service configuration fixed.
@@ -226,12 +255,18 @@ check suite does not run real inference.
 
 Follow the [local Helm guide](../guides/minikube-demo.md) for the development CLI or
 the [release guide](../guides/helm-release.md) for published deployments. The CLI
-command `up` establishes only readiness. `verify` requires records that match the
+command `up` establishes only readiness. Automated `verify` is currently blocked
+by a [legacy model-inventory helper](../guides/minikube-demo.md#automated-acceptance-limitation)
+that reads removed backend settings. It is not a usable acceptance gate for the
+current Thrift configuration until that helper is migrated.
+
+The intended verification contract requires records that match the
 deployed build and uses normal authentication. It must complete a real review that
 passes the quality checks, then verify account isolation and persistence. It may
 create accounts, write reviews and restart owned workloads. Do not run a full verify
 just to inspect a performance problem.
-Before running `verify`, stop any foreground forward using the frontend port. If
+When the helper has been migrated, stop any foreground forward before running
+`verify`, which needs the frontend port. If
 the [background endpoint launcher](../../scripts/README.md#background-minikube-endpoints)
 is running, stop it too:
 
@@ -286,10 +321,27 @@ fixtures and must not be rewritten or deleted by the gate.
 ## Independent inference checks
 
 [The Thrift guide](../guides/apache-thrift.md#regenerate-test-and-build) documents
-the service's own virtual environment, generated-binding drift checks, Java example,
-real TCP/processor tests, bounded-registry tests, native HTTP doubles and real child
-process tests. Run `bash scripts/checks/inference.sh` after installing that project's
-locked test dependencies. Generic service tests do not require the backend package.
+the service's environment, binding drift checks, Java SDK/example/consumer,
+real TCP/processor tests, bounded registry, native HTTP doubles and real child
+process tests. Run `bash scripts/checks/inference.sh` with the compiler and Java
+tools above installed. `INFERENCE_PYTHON` selects the service interpreter;
+`REVIEW_PYTHON` selects the interpreter for the generator script, and `MAVEN`
+can select an absolute Maven executable path.
+
+To run the service's Python tests alone, use:
+
+```bash
+inference-service/.venv/bin/python -m pytest -c inference-service/pytest.ini inference-service/tests
+```
+
+These tests do not require the backend package. Java interop tests are skipped
+unless `RUN_JAVA_INTEROP=1`; the combined gate enables them and also runs Maven.
+To use only the service interpreter for the gate's Python commands:
+
+```bash
+REVIEW_PYTHON=inference-service/.venv/bin/python bash scripts/checks/inference.sh
+```
+
 Real model checks remain explicit opt-in tests; image and manifest verification alone
 do not establish Vulkan inference on a live krunkit node.
 

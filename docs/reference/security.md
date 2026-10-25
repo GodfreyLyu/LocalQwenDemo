@@ -26,19 +26,22 @@ Database queries are parameterized, and user identity comes from the verified se
 The backend sends source text over Thrift to the inference worker, which sends it
 to the configured local Ollama service. Neither process turns submitted text into
 a source file or passes it to a shell, interpreter, compiler, agent, or cloud
-inference API. The worker retains its latest RPC ID, fingerprint and result in
-memory; durable review history belongs to SQLite in the backend.
+inference API. The service holds a bounded in-memory registry of live and retained
+tasks, keyed by request ID within its current instance. It drops each task's prompt
+messages on completion, retaining its fingerprint and result until expiry.
+Durable review history belongs to SQLite in the backend.
 
 Input is bounded by HTTP bytes, characters, and model prompt tokens. Output token count, queue size, retry count, and inference concurrency are bounded. The model has no tools. Prompt injection can still influence review quality; model text is always untrusted.
 
 Three independent prompts reuse only the original untrusted source, never a previously
-generated section. Ollama receives `think=false`; unexpected thinking or tool output is
-rejected and never saved or logged as model content. The worker inserts fixed Markdown headings and
-may remove unfinished text at a section's token limit, but it never writes or rewrites
+generated section. The backend constructs these prompts and joins the review.
+Ollama receives `think=false`; the service rejects unexpected thinking or tool output.
+The backend inserts fixed Markdown headings and may remove unfinished text at a
+section's token limit, but it never writes or rewrites
 a review conclusion. Sampling seeds are sent to Ollama; neither seeds nor source
 hashes are logged or persisted.
 
-The [output checks](model.md#configuration-and-generation) reject empty or malformed
+The [output checks](model.md#application-review-behavior) reject empty or malformed
 sections, capped output with no complete sentence or item, and reviews without a
 recognizable source reference when the source provides one. Rejections use fixed public
 errors without saving or logging the rejected content. These checks do not verify
@@ -71,8 +74,9 @@ still depends on the CNI; rendered policies do not prove live isolation.
 
 The Thrift endpoint has no user-session authentication or TLS layer. The backend
 authorizes users before committing jobs; the worker trusts its internal caller.
-When NetworkPolicy is enabled, worker ingress selects backend Pods from the same
-release and namespace. Without enforcement, that selector does not provide access
+When NetworkPolicy is enabled, inference ingress selects the configured backend
+release and namespace, plus the chart's local verification Pods. Without enforcement,
+that selector does not provide access
 control. Frames, strings, decoded containers and application inputs have size limits;
 see the [RPC contract](../guides/apache-thrift.md#the-process-and-wire-boundaries).
 

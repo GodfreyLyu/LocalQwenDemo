@@ -1,8 +1,9 @@
 # Current-model evaluation through Thrift and Ollama
 
-The evaluator uses the application's `ThriftReviewModel` client. The remote worker
-uses `OllamaModel`, prompts, three serial section requests, seed policy and output
-validator. Run commands from the repository root.
+The evaluator uses the backend's `ThriftReviewModel` client, which owns the review
+prompts, three serial section requests, seed policy and output validation. The
+generic service executes each request through `OllamaAdapter` without knowing
+about review sections. Run commands from the repository root.
 
 ## Evaluation flow
 
@@ -15,11 +16,11 @@ acceptance. In the diagram, service responses return along the call path.
 ```mermaid
 flowchart TB
     accTitle: Plan or evaluate the synthetic review suite
-    accDescr: CLI settings and fixed fixtures form a private plan. Plan mode contacts neither inference service. Real mode supervises a disposable Thrift client that checks the independent worker and runs serial cases through it to Ollama. Automatic checks and explicit human judgments determine the result; client failure or watchdog expiry fails the run.
+    accDescr: CLI settings and fixed fixtures form a private plan without contacting the inference service. Real mode supervises a client that owns review prompts and section orchestration, sending generic tasks to the service and its Ollama child. Automatic checks and explicit human judgments determine the result; client failure or watchdog expiry fails the run.
     inputs["CLI settings and synthetic fixtures"]
     mode{"Real model requested?"}
     plan["Plan only | not_run"]
-    client["Supervised Thrift client | serial cases"]
+    client["Backend review client | serial cases and sections"]
     worker["Independent inference worker"]
     ollama["Ollama | model generation"]
     checks["Automatic checks and human judgments"]
@@ -49,13 +50,13 @@ Sources: [CLI](../../scripts/evaluation/cli.py),
 
 ## Preparation
 
-Install the backend development environment and start Ollama 0.24.0 or newer
-with the chosen local model already installed. No tokenizer cache or optional model
-Python dependencies are needed. The evaluator never downloads a model.
-Start the independent service using the [Thrift setup guide](../guides/apache-thrift.md).
-It supervises Ollama itself and enforces model pin, context, sampling defaults and
-resource limits. The evaluator uses the backend's application-owned prompts,
-section orchestration and validation through the generic Thrift client.
+Install the backend development environment, then start the independent service
+using the [Thrift setup guide](../guides/apache-thrift.md#run-the-projects-independently).
+The service starts its own Ollama 0.24.0+ child, validates the installed model and
+enforces its model pin, context, defaults and execution limits. Keep its selected
+native port free. Prepare the model store first, or explicitly enable the service's
+missing-model download policy. The evaluator itself never downloads model files
+and needs no local tokenizer or model-runtime Python packages.
 
 Use `--thrift-host` and `--thrift-port` to select the service. Optional
 `--expected-model-id` / `--expected-model-revision` assert its model identity;
@@ -78,15 +79,18 @@ backend/.venv/bin/python scripts/evaluate_model.py --run-real-model --case all
 ```
 
 Omitting the mode flags also produces a plan. Plan mode needs the installed backend
-dependencies, but constructs no model adapter, contacts neither inference service,
+dependencies, but constructs no model adapter, contacts no inference endpoint,
 and downloads no model files. Exit 0 with
 `status=not_run` means a valid plan, not an inference pass.
 
-Defaults match the maintained deployment's 2048 input tokens, 384 total output tokens
-and 300-second review deadline. Use `--max-output-tokens` and `--timeout-seconds` to
+The application defaults are 384 total output tokens and a 300-second review
+deadline. The input ceiling belongs to the service and is discovered during the
+handshake; the default service allows 2048 input tokens. Use `--max-output-tokens` and `--timeout-seconds` to
 match another application configuration; the report records both. Settings ignore
-ambient environment overrides and `.env`. Select the model, endpoint, digest, context
-and sampling through CLI options; use `--help` for the full list. All three sections
+ambient environment overrides and `.env`. Choose the RPC endpoint, optional model
+identity assertions and application sampling overrides through CLI options. Configure
+the actual model and context on the service; use `--help` for the full option list.
+All three sections
 share one deadline and use the application's token budget allocation.
 
 To inspect generated synthetic output and record human judgments in a private terminal:
@@ -126,10 +130,11 @@ hints are diagnostics only. A production quality rejection fails evaluation.
 | `failed` / 1 | Dependency/service/runtime/quality/metrics/manual failure |
 | Argument error / 2 | Invalid or incompatible options |
 
-The [native adapter smoke test](../reference/model.md#dependencies-and-verification)
-uses a smaller budget and permits a controlled output rejection. The separate
-Thrift process test requires a saved completed review. Neither replaces semantic
-acceptance through this evaluator.
+The [real Thrift review tests](../reference/model.md#verification) check a complete
+review through an existing service; one also verifies authenticated FastAPI
+submission and saved model identity. The service's startup probe checks native
+execution and GPU placement when required. Neither replaces semantic acceptance
+through this evaluator.
 
 ## Reports and supervision
 

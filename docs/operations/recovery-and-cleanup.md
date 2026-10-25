@@ -199,6 +199,8 @@ do not delete local state, release Secrets or application data to silence errors
 ## Success criteria
 
 Record application Ready, quality-valid completed review, persistence checks, complete
-API verify and browser acceptance separately. `verify --skip-restart` is incomplete and
+API verify and browser acceptance separately. The local Helm CLI's `verify` is
+currently blocked by its [legacy inventory helper](../guides/minikube-demo.md#automated-acceptance-limitation);
+do not claim an automated persistence pass for this refactor. `verify --skip-restart` is incomplete and
 nonzero. Follow the [testing evidence rules](../testing/README.md#evidence-and-manual-acceptance);
 historical passes do not validate the current deployment.
