@@ -59,15 +59,15 @@ spec:
               mountPath: /models
       {{- end }}
       containers:
-        - name: ollama
+        - name: inference
           image: {{ include "ollama.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
           ports:
-            - name: http
-              containerPort: 11434
+            - name: thrift
+              containerPort: 9091
             - name: health
               containerPort: 11435
           securityContext:

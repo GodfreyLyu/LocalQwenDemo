@@ -1,4 +1,4 @@
-# One release per namespace; fixed Service names preserve local endpoint validation.
+# Stable release names preserve application data and signing secret ownership.
 backend:
   replicas: 1
   image:
@@ -15,6 +15,11 @@ backend:
       cpu: '2'
       memory: 6Gi
       ephemeral-storage: 1Gi
+inference:
+  host: review-ollama.local-inference.svc.cluster.local
+  port: 9091
+  socketTimeoutSeconds: 2
+  recoverySeconds: 20
 frontend:
   image:
     repository: review-frontend
@@ -48,7 +53,6 @@ dynamodb:
       ephemeral-storage: 256Mi
 imagePullSecrets: []
 signingSecret:
-  # Pre-create in the release namespace with a stable SIGNING_SECRET (>=32 characters).
   existingSecret: review-secrets
 persistence:
   storageClass: standard
@@ -61,17 +65,8 @@ persistence:
 volumePermissions:
   enabled: true
 model:
-  ollamaBaseUrl: http://review-ollama.local-inference.svc.cluster.local:11434
-  ollamaModel: qwen3:1.7b
-  ollamaModelDigest: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
-  contextTokens: 4096
-  keepAlive: 5m
-  temperature: 0.7
-  topP: 0.8
-  topK: 20
-  minP: 0
-  repeatPenalty: 1
-  maxInputTokens: 2048
+  expectedId: qwen3:1.7b
+  expectedRevision: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
   maxOutputTokens: 384
   timeoutSeconds: 300
 config:
@@ -86,7 +81,6 @@ config:
   releaseSha: ''
 startupTimeoutSeconds: 3600
 monitoring:
-  # Install the platform Prometheus Operator and CRDs before enabling this overlay.
   enabled: false
   namespace: monitoring
   release: monitoring
@@ -106,10 +100,6 @@ monitoring:
   ollamaNamespace: local-inference
   ollamaRelease: review-ollama
 networkPolicy:
-  # Use values-minikube.yaml for the local profile without network isolation.
   enabled: true
-  # For explicit host Ollama: clear ollamaNamespace and set one private IPv4 /32.
-  ollamaHostCidr: ''
-  # Independent local-ollama release used by the default endpoint.
-  ollamaNamespace: local-inference
-  ollamaRelease: review-ollama
+  inferenceNamespace: local-inference
+  inferenceRelease: review-ollama

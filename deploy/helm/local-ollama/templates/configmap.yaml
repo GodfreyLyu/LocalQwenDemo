@@ -1,4 +1,10 @@
-{{- if and .Values.model.bootstrap (lt (int .Values.startupTimeoutSeconds) (int (add .Values.model.waitSeconds 240))) }}
+{{- if gt (add .Values.generation.maxInputTokens .Values.generation.maxOutputTokens) (int64 .Values.model.context) }}
+{{- fail "model.context must cover generation input and output token limits" }}
+{{- end }}
+{{- if gt (int64 .Values.generation.defaultOutputTokens) (int64 .Values.generation.maxOutputTokens) }}
+{{- fail "generation.defaultOutputTokens exceeds maxOutputTokens" }}
+{{- end }}
+{{- if (lt (int .Values.startupTimeoutSeconds) (int (add .Values.model.waitSeconds 240))) }}
 {{- fail "startupTimeoutSeconds must allow model.waitSeconds plus 240 seconds for model preparation" }}
 {{- end }}
 apiVersion: v1
@@ -16,4 +22,13 @@ data:
   MODEL_PULL_IF_MISSING: {{ .Values.model.pullIfMissing | toString | quote }}
   MODEL_WAIT_SECONDS: {{ .Values.model.waitSeconds | toString | quote }}
   OLLAMA_CONTEXT_LENGTH: {{ .Values.model.context | toString | quote }}
-  MODEL_BOOTSTRAP: {{ .Values.model.bootstrap | toString | quote }}
+  REQUIRE_GPU: "true"
+  THRIFT_BIND_HOST: "0.0.0.0"
+  HEALTH_BIND_HOST: "0.0.0.0"
+  MAX_INPUT_TOKENS: {{ .Values.generation.maxInputTokens | toString | quote }}
+  MAX_OUTPUT_TOKENS: {{ .Values.generation.maxOutputTokens | toString | quote }}
+  DEFAULT_OUTPUT_TOKENS: {{ .Values.generation.defaultOutputTokens | toString | quote }}
+  MAX_DEADLINE_SECONDS: {{ .Values.generation.maxDeadlineSeconds | toString | quote }}
+  PENDING_GENERATIONS: {{ .Values.generation.pendingGenerations | toString | quote }}
+  RETAINED_RESULTS: {{ .Values.generation.retainedResults | toString | quote }}
+  RESULT_TTL_SECONDS: {{ .Values.generation.resultTtlSeconds | toString | quote }}
