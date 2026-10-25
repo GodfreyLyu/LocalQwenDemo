@@ -69,6 +69,7 @@ def evaluate_case(model, settings, case, capture, reviewer=None, clock=time.mono
     """Reuse production guards; only complete contract/metrics AND manual judgments can pass."""
     row = pending_case(case["id"])
     started = clock()
+    elapsed = None
     before = len(capture.records)
     try:
         result = model.review(case["source"], case["language"], threading.Event())
@@ -116,7 +117,9 @@ def evaluate_case(model, settings, case, capture, reviewer=None, clock=time.mono
         "passed" if metrics_valid(row["metrics"], settings) else "failed"
     )
     # Human reading time is deliberately excluded from inference timing.
-    row["metrics"]["review_wall_seconds"] = round(locals().get("elapsed", clock() - started), 3)
+    if elapsed is None:
+        elapsed = clock() - started
+    row["metrics"]["review_wall_seconds"] = round(elapsed, 3)
     row["metrics"]["peak_process_rss_mib"] = peak_rss_mib()
     row["status"] = aggregate(row["checks"].values())
     if row["checks"]["runtime_budget"] == "failed" and row["error_code"] is None:

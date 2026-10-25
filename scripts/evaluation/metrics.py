@@ -64,41 +64,50 @@ class MetricCapture(logging.Handler):
 
 
 def metrics_valid(metrics, settings):
+    """Require complete section measurements that agree with the review-wide totals."""
     limits = allocate_section_token_limits(settings.model_max_output_tokens)
     tokens = metrics.get("section_generated_tokens", {})
-    return (
-        set(tokens) == set(limits)
-        and all(type(tokens[k]) is int and 0 < tokens[k] <= limits[k] for k in limits)
-        and metrics.get("generated_tokens") == sum(tokens.values())
-        and metrics.get("output_token_limit") == settings.model_max_output_tokens
-        and all(
-            0
-            < (metrics.get("section_input_tokens", {}).get(k) or 0)
-            <= settings.model_max_input_tokens
-            for k in limits
-        )
-        and all(
-            metrics.get("section_limits_reached", {}).get(k) == (tokens[k] >= limits[k])
-            for k in limits
-        )
-        and metrics.get("output_limit_reached")
-        == (sum(tokens.values()) >= settings.model_max_output_tokens)
-        and all(
-            metrics.get(name, {}).get(k) is not None
-            for k in limits
-            for name in (
-                "section_input_tokens",
-                "section_generation_ms",
-                "section_first_token_ms",
-            )
-        )
-        and all(
-            name in metrics
-            for name in (
-                "duration_ms",
-                "section_limits_reached",
-                "section_trailing_fragments_removed",
-                "output_limit_reached",
-            )
+    if set(tokens) != set(limits):
+        return False
+    if any(
+        type(tokens[section]) is not int or not 0 < tokens[section] <= limit
+        for section, limit in limits.items()
+    ):
+        return False
+
+    total_tokens = sum(tokens.values())
+    if metrics.get("generated_tokens") != total_tokens:
+        return False
+    if metrics.get("output_token_limit") != settings.model_max_output_tokens:
+        return False
+
+    for section in limits:
+        input_tokens = metrics.get("section_input_tokens", {}).get(section) or 0
+        if not 0 < input_tokens <= settings.model_max_input_tokens:
+            return False
+    for section, limit in limits.items():
+        limit_reached = metrics.get("section_limits_reached", {}).get(section)
+        if limit_reached != (tokens[section] >= limit):
+            return False
+
+    if metrics.get("output_limit_reached") != (total_tokens >= settings.model_max_output_tokens):
+        return False
+
+    # Missing observations must fail rather than being treated as measured zeroes.
+    for section in limits:
+        for name in (
+            "section_input_tokens",
+            "section_generation_ms",
+            "section_first_token_ms",
+        ):
+            if metrics.get(name, {}).get(section) is None:
+                return False
+    return all(
+        name in metrics
+        for name in (
+            "duration_ms",
+            "section_limits_reached",
+            "section_trailing_fragments_removed",
+            "output_limit_reached",
         )
     )

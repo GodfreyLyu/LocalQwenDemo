@@ -397,6 +397,24 @@ The root owns application assembly, business coordination and shared diagnostics
 `persistence` owns local storage and account-store startup checks. `startup.py` stays
 at the root because it is shared safe diagnostics, not the account retry mechanism.
 
+The frontend separates session restoration, workspace actions and panel rendering:
+
+| Source | Responsibility |
+| --- | --- |
+| [App.tsx](../../frontend/src/App.tsx) | Restore the session and choose the sign-in or workspace view. |
+| [Auth.tsx](../../frontend/src/Auth.tsx) | Sign-in and registration forms, validation and submission state. |
+| [Workspace.tsx](../../frontend/src/Workspace.tsx) | Own review state, restore active jobs, poll results and retain input for explicit delivery retries. |
+| [HistorySidebar.tsx](../../frontend/src/HistorySidebar.tsx) | Render history, pagination and account actions. |
+| [SourcePanel.tsx](../../frontend/src/SourcePanel.tsx), [CodeEditor.tsx](../../frontend/src/CodeEditor.tsx) | Render source input, language selection and submission controls. |
+| [ReviewResult.tsx](../../frontend/src/ReviewResult.tsx) | Render review content, model provenance and task status messages. |
+| [runtime.ts](../../frontend/src/runtime.ts), [RuntimePanel.tsx](../../frontend/src/RuntimePanel.tsx) | Poll and present instance readiness independently of review progress. |
+
+`Workspace` owns the state and asynchronous actions shared by its panels. The panels
+receive values and callbacks so their rendering can be read without tracing network
+requests. The `locked` ref prevents duplicate actions before React renders; `blocked`
+controls the visible disabled states. An unconfirmed delivery retains the serialized
+request and its idempotency key until the user explicitly retries it.
+
 Use these sources when auditing or changing the design:
 
 | Concern                                              | Source                                                                                           |

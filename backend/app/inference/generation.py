@@ -76,6 +76,7 @@ def allocate_section_token_limits(total_limit: int) -> dict[str, int]:
     if total_limit < len(SECTION_SPECS):
         raise ValueError("The review output token limit must allow at least one token per section.")
     sections = [section for section, _, _ in SECTION_SPECS]
+    # Reserve one token per section, then divide the rest by the fixed weights.
     remaining = total_limit - len(sections)
     total_weight = sum(SECTION_TOKEN_WEIGHTS.values())
     limits = {}
@@ -84,6 +85,8 @@ def allocate_section_token_limits(total_limit: int) -> dict[str, int]:
         quotient, remainder = divmod(remaining * SECTION_TOKEN_WEIGHTS[section], total_weight)
         limits[section] = 1 + quotient
         remainders.append((remainder, -position, section))
-    for _, _, section in sorted(remainders, reverse=True)[: total_limit - sum(limits.values())]:
+    # Give leftover tokens to the largest fractional shares; ties follow section order.
+    leftover = total_limit - sum(limits.values())
+    for _, _, section in sorted(remainders, reverse=True)[:leftover]:
         limits[section] += 1
     return limits

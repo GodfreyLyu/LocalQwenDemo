@@ -41,7 +41,10 @@ class Coordinator:
         settings: Settings,
         metrics: Metrics,
     ) -> None:
-        self.store, self.users, self.model, self.settings = store, users, model, settings
+        self.store = store
+        self.users = users
+        self.model = model
+        self.settings = settings
         self.metrics = metrics
         self._state = CoordinatorState.LOADING
         self._closing = False
@@ -114,8 +117,12 @@ class Coordinator:
             job["language"],
             self.stop,
         )
-        result, error, timed_out = None, None, False
+        result: str | None = None
+        error: AppError | None = None
+        timed_out = False
         try:
+            # Keep the executor future alive after the request deadline so drain()
+            # can wait for the actual thread exit before accepting more work.
             result = await asyncio.wait_for(
                 asyncio.shield(future), self.settings.inference_timeout_seconds
             )
@@ -132,6 +139,7 @@ class Coordinator:
             error = exc
         except Exception:
             error = AppError("inference_failed", "The model could not complete this review.")
+        # Persist the timeout for the client before waiting for the worker to stop.
         await self.finish(job, result, error)
         if timed_out:
             await self.drain(future, job["review_id"])
