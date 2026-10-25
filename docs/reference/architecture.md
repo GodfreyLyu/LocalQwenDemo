@@ -2,6 +2,70 @@
 
 [Documentation index](../README.md)
 
+LocalQwenDemo accepts code as text, saves a review job, and generates a three-section
+review through a local Ollama service. The diagrams below describe the maintained
+Minikube deployment and the boundaries inside its backend.
+
+| View | What it explains |
+| --- | --- |
+| [System layout](#system-layout) | Services, namespaces, persistent volumes and local access |
+| [Backend design](#types-and-dependency-boundaries) | HTTP, admission, coordination and adapter responsibilities |
+| [Data relationships](#storage) | Accounts, sessions and durable review records |
+| [Workflow diagrams](workflows.md) | Authentication, review execution, admission, generation, recovery and releases |
+| [Observability diagram](observability.md#collection-and-ownership) | Metrics, logs, dashboards and platform ownership |
+
+## System layout
+
+React runs in the browser. Nginx serves the bundle and proxies API and health
+requests. Namespace groups show placement; storage cylinders are PVC-backed data.
+Solid arrows show calls or storage access; dotted arrows show
+configuration or device dependencies. Responses return along the same call path.
+
+```mermaid
+flowchart TB
+    accTitle: LocalQwenDemo Minikube system layout
+    accDescr: A browser reaches Nginx through a loopback port-forward. Nginx proxies to one FastAPI backend, which uses SQLite, DynamoDB Local and an independent Ollama service. Three PVCs preserve application and model data.
+    browser["Browser running React"]
+    forward["Loopback port-forward :8080"]
+    subgraph cluster["Minikube"]
+        subgraph application["local-review-demo"]
+            frontend["Nginx | review-frontend :8080"]
+            backend["FastAPI | review-backend :8000"]
+            history[("review-history | SQLite")]
+            accounts["DynamoDB Local | review-dynamodb :8000"]
+            accountData[("review-dynamodb | account data")]
+            signing["review-secrets | signing key"]
+        end
+        subgraph inference["local-inference"]
+            ollama["Ollama | review-ollama :11434"]
+            models[("review-ollama-models | model weights")]
+        end
+        gpu["krunkit GPU | devic.es/dri"]
+    end
+    browser -->|"HTTP and static UI"| forward
+    forward --> frontend
+    frontend -->|"/api/ and /health/"| backend
+    backend -->|"Queue, history, sessions"| history
+    backend -->|"Account API"| accounts
+    accounts -->|"Persist accounts"| accountData
+    backend -->|"Local model API"| ollama
+    ollama -->|"Load weights"| models
+    signing -.->|"Environment"| backend
+    gpu -.->|"Device allocation"| ollama
+```
+
+The default release names are `local-review` and `review-ollama`. The backend
+contains one Uvicorn process, one coordinator and one inference executor
+thread. The application Chart does not install Ollama. The independent Ollama Chart
+targets ARM64 krunkit and requests the GPU device advertised by the platform's device
+plugin. [Local development](../guides/local-development.md) uses Vite's proxy and
+explicit local service endpoints instead of this Nginx/namespace layout.
+
+Namespace boxes express deployment ownership, not network isolation. The maintained
+Minikube values disable NetworkPolicy. The signing Secret is prepared separately and
+reused on upgrades. See [deployment and persistence](#deployment-and-persistence) for
+the two deployment managers and storage retention.
+
 ## Request flow
 
 The [architecture overview](../../README.md#architecture) describes the application in
@@ -10,6 +74,9 @@ bundle and provides the same-origin API proxy. The background coordinator and on
 inference executor run within the FastAPI process.
 
 ### One review, end to end
+
+See the [review sequence](workflows.md#review-from-submission-to-history) and
+[admission decisions](workflows.md#admission-and-idempotency) for visual walkthroughs.
 
 1. `RequestGuard` bounds the JSON body and assigns a request ID. FastAPI validates
    `ReviewInput`; the session dependency verifies the signed cookie, account, Origin
@@ -37,6 +104,39 @@ inference executor run within the FastAPI process.
    numeric Unix seconds, IDs remain strings, and nullable fields remain JSON null.
 
 ### Types and dependency boundaries
+
+This is a code-level view of one backend process, assembled by `create_app`. Arrows
+show selected calls and dependencies. The coordinator owns background work; HTTP
+submission only commits a job.
+
+```mermaid
+flowchart TB
+    accTitle: Backend responsibilities and dependency boundaries
+    accDescr: Routes submit through ReviewService and query owner-scoped history through Store. Authentication uses DynamoUsers and a shared limiter. Coordinator uses Store and the single executor to call the Ollama adapter. create_app assembles these dependencies in one process.
+    subgraph transport["HTTP boundary | app.api"]
+        guard["RequestGuard and error handlers"]
+        routes["Routes, schemas, session dependency"]
+    end
+    service["ReviewService | admission policy"]
+    coordinator["Coordinator | background loop"]
+    limiter["RateLimiter | shared quotas"]
+    store["Store | SQLite adapter"]
+    users["DynamoUsers | account adapter"]
+    executor["Inference executor | one thread"]
+    model["OllamaModel | ReviewModel protocol"]
+    guard --> routes
+    routes -->|"Submit"| service
+    routes -->|"History, detail, sessions"| store
+    routes -->|"Account checks"| users
+    routes -->|"Auth quota"| limiter
+    routes -->|"Health and runtime"| coordinator
+    service -->|"Readiness"| coordinator
+    service -->|"Submission quota"| limiter
+    service -->|"Atomic admission"| store
+    coordinator -->|"Recover, claim, finish"| store
+    coordinator -->|"Load and review"| executor
+    executor --> model
+```
 
 `api/schemas.py` uses Pydantic only at the HTTP boundary: input validation, response
 allowlists and the optional OpenAPI schema. `domain.py` uses TypedDict for session,
@@ -97,10 +197,49 @@ DynamoDB and SQLite operations run in FastAPI's thread pool or `asyncio.to_threa
 
 ## Storage
 
+The relationships below are **logical ownership**, enforced by application queries.
+Accounts live in DynamoDB Local; sessions and reviews share SQLite. There are no SQL
+foreign keys between these records and no transaction across the two stores. The
+diagram lists identity and ownership fields; the text below describes the remaining
+record fields.
+
+```mermaid
+erDiagram
+    accTitle: Logical account session and review relationships
+    accDescr: Each DynamoDB account can own many SQLite sessions and reviews. Session lookup uses a token hash. Review IDs identify durable jobs, and user ID plus client request ID is unique. These are logical application relationships without database foreign keys.
+    Account ||..o{ Session : "owns by user_id"
+    Account ||..o{ Review : "owns by user_id"
+    Account {
+        string login_id PK "DynamoDB partition key"
+        string user_id "Opaque account identity"
+        string password_hash "Argon2id"
+        boolean disabled
+    }
+    Session {
+        string token_hash PK "SHA-256 of signed cookie"
+        string user_id "Owner"
+        string login_id "Account lookup"
+        string csrf_token
+        real expires_at
+    }
+    Review {
+        string review_id PK
+        string user_id "Owner and unique key part 1"
+        string client_request_id "Unique key part 2"
+        string status "queued, running, completed, failed"
+        integer retry_count
+        string model_revision "Digest on completion"
+    }
+```
+
 | PVC                  | Mounted by                       | Data / configured size                                                |
 | -------------------- | -------------------------------- | --------------------------------------------------------------------- |
 | `review-history`     | Backend at `/data`               | `reviews.sqlite3`: queue, review bodies, history and sessions; 10 GiB |
 | `review-dynamodb`    | DynamoDB Local at `/data`        | Account records and password hashes; 1 GiB                            |
+| `review-ollama-models` | Independent Ollama at `/models` | Model weights; 4 GiB |
+
+These are the default claim names and sizes. Existing-claim values can select retained
+PVCs; changing the Ollama release name also changes its default claim name.
 
 The signing key is a separate `review-secrets` Kubernetes Secret. Host-side deployment
 state is also separate: it records target/build/acceptance evidence and private credentials,
@@ -125,6 +264,10 @@ History listings are cursor-paginated and omit source/result text. Detail access
 Sessions are signed opaque random tokens; only a SHA-256 token hash, user identity, CSRF token, and expiry are stored in SQLite. Logout deletes the session, so replaying a copied cookie fails. DynamoDB stores account identifiers, Argon2id hashes, creation timestamps, disabled flags, and opaque user IDs. It does not store review history.
 
 ## Queue and restart policy
+
+The [job lifecycle](workflows.md#durable-job-lifecycle) and
+[coordinator lifecycle](workflows.md#service-startup-timeout-and-recovery) diagrams
+show persisted states separately from process health.
 
 By default, the queue allows eight queued jobs plus one running job, with at most one active job per account. Admission and status transitions are persisted before HTTP acceptance or inference. History writes fail closed: no success is returned when storage fails.
 
@@ -196,6 +339,9 @@ safe across workers. None of those distributed capabilities is implemented here.
 
 ## Deployment and persistence
 
+The [release workflow](workflows.md#release-deployment-and-rollback) shows source
+validation, image publishing, snapshot approval, deployment and rollback.
+
 The application and independent Ollama service have separate Helm Charts under
 `deploy/helm`. Approved release snapshots pin their images. Deploy with standard Helm
 commands or let Argo CD reconcile the release branch, using one manager per deployment.
@@ -215,7 +361,7 @@ The backend emits allowlisted JSON events to stderr and serves an internal `/met
 endpoint from its per-application Prometheus registry. The Helm CLI `logs` command
 reads the selected backend container's logs. Optional Terraform monitoring runs
 Prometheus, Grafana and Alertmanager; the application Chart supplies its monitor,
-rules and dashboards. [The observability contract](observability.md) and
+rules and dashboards. The [collection diagram and observability contract](observability.md) and
 [local runbook](../operations/observability.md) define safe correlation, timing
 boundaries and unknown measurements. Scraping never submits inference or runs the
 writable readiness probe.

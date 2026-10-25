@@ -3,6 +3,44 @@
 The evaluator uses the application's `OllamaModel`, prompts, three serial section
 requests, seed policy and output validator. Run commands from the repository root.
 
+## Evaluation flow
+
+Evaluation calls the same inference adapter directly, using checked-in synthetic
+fixtures. It bypasses the application HTTP API, accounts, durable queue and browser.
+The parent supervises a disposable client worker; Ollama remains an independent
+service. This is a model evaluation, separate from deployment acceptance.
+
+```mermaid
+flowchart TB
+    accTitle: Plan or evaluate the synthetic review suite
+    accDescr: CLI settings and fixed fixtures form a private evaluation plan. Plan mode saves not_run without contacting Ollama. Real mode supervises one serial client worker, validates the model and runs cases through the production Ollama adapter. Automatic checks and explicit human judgments determine the aggregate result. Crashes and watchdog expiry fail the run.
+    inputs["CLI settings and synthetic fixtures"]
+    mode{"Real model requested?"}
+    plan["Plan only | not_run"]
+    worker["Supervised worker | model preflight"]
+    cases["Serial cases through OllamaModel"]
+    checks["Automatic checks and human judgments"]
+    aggregate["Aggregate case outcomes"]
+    failure["Mark run failed"]
+    report[("Private report.json")]
+    inputs --> mode
+    mode -->|"No"| plan
+    plan --> report
+    mode -->|"Yes"| worker
+    worker --> cases --> checks --> aggregate --> report
+    worker -.->|"Crash or watchdog expiry"| failure
+    failure --> report
+```
+
+Automatic checks alone can leave `needs_manual_review`; `passed` requires every
+selected case's automatic and human checks to pass. Reports retain fingerprints,
+configuration, observed metrics and categorical judgments, without generated text.
+See [application workflows](../reference/workflows.md) for review and release paths.
+
+Sources: [CLI](../../scripts/evaluation/cli.py),
+[worker supervision](../../scripts/evaluation/runner.py),
+[case checks](../../scripts/evaluation/quality.py), [report writer](../../scripts/evaluation/report.py).
+
 ## Preparation
 
 Install the backend development environment and start Ollama 0.24.0 or newer

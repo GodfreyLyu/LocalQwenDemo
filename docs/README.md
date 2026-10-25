@@ -8,6 +8,7 @@ below for your task.
 
 | I want to… | Read |
 | --- | --- |
+| Understand or present the complete system | [Architecture diagrams](reference/architecture.md#system-layout), [workflow diagrams](reference/workflows.md) |
 | Set up a krunkit GPU cluster | [Local platform](../infra/local-platform/README.md) |
 | Deploy reviewed releases with Argo CD | [GitOps guide](guides/gitops.md) |
 | Track a release, roll back and fix main | [Release tags and rollback](guides/release-rollback.md) |
@@ -26,6 +27,7 @@ below for your task.
 | Topic | Main reference |
 | --- | --- |
 | Components, request flow, queue lifecycle and storage | [Architecture](reference/architecture.md) |
+| Authentication, review execution, recovery and release diagrams | [Workflows](reference/workflows.md) |
 | Endpoints, authentication and error responses | [API](reference/api.md) |
 | Model identity, settings, startup checks and output checks | [Model](reference/model.md) |
 | Sessions, CSRF, history isolation and container controls | [Security](reference/security.md) |
@@ -39,6 +41,10 @@ The root README provides an overview. Guides explain setup and deployment;
 operations pages cover investigation and recovery; references describe behavior and
 settings. Testing pages explain what each check verifies. Keep detailed instructions
 in the relevant page and link to it from other documents.
+
+Architecture and workflow diagrams use editable Mermaid fences that render on GitHub.
+Keep them aligned with the linked source when changing behavior; see
+[diagram maintenance](reference/workflows.md#maintaining-the-diagrams).
 
 Reports and evidence files preserve dated observations. Their results apply to the
 recorded revision and environment, so retain their outcomes and limitations when
