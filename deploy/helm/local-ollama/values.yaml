@@ -1,17 +1,15 @@
+# Existing release and PVC names are retained during the Thrift migration.
 image:
-  repository: review-ollama
-  tag: 0.24.0-krunkit1
+  repository: review-inference
+  tag: local
   digest: ''
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 model:
-  # Optional initial download, independent of Review model selection.
-  bootstrap: true
   name: qwen3:1.7b
   digest: sha256:8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7
   context: 4096
   cpuThreads: 2
-  # Normal Helm installs download once, then reuse the PVC. False permits offline seeding.
   pullIfMissing: true
   waitSeconds: 1200
 persistence:
@@ -32,6 +30,18 @@ resources:
     memory: 3Gi
     ephemeral-storage: 1Gi
 startupTimeoutSeconds: 1800
-
 verification:
   argoPostSync: false
+generation:
+  maxInputTokens: 2048
+  maxOutputTokens: 512
+  defaultOutputTokens: 128
+  maxDeadlineSeconds: 300
+  pendingGenerations: 8
+  retainedResults: 128
+  resultTtlSeconds: 600
+networkPolicy:
+  enabled: true
+  backendNamespace: local-review-demo
+  backendRelease: local-review
+  allowModelPull: true

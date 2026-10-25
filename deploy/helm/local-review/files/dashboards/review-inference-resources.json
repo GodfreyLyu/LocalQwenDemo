@@ -427,7 +427,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\"}[$__rate_interval]))",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"inference\"}[$__rate_interval]))",
           "legendFormat": "Ollama",
           "range": true,
           "refId": "B"
@@ -493,7 +493,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(container_memory_working_set_bytes{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\"})",
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"inference\"})",
           "legendFormat": "Ollama",
           "range": true,
           "refId": "B"
@@ -559,7 +559,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_resource_limits{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\",resource=\"memory\",unit=\"byte\"})",
+          "expr": "sum(kube_pod_container_resource_limits{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"inference\",resource=\"memory\",unit=\"byte\"})",
           "legendFormat": "Ollama",
           "range": true,
           "refId": "B"
@@ -625,7 +625,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"ollama\"}[15m]))",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$ollama_namespace\",pod=~\"$ollama_release-.*\",container=\"inference\"}[15m]))",
           "legendFormat": "Ollama",
           "range": true,
           "refId": "B"
@@ -812,7 +812,7 @@
         "label": "Ollama namespace",
         "type": "query",
         "query": {
-          "query": "label_values(kube_pod_container_info{container=\"ollama\"}, namespace)",
+          "query": "label_values(kube_pod_container_info{container=\"inference\"}, namespace)",
           "refId": "ollama_namespaceVariableQuery"
         },
         "current": {
@@ -824,7 +824,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(kube_pod_container_info{container=\"ollama\"}, namespace)",
+        "definition": "label_values(kube_pod_container_info{container=\"inference\"}, namespace)",
         "refresh": 1,
         "sort": 1,
         "multi": false,
@@ -835,7 +835,7 @@
         "label": "Ollama release",
         "type": "query",
         "query": {
-          "query": "label_values(kube_pod_container_info{namespace=\"$ollama_namespace\",container=\"ollama\"}, pod)",
+          "query": "label_values(kube_pod_container_info{namespace=\"$ollama_namespace\",container=\"inference\"}, pod)",
           "refId": "ollama_releaseVariableQuery"
         },
         "current": {
@@ -847,7 +847,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(kube_pod_container_info{namespace=\"$ollama_namespace\",container=\"ollama\"}, pod)",
+        "definition": "label_values(kube_pod_container_info{namespace=\"$ollama_namespace\",container=\"inference\"}, pod)",
         "refresh": 1,
         "sort": 1,
         "multi": false,

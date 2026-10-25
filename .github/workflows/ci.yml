@@ -29,15 +29,38 @@ jobs:
         run: |
           python -m venv backend/.venv
           backend/.venv/bin/pip install -r backend/requirements-dev.lock
-          backend/.venv/bin/pip install --no-deps -e backend
+          backend/.venv/bin/pip install --no-deps -e contracts -e backend
       - name: Lint and test Python
         working-directory: backend
         run: |
           .venv/bin/ruff check --config pyproject.toml app tests
           .venv/bin/ruff format --check --config pyproject.toml app tests
-          .venv/bin/ruff check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
-          .venv/bin/ruff format --check --config pyproject.toml ../deploy/images/ollama-vulkan/runtime.py
           .venv/bin/pytest tests -m 'not real_model and not requires_cluster'
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - name: Install Thrift compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bison cmake flex g++ make
+          mkdir -p .local/thrift
+          curl -fsSL --retry 3 https://archive.apache.org/dist/thrift/0.25.0/thrift-0.25.0.tar.gz -o .local/thrift/thrift-0.25.0.tar.gz
+          echo '66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214  .local/thrift/thrift-0.25.0.tar.gz' | sha256sum --check
+          tar -xzf .local/thrift/thrift-0.25.0.tar.gz -C .local/thrift
+          cmake -S .local/thrift/thrift-0.25.0 -B .local/thrift/build -DBUILD_LIBRARIES=OFF -DBUILD_TESTING=OFF -DBUILD_TUTORIALS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build .local/thrift/build --target thrift-compiler --parallel 2
+          .local/thrift/build/compiler/cpp/bin/thrift --version
+          echo "$PWD/.local/thrift/build/compiler/cpp/bin" >> "$GITHUB_PATH"
+      - name: Independent inference and Java checks
+        run: |
+          python -m venv inference-service/.venv
+          inference-service/.venv/bin/pip install -r inference-service/requirements-dev.lock
+          inference-service/.venv/bin/pip install --no-deps -e contracts -e inference-service
+          bash scripts/checks/inference.sh
+      - name: Build independent backend image
+        run: docker build -f backend/Dockerfile -t review-backend:ci .
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
@@ -94,17 +117,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/check_monitoring.sh
 
+  inference-image:
+    name: ARM64 inference image
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -f inference-service/Dockerfile -t review-inference:ci .
+
   main-ci:
     # Required by branch protection; keep this check name stable.
     name: main-ci
     if: always()
-    needs: [application, configuration]
+    needs: [application, configuration, inference-image]
     runs-on: ubuntu-latest
     steps:
       - name: Check required results
         env:
           APPLICATION_RESULT: ${{ needs.application.result }}
+          INFERENCE_IMAGE_RESULT: ${{ needs.inference-image.result }}
           CONFIGURATION_RESULT: ${{ needs.configuration.result }}
         run: |
           test "$APPLICATION_RESULT" = success
           test "$CONFIGURATION_RESULT" = success
+          test "$INFERENCE_IMAGE_RESULT" = success

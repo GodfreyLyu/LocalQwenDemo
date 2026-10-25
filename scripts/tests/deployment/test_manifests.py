@@ -34,11 +34,8 @@ def test_inference_configuration_stays_in_backend_config(resources):
     assert (
         cfg.items()
         >= {
-            "OLLAMA_MODEL": "qwen3:1.7b",
-            "MODEL_CONTEXT_TOKENS": "4096",
-            "MODEL_MAX_INPUT_TOKENS": "2048",
+            "EXPECTED_MODEL_ID": "qwen3:1.7b",
             "MODEL_MAX_OUTPUT_TOKENS": "384",
-            "MODEL_INFERENCE_CONCURRENCY": "1",
             "INFERENCE_TIMEOUT_SECONDS": "300",
         }.items()
     )
@@ -68,12 +65,10 @@ def test_chart_preserves_product_contract_and_has_no_cloud_resources(resources):
             "DYNAMODB_ENDPOINT_URL": "http://review-dynamodb:8000",
             "DYNAMODB_TABLE": "llm-review-users",
             "AWS_REGION": "ap-northeast-1",
-            "OLLAMA_MODEL": acceptance.MODEL,
-            "OLLAMA_MODEL_DIGEST": acceptance.REVISION,
-            "MODEL_MAX_INPUT_TOKENS": "2048",
+            "EXPECTED_MODEL_ID": acceptance.MODEL,
+            "EXPECTED_MODEL_REVISION": acceptance.REVISION,
             "MODEL_MAX_OUTPUT_TOKENS": "384",
             "INFERENCE_TIMEOUT_SECONDS": "300",
-            "MODEL_INFERENCE_CONCURRENCY": "1",
         }.items()
     )
     allowed = {
@@ -244,9 +239,7 @@ def test_kubernetes_config_map_values_load_from_environment(monkeypatch, resourc
     assert settings.dynamodb_endpoint_url == "http://review-dynamodb:8000"
     assert settings.environment == "local"
     assert settings.cookie_secure is False
-    assert settings.model_inference_concurrency == 1
-    assert settings.ollama_model == "qwen3:1.7b"
-    assert settings.model_context_tokens == 4096
+    assert settings.expected_model_id == "qwen3:1.7b"
     assert settings.model_max_output_tokens == 384
     assert settings.inference_timeout_seconds == 300
     assert settings.data_dir == Path("/data")

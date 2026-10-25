@@ -6,7 +6,7 @@ import pytest
 
 from app.coordinator import CoordinatorState
 from app.inference.identity import model_identity
-from app.inference.ollama import OllamaModel
+from app.inference.rpc.client import ThriftReviewModel
 
 
 @pytest.mark.component
@@ -68,10 +68,10 @@ def test_storage_failure_and_shutdown_never_claim_readiness(factory, monkeypatch
 def test_real_adapter_identity_before_loading_is_not_fabricated(factory):
     client = factory()
     settings = client.app.state.settings
-    identity = model_identity(OllamaModel(settings))
+    identity = model_identity(ThriftReviewModel(settings))
     assert identity == {
         "inference_mode": "real",
-        "model_id": settings.ollama_model,
+        "model_id": None,
         "model_revision": None,
         "model_source": "ollama_api",
         "device": None,

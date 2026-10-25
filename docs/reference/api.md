@@ -104,7 +104,9 @@ Errors use:
 
 Inference errors mark the stored job as `failed`, with codes such as `token_limit`,
 `inference_timeout`, `empty_model_response`, `invalid_model_response`,
-`inference_failed`, or `interrupted`. `invalid_model_response` covers malformed or
+`inference_failed`, `inference_stuck`, or `interrupted`. `inference_stuck` means
+that the backend cannot safely confirm remote execution state or finish draining;
+it also closes admission until recovery. `invalid_model_response` covers malformed or
 incomplete Ollama responses, unexpected thinking/tool output, and reviews that fail
 the required structure or source-reference checks. A successful GET still returns
 200 when describing a failed job.
@@ -115,11 +117,13 @@ the required structure or source-reference checks. A successful GET still return
 It returns HTTP 200 when the observation succeeds, including when the service is not ready.
 Like `/health/ready`, it checks writable SQLite access and removes expired sessions
 when the coordinator is ready. It does not submit reviews or change review records.
+It does not poll the Thrift worker or Ollama on each request; startup and review
+execution supply the cached model information.
 
 - `deployment_environment`: `minikube`, `development`, or `unknown`, from explicit
   `DEPLOYMENT_ENVIRONMENT` configuration. Default is `unknown`; neither hostname nor
   the logging/test `ENVIRONMENT` setting implies a deployment environment.
-- `inference_mode`: `real` for the Ollama adapter, `simulated` for an
+- `inference_mode`: `real` for the Thrift adapter backed by Ollama, `simulated` for an
   explicitly marked fixture, otherwise `unknown`. Deployment environment does not select inference.
 - `model_id`, `model_revision`, `model_source`, `device`: the selected Ollama tag,
   observed digest, `ollama_api`, and observed placement (`cpu`, `gpu`, `mixed`, or null).
@@ -127,9 +131,10 @@ when the coordinator is ready. It does not submit reviews or change review recor
   The deterministic adapter returns `Simulated model`, `fixture-v1`, `test_fixture`,
   and a null device. Unrecognized adapters expose null identity, `unknown` source,
   and a null device. This endpoint does not load model weights.
-- `inference_backend`, `quantization`: the Ollama adapter also returns `ollama` and
+- `inference_backend`, `quantization`: real inference also returns `ollama` and
   the observed quantization, which may be null before loading. These fields are absent
-  for simulated or unrecognized adapters.
+  for simulated or unrecognized adapters. `ollama` identifies the model engine;
+  it does not mean that the backend uses HTTP instead of Thrift.
 - `service_status`, `accepting_submissions`: reuse the coordinator and SQLite readiness
   check. Shutdown is reported as `shutting_down`. Readiness permits an attempt; authentication,
   CSRF, rate, input, active-review and atomic queue-capacity checks still decide admission.

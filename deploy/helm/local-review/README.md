@@ -11,7 +11,7 @@ for namespace/Secret preparation and the complete installation procedure.
   uses Minikube's `standard` class. Start with 4 CPUs / 8 GiB for the cluster.
 - The [independent GPU Ollama release](../local-ollama/README.md), installed as
   `review-ollama` in namespace `local-inference`, with the pinned model. Both default
-  values and `values-minikube.yaml` use its Service on port 11434. The optional
+  values and `values-minikube.yaml` use its Service on Thrift port 9091. The optional
   `values-minikube-ollama.yaml` overlay reduces backend resource requests.
 - An existing Secret in the release namespace, named by
   `signingSecret.existingSecret`, containing `SIGNING_SECRET` (at least 32 characters).
@@ -20,6 +20,10 @@ for namespace/Secret preparation and the complete installation procedure.
 
 The backend init container initializes the DynamoDB users table. Readiness probes
 check application startup; completing a real review remains a separate check.
+The backend calls the independently packaged inference workload through generated
+Thrift bindings. The existing `review-ollama` release owns the combined Ollama/RPC
+container and model PVC; this application chart has no RPC server Deployment.
+See [migration](../../../docs/operations/inference-migration.md).
 
 ## Configuration and installation
 
@@ -38,15 +42,12 @@ Release values pin the published images; the environment file supplies local
 settings. Helm does not automatically load either file. Main's default image
 names require local image loading or explicit image overrides before installation.
 
-The Minikube example **disables NetworkPolicy isolation**. To enable policies,
-use an enforcing CNI and set `networkPolicy.enabled: true`. Defaults select the
-`review-ollama` Pods in `local-inference` for egress on port 11434. When changing
-release/namespace, update both `model.ollamaBaseUrl` and the policy selectors.
-
-For explicit host Ollama, set `model.ollamaBaseUrl` to
-`http://host.minikube.internal:11434`, clear `networkPolicy.ollamaNamespace`, and
-set `networkPolicy.ollamaHostCidr` to the actual private host IPv4 `/32` if policies
-are enabled. Host discovery is not part of standard Helm deployment.
+The Minikube application profile disables its NetworkPolicy. With an enforcing CNI,
+enable the policy and select the inference namespace/release. `inference.host` must
+match that Service's fully qualified name. Configure the inference chart's
+`networkPolicy.backendNamespace/backendRelease` to match the actual application
+namespace/release, especially for the custom Helm namespace in this example.
+Only Thrift 9091 crosses Pods; native Ollama HTTP is loopback-only.
 
 Render and lint from main without credentials or cluster access:
 

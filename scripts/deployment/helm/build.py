@@ -20,7 +20,9 @@ def build_images(session, arch):
             f"linux/{arch}",
             "-t",
             image,
-            ROOT / component,
+            "-f",
+            ROOT / component / "Dockerfile",
+            ROOT if component == "backend" else ROOT / component,
             timeout=3600,
             env=session.target.env,
         )

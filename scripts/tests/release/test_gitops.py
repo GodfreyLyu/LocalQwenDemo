@@ -19,7 +19,7 @@ from scripts.tests.support.release import (
 @pytest.mark.requires_git
 def test_ollama_input_change_builds_only_ollama(source, tmp_path):
     previous = released(source, tmp_path)
-    committed(source, "deploy/images/ollama-vulkan/runtime.py", "# changed runtime\n")
+    committed(source, "inference-service/src/llm_service/runtime.py", "# changed runtime\n")
     plan = snapshot.plan(source, previous, "Owner/Repo")
     assert plan["build"] == {"backend": False, "frontend": False, "ollama": True}
     assert plan["images"]["backend"] == previous["images"]["backend"]
@@ -159,7 +159,7 @@ def test_pr_quality_is_required_before_main_image_publication():
     assert quality["on"]["pull_request"]["branches"] == ["main"]
     gate = quality["jobs"]["main-ci"]
     assert gate["if"] == "always()"
-    assert set(gate["needs"]) == {"application", "configuration"}
+    assert set(gate["needs"]) == {"application", "configuration", "inference-image"}
     release = yaml.load(
         (ROOT / ".github/workflows/release-candidate.yml").read_text(), Loader=yaml.BaseLoader
     )
@@ -179,9 +179,19 @@ def test_pr_quality_is_required_before_main_image_publication():
 @pytest.mark.integration
 @pytest.mark.requires_git
 @pytest.mark.requires_helm
-def test_review_model_is_independent_from_bootstrap_model(source, tmp_path):
+def test_configured_application_assertion_must_match_the_inference_model(source, tmp_path):
     manifest = released(source, tmp_path)
     root = tmp_path / "release"
     path = root / snapshot.OLLAMA_CHART / "values.yaml"
     path.write_text(path.read_text().replace("qwen3:1.7b", "qwen3:other"))
-    validate_snapshot(root, manifest)
+    with pytest.raises(ValueError, match="Application model assertion"):
+        validate_snapshot(root, manifest)
+
+
+@pytest.mark.integration
+@pytest.mark.requires_git
+def test_shared_contract_change_rebuilds_both_python_images(source, tmp_path):
+    manifest = released(source, tmp_path)
+    committed(source, "contracts/python/llm_contract/__init__.py", "# revised contract\n")
+    plan = snapshot.plan(source, manifest, "Owner/Repo")
+    assert plan["build"] == {"backend": True, "frontend": False, "ollama": True}

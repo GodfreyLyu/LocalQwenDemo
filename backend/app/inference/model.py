@@ -1,4 +1,4 @@
-"""Model contract shared by the Ollama adapter and injected test doubles."""
+"""Backend model contract implemented by the Thrift client and injected test doubles."""
 
 import threading
 from typing import Protocol

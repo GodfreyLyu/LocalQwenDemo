@@ -23,20 +23,25 @@ Source and review text are private per user and stored in SQLite on a local pers
 volume. Sessions use that same volume; account and password records use a separate
 DynamoDB Local volume. This project does not provide or verify encryption at rest.
 Database queries are parameterized, and user identity comes from the verified session.
-The backend sends source text to the configured local Ollama service for review. It
-never creates source files or passes that text to a shell, interpreter, compiler,
-agent, or cloud inference API.
+The backend sends source text over Thrift to the inference worker, which sends it
+to the configured local Ollama service. Neither process turns submitted text into
+a source file or passes it to a shell, interpreter, compiler, agent, or cloud
+inference API. The service holds a bounded in-memory registry of live and retained
+tasks, keyed by request ID within its current instance. It drops each task's prompt
+messages on completion, retaining its fingerprint and result until expiry.
+Durable review history belongs to SQLite in the backend.
 
 Input is bounded by HTTP bytes, characters, and model prompt tokens. Output token count, queue size, retry count, and inference concurrency are bounded. The model has no tools. Prompt injection can still influence review quality; model text is always untrusted.
 
 Three independent prompts reuse only the original untrusted source, never a previously
-generated section. Ollama receives `think=false`; unexpected thinking or tool output is
-rejected and never saved or logged. The backend inserts fixed Markdown headings and
-may remove unfinished text at a section's token limit, but it never writes or rewrites
+generated section. The backend constructs these prompts and joins the review.
+Ollama receives `think=false`; the service rejects unexpected thinking or tool output.
+The backend inserts fixed Markdown headings and may remove unfinished text at a
+section's token limit, but it never writes or rewrites
 a review conclusion. Sampling seeds are sent to Ollama; neither seeds nor source
 hashes are logged or persisted.
 
-The [output checks](model.md#configuration-and-generation) reject empty or malformed
+The [output checks](model.md#application-review-behavior) reject empty or malformed
 sections, capped output with no complete sentence or item, and reviews without a
 recognizable source reference when the source provides one. Rejections use fixed public
 errors without saving or logging the rejected content. These checks do not verify
@@ -50,13 +55,30 @@ The documented access path uses a host loopback port-forward. Application resour
 are namespaced; the cluster can also host other workloads. The application deployment
 scripts do not install or change CNI or storage components.
 
-The default Chart enables NetworkPolicy, but `values-minikube.yaml` explicitly disables
-it. With policies enabled, the manifests permit frontend-to-backend traffic, backend
-access to DynamoDB Local, DNS, and the selected Ollama service on port 11434. The backend
-policy also retains public IPv4 HTTPS egress, excluding private and link-local ranges;
-it is not restricted to model registries. The backend does not download model files.
-Policy enforcement depends on the CNI, and the independent Ollama Chart provides no
-network isolation of its own. Rendered policies alone do not prove isolation.
+The default Chart enables NetworkPolicy; `values-minikube.yaml` explicitly disables
+it. With policies enabled, the application permits these inference paths:
+
+| Caller | Destination | Purpose |
+| --- | --- | --- |
+| Frontend | Backend TCP 8000 | HTTP API and health requests |
+| Backend | DynamoDB Local TCP 8000 | Accounts |
+| Backend | Thrift worker TCP 9091 | Model handshake, start, poll and cancel |
+| Inference adapter | Its own loopback Ollama child TCP 11434 | Native model HTTP API |
+
+Backend and inference policies permit their selected DNS resolver. The backend
+retains public IPv4 HTTPS egress excluding private/link-local ranges. The inference
+chart optionally permits public HTTPS for missing-model downloads; it accepts RPC
+only from the configured backend namespace/release and local verification pods.
+Native HTTP has no Service port and binds only to loopback. Policy enforcement
+still depends on the CNI; rendered policies do not prove live isolation.
+
+The Thrift endpoint has no user-session authentication or TLS layer. The backend
+authorizes users before committing jobs; the worker trusts its internal caller.
+When NetworkPolicy is enabled, inference ingress selects the configured backend
+release and namespace, plus the chart's local verification Pods. Without enforcement,
+that selector does not provide access
+control. Frames, strings, decoded containers and application inputs have size limits;
+see the [RPC contract](../guides/apache-thrift.md#the-process-and-wire-boundaries).
 
 The backend's internal `/metrics` endpoint has no user-session requirement and exposes
 only bounded, content-free observations. The frontend does not proxy this endpoint.
@@ -75,13 +97,15 @@ credentials are protocol requirements, not permission to access a cloud account.
 
 Application service containers run as non-root with read-only root filesystems, dropped
 Linux capabilities, no privilege escalation, RuntimeDefault seccomp, and bounded
-resources. The optional volume-permission init containers run as root with `CHOWN` and
+resources. The inference workload has an independent image and receives only its execution
+ConfigMap, no signing Secret or application data PVC. Its writable mounts are its own model PVC at `/models` and `/tmp`.
+The optional volume-permission init containers run as root with `CHOWN` and
 `FOWNER` to prepare volume roots. Writable backend locations are `/data` and `/tmp`.
 The platform device plugin has separate host privileges.
 
 ## Logging and secrets
 
-Structured logs include a UTC timestamp, level, service, environment and event, plus
+Backend JSON logs include a UTC timestamp, level, service, environment and event, plus
 only allowlisted diagnostic fields. HTTP records use known route templates, never raw
 paths. Successful health probes are suppressed; failed probes remain visible.
 Request and review IDs support correlation. Review and generation events report bounded
@@ -89,7 +113,18 @@ timings, token counts and fixed validation reasons. Unknown measurements remain 
 where supported. See the [log contract](observability.md#safe-application-log-contract)
 for exact fields and timing boundaries.
 
-Removed text, removed character counts, punctuation, request/response bodies, raw path/URL/query, source code, source-derived hashes, generation seeds, prompts, token IDs or generated token content, decoded model output, passwords, cookies, tokens, usernames, and full exception messages are excluded. API validation errors never echo raw input. Uvicorn and frontend access logging are disabled, to prevent arbitrary path/query values from entering logs. Unexpected model/storage messages are translated to fixed public errors.
+The backend formatter excludes removed text, character-removal details,
+request/response bodies, raw paths/URLs/queries, source, source-derived hashes,
+generation seeds, prompts, token IDs, generated content, passwords, cookies,
+tokens, usernames and full exception messages. API validation errors never echo
+raw input. Uvicorn and frontend access logging are disabled. Unexpected model or
+storage messages become fixed public errors.
+
+Worker diagnostics use Python's text logging, rather than the backend JSON
+formatter. Application events do not include source or generated content, but
+HTTP client diagnostics can include the configured Ollama endpoint and HTTP status.
+These are separate log streams with different field guarantees; see the
+[log contract](observability.md#safe-application-log-contract).
 
 The local Helm CLI's `init` command creates a random signing Secret only when the
 configured Secret is missing. An existing Secret is checked for a signing key of at

@@ -73,10 +73,12 @@ Install the [published Ollama release](../../deploy/helm/local-ollama/README.md#
 first, as `review-ollama` in `local-inference`, serving the pinned `qwen3:1.7b` model.
 Use the snapshot's Ollama `values-release.yaml`. Private images need a pull Secret
 in `local-inference` as well as the separate application namespace.
-The default endpoint is `http://review-ollama.local-inference.svc.cluster.local:11434`.
-The application Chart connects to this Service; it does not install Ollama itself. The
-application validates its selected model digest, capabilities and context at startup.
-Only Ollama needs registry access to download a missing model.
+The existing `review-ollama` release now runs the independently packaged inference
+image: one entry point supervises Ollama and the generic Thrift server. The backend
+connects directly to `review-ollama.local-inference.svc.cluster.local:9091`. The
+application chart no longer installs a separate RPC worker. Native Ollama HTTP stays
+on loopback inside inference. See [coordinated migration/rollback](../operations/inference-migration.md)
+before upgrading an existing installation; preserve PVCs, secrets and ownership.
 
 ### One-time namespace and Secret preparation
 
@@ -152,26 +154,19 @@ cp deploy/helm/local-review/values-minikube.yaml "$REVIEW_VALUES"
 Only make this copy on initial setup; keep your existing environment file on
 upgrades. For private images, set `imagePullSecrets: [{name: ghcr-pull}]` in that file.
 Other supported overrides include `signingSecret.existingSecret`,
-`persistence.storageClass`, `persistence.*.existingClaim`, and `model.ollamaBaseUrl`.
-The backend currently accepts local HTTP Ollama endpoints on port 11434; arbitrary
-remote DNS names are not supported by its runtime configuration validation.
+`persistence.storageClass`, `persistence.*.existingClaim` and `inference.host/port`.
+Application model identity assertions use `model.expectedId/expectedRevision`.
+Execution policy belongs to the inference chart, not a shared backend ConfigMap.
 Do not override release image digests in the environment file.
 
-The Minikube example explicitly sets `networkPolicy.enabled: false`. It provides
-**no NetworkPolicy isolation**, and is intended for local learning. To enable
-policies, use an enforcing CNI and enable the default cluster selectors:
-
-```yaml
-networkPolicy:
-  enabled: true
-  ollamaNamespace: local-inference
-  ollamaRelease: review-ollama
-```
-
-If changing release or namespace, update `model.ollamaBaseUrl` to match. For host
-Ollama instead, explicitly set the URL to `http://host.minikube.internal:11434`,
-clear `networkPolicy.ollamaNamespace`, and supply `networkPolicy.ollamaHostCidr`
-as the actual private host IPv4 `/32`. Helm does not discover host addresses.
+The Minikube application overlay disables its NetworkPolicy. For isolation, use an
+enforcing CNI and enable `networkPolicy.enabled`, with `inferenceNamespace` and
+`inferenceRelease` selecting the actual model release. Match `inference.host` to
+that release's fully qualified Service name. Configure the inference chart's
+`networkPolicy.backendNamespace/backendRelease` to accept the selected application
+namespace/release; this is required for the custom Helm namespace used here.
+Native 11434 is never exposed across Pods. Model downloads use inference-only
+registry egress when enabled.
 
 Inspect the approved configuration without contacting the cluster:
 
@@ -195,7 +190,10 @@ development images, not the published release. On main, use the provided Minikub
 for offline linting and rendering. To install from main, you must also supply or load
 the application images.
 
-The startup budget defaults to 3600 seconds; the 65-minute Helm timeout allows
+The startup budget defaults to 3600 seconds; the worker opens its listener only
+after validating Ollama, and the backend checks the service's model identity and
+readiness. That handshake does not require an empty service queue. The
+65-minute Helm timeout allows
 additional scheduling and initialization time. A timeout leaves resources for
 inspection. `--wait` checks Kubernetes readiness, not a completed model review.
 The Chart uses one release per namespace, single replicas and `Recreate` updates,

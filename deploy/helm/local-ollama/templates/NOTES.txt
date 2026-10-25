@@ -1,17 +1,13 @@
-Ollama API: http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:11434
-Ready means initial preparation is complete and the Ollama process and API are available.
-It does not verify GPU placement or require a model to remain loaded.
+LLM Thrift: {{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:9091
+Health: http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:11435/ready
+The inference container owns Ollama; its native HTTP binds only to loopback.
 
-{{ if .Values.model.bootstrap }}
-Verify inference and GPU placement for the bootstrap model:
+Verify real generic inference and GPU placement:
   helm test {{ .Release.Name }} --kube-context <context> -n {{ .Release.Namespace }} --logs
-{{ else }}
-Model bootstrap is disabled. Install and verify your chosen model through Ollama.
-{{ end }}
 
 Inspect:
-  kubectl --context <context> -n {{ .Release.Namespace }} exec deployment/{{ .Release.Name }} -c ollama -- ollama ps
+  kubectl --context <context> -n {{ .Release.Namespace }} exec deployment/{{ .Release.Name }} -c inference -- ollama ps
 
 Model PVC {{ include "ollama.claim" . }} is retained on Helm uninstall.
-Deleting the namespace also deletes its PVCs; do not do so to preserve models.
-The API has no authentication and is intended only for a trusted local cluster.
+Preserve namespace, PVC and ownership during migration/rollback.
+The internal RPC API has no authentication. Use the scoped NetworkPolicy with an enforcing CNI.

@@ -83,7 +83,7 @@ def metrics_valid(metrics, settings):
 
     for section in limits:
         input_tokens = metrics.get("section_input_tokens", {}).get(section) or 0
-        if not 0 < input_tokens <= settings.model_max_input_tokens:
+        if not 0 < input_tokens:
             return False
     for section, limit in limits.items():
         limit_reached = metrics.get("section_limits_reached", {}).get(section)

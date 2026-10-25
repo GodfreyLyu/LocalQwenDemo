@@ -159,7 +159,7 @@ def test_dashboard_discovery_datasource_and_measurement_scopes(resources):
     assert "GPU utilization is **not measured**" in inference["panels"][0]["options"]["content"]
     cpu = next(panel for panel in inference["panels"] if panel["title"] == "Container CPU usage")
     assert 'container="review-backend"' in cpu["targets"][0]["expr"]
-    assert 'container="ollama"' in cpu["targets"][1]["expr"]
+    assert 'container="inference"' in cpu["targets"][1]["expr"]
     for panel in boards[0]["panels"]:
         if panel["title"].startswith("HTTP"):
             assert all('route!~"/health/.*"' in target["expr"] for target in panel["targets"])

@@ -16,7 +16,7 @@ from scripts.tests.support.paths import ROOT
 def test_schema_rejects_multiple_workers_and_invalid_configuration():
     for setting in (
         "backend.replicas=2",
-        "model.cpuThreads=0",
+        "model.maxOutputTokens=0",
         "config.queueCapacity=100",
         "model.backend=invalid",
     ):
@@ -117,47 +117,23 @@ def test_retired_model_cache_values_do_not_change_resources():
 
 @pytest.mark.integration
 @pytest.mark.requires_helm
-def test_ollama_rule_is_an_egress_rule():
-    resources = validate_helm.validate_resources(
-        validate_helm.render(
-            ROOT,
-            settings=[
-                "networkPolicy.ollamaNamespace=",
-                "model.ollamaBaseUrl=http://host.minikube.internal:11434",
-                "networkPolicy.ollamaHostCidr=192.168.49.1/32",
-            ],
-        )
-    )
+def test_thrift_egress_is_scoped_to_the_preserved_inference_release():
+    resources = validate_helm.validate_resources(validate_helm.render(ROOT))
     policy = resources["NetworkPolicy", "review-backend"]["spec"]
-    assert policy["policyTypes"] == ["Ingress", "Egress"]
-    assert any(
-        rule.get("to") == [{"ipBlock": {"cidr": "192.168.49.1/32"}}]
-        and rule["ports"] == [{"protocol": "TCP", "port": 11434}]
-        for rule in policy["egress"]
-    )
+    assert any(rule["ports"] == [{"port": 9091, "protocol": "TCP"}] for rule in policy["egress"])
+    assert not any(p["port"] == 11434 for r in policy["egress"] for p in r["ports"])
 
 
 @pytest.mark.integration
 @pytest.mark.requires_helm
 @pytest.mark.parametrize(
-    "cidr", ["", "0.0.0.0/0", "192.168.1.0/24", "192.168.999.1/32", "8.8.8.8/32"]
+    "host", ["example.com", "127.0.0.1", "wrong.local-inference.svc.cluster.local"]
 )
-def test_enabled_ollama_policy_rejects_missing_or_invalid_host(cidr):
+def test_enabled_policy_rejects_mismatched_inference_host(host):
     result = subprocess.run(
-        [
-            "helm",
-            "template",
-            "test",
-            str(ROOT / snapshot.CHART),
-            "--set-string",
-            "networkPolicy.ollamaHostCidr=" + cidr,
-            "--set-string",
-            "networkPolicy.ollamaNamespace=",
-            "--set-string",
-            "model.ollamaBaseUrl=http://host.minikube.internal:11434",
-        ],
+        ["helm", "template", "test", str(ROOT / snapshot.CHART), "--set", "inference.host=" + host],
         capture_output=True,
         text=True,
     )
     assert result.returncode != 0
-    assert "ollamaHostCidr" in result.stderr
+    assert "inference.host" in result.stderr

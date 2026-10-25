@@ -14,10 +14,13 @@ without a matching release are rejected; there is no automatic ownership takeove
 Install the Python environment described in [local development](local-development.md),
 Helm 3.17+ or Helm 4, kubectl, Docker and Minikube. Use an existing single-node
 Docker-driver profile, a usable `standard` StorageClass, and an Ollama Service at
-`review-ollama.local-inference.svc.cluster.local:11434` with the Chart's pinned model.
+`review-ollama.local-inference.svc.cluster.local:9091` with the Chart's pinned model.
 The local profile disables NetworkPolicy isolation. If enabling policies, use an
-enforcing CNI; defaults select the Ollama release's namespace and Pods. Host Ollama
-requires explicit URL and policy overrides described in the [Helm guide](helm-release.md).
+enforcing CNI. The backend calls the independent inference release on Thrift 9091; native HTTP
+stays on loopback inside that workload. A host deployment must also run the generic
+service and expose its Thrift endpoint; a native Ollama HTTP URL cannot replace
+`inference.host/port`. Configure the endpoint and policies as described in the
+[Helm guide](helm-release.md).
 For the krunkit GPU cluster, use standard Helm commands instead of this script.
 
 Start with 4 CPUs / 8 GiB for one application, leaving host capacity for Ollama.
@@ -53,7 +56,7 @@ Private registry credentials remain an explicit external prerequisite.
 
 `up` builds native backend/frontend images using the Docker layer cache, assigns
 unique tags, verifies architecture and loaded CRI contents, and loads them into the
-selected Minikube. It uses `pullPolicy: Never` for these local images and clears
+selected Minikube. The inference project has its own image and entry point. It uses `pullPolicy: Never` for these local images and clears
 any inherited backend/frontend digest. It does not deploy published release
 images: use standard Helm and `release-values.yaml` for that workflow.
 
@@ -111,10 +114,6 @@ scripts/minikube_demo.sh logs --profile minikube
 ```
 
 ```bash
-scripts/minikube_demo.sh verify --profile minikube
-```
-
-```bash
 scripts/minikube_demo.sh port-forward --profile minikube
 ```
 
@@ -146,14 +145,26 @@ a foreground forward on the same port:
 python3 scripts/minikube_endpoints.py stop
 ```
 
-`verify` creates test accounts and a real review. It checks authentication, CSRF,
-account isolation, model identity, and persisted results. By default, it confirms that
-workloads are idle and blocks new submissions before restarting the local database and
-backend. It then checks that the selected Ollama model's digest and reported size are
-unchanged and that accounts, cookies and review history survived. This does not test
-Ollama's separate model PVC or restart Ollama. `--skip-restart` produces a partial result and exits
-nonzero, not a persistence pass. No browser automation is implied; manual UI acceptance
-remains separate.
+### Automated acceptance limitation
+
+The `verify` subcommand is currently blocked for this Thrift refactor. Its
+[`cache_inventory` helper](../../scripts/deployment/common/acceptance.py) still
+reads `ollama_base_url`, `ollama_model` and `ollama_model_digest` from backend
+`Settings`. Those fields were removed when native execution moved to the generic
+service. The inventory step therefore fails before API and persistence acceptance;
+`up` or a Ready Pod must not be reported as a full verification pass.
+
+The helper needs to use the service's public model information, with any model
+storage checks performed under inference ownership. Until that code is migrated,
+use the normal UI to check authentication, a completed real review and saved
+history. Persistence across controlled restarts and automated CLI acceptance remain
+separate, unverified requirements; this documentation update does not change them.
+
+The remaining `verify` implementation contains authentication/CSRF/isolation checks
+and a fenced database/backend restart to check saved accounts, cookies and reviews.
+It does not restart the independent inference release or test its model PVC.
+`--skip-restart` is designed to produce a partial result and a nonzero exit, and
+the CLI does not automate browser acceptance.
 
 Acceptance records bind to cluster/namespace identity, Helm revision, computed
 values and actual runtime image IDs. A manual Helm upgrade invalidates older

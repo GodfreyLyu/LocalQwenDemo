@@ -10,6 +10,9 @@ spec:
   selector:
     {{- include "ollama.selector" . | nindent 4 }}
   ports:
-    - name: http
-      port: 11434
-      targetPort: http
+    - name: thrift
+      port: 9091
+      targetPort: thrift
+    - name: health
+      port: 11435
+      targetPort: health

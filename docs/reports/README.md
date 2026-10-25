@@ -13,6 +13,7 @@ do not validate the current checkout.
 | 2026-09-21 | [CPU measurement A](minikube-cpu-measurement-2026-09-21.md) | One timed-out review, with observation gaps and host memory pressure |
 | 2026-09-21 | [CPU measurement B](minikube-cpu-b-measurement-2026-09-21.md) | One completed review with OMP=2; no controlled causal, repeatability or full acceptance claim |
 | 2026-10-03 | [Ollama integration acceptance](ollama-integration-2026-10-03.md) | Host Ollama integration, API and browser results; network isolation failed verification, and timings are not a controlled benchmark |
+| 2026-10-25 | [Generic Thrift service verification](../testing/generic-llm-verification-2026-10-25.md) | Refactor checks and real host-model execution before the Maven SDK; live krunkit deployment and manual quality assessment remain unverified |
 
 The original [A evidence](../evidence/minikube-cpu-measurement-2026-09-21.json) and
 [B evidence](../evidence/minikube-cpu-b-measurement-2026-09-21.json) are unchanged.

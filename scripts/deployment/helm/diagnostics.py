@@ -1,5 +1,4 @@
 import json
-import subprocess
 
 from deployment.common.target import pod_requests, quantity, require, run
 
@@ -52,24 +51,6 @@ def doctor(session, values, resources):
         }
         if needed + other > amount:
             warnings.append(f"Insufficient {key} capacity for configured requests")
-    if ".svc.cluster.local:" not in values["model"]["ollamaBaseUrl"]:
-        # Cluster DNS is resolved in Pods; their readiness verifies Service access.
-        # Probe host endpoints from the selected Docker node only.
-        try:
-            run(
-                "docker",
-                "exec",
-                session.target.node,
-                "curl",
-                "--fail",
-                "--silent",
-                "--max-time",
-                "10",
-                values["model"]["ollamaBaseUrl"].rstrip("/") + "/api/tags",
-                env=session.target.env,
-            )
-        except (RuntimeError, subprocess.TimeoutExpired):
-            warnings.append("Ollama is unreachable from the node; Pod readiness must verify access")
     sc = session.target.object("storageclass", values["persistence"]["storageClass"])
     if not sc:
         warnings.append("Configured StorageClass is missing")
