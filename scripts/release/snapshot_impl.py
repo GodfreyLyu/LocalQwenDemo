@@ -48,7 +48,6 @@ def inputs(root):
             "backend/.dockerignore",
             "backend/pyproject.toml",
             "backend/requirements.lock",
-            "backend/requirements-model.lock",
         }
     ]
     frontend = [p for p in tracked if p.startswith("frontend/")]

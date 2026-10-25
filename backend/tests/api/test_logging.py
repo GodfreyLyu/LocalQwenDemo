@@ -27,12 +27,9 @@ def test_generation_metric_formatter_keeps_only_safe_fixed_fields():
     record.duration_ms = 123
     record.generated_tokens = 24
     diagnostics = {
-        "section_prepare_ms": {"summary": 2, "findings": 3, "suggestions": None},
         "section_generation_ms": {"summary": 50, "findings": 73, "suggestions": None},
         "section_first_token_ms": {"summary": 10, "findings": 20, "suggestions": None},
         "section_input_tokens": {"summary": 40, "findings": 45, "suggestions": None},
-        "worker_intraop_threads": 2,
-        "worker_interop_threads": 10,
     }
     for key, value in diagnostics.items():
         setattr(record, key, value)

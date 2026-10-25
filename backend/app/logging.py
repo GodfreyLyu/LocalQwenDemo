@@ -95,12 +95,9 @@ class SafeFormatter(logging.Formatter):
             "output_limit_reached",
             "output_token_limit",
             "section_generated_tokens",
-            "section_prepare_ms",
             "section_generation_ms",
             "section_first_token_ms",
             "section_input_tokens",
-            "worker_intraop_threads",
-            "worker_interop_threads",
             "section_limits_reached",
             "section_trailing_fragments_removed",
         ):

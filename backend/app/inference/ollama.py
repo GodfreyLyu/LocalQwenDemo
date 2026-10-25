@@ -314,8 +314,6 @@ class OllamaModel:
     def review(self, source: str, language: str, stop: threading.Event) -> str:
         metrics = GenerationMetrics(
             output_token_limit=self.settings.model_max_output_tokens,
-            worker_intraop_threads=None,
-            worker_interop_threads=None,
             sections={s: SectionMetrics() for s, _, _ in SECTION_SPECS},
         )
         limits = allocate_section_token_limits(self.settings.model_max_output_tokens)

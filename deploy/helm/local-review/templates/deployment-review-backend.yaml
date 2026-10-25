@@ -28,8 +28,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       containers:
-      - env:
-        envFrom:
+      - envFrom:
         - configMapRef:
             name: review-config
         - secretRef:

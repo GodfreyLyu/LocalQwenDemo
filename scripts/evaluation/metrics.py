@@ -26,8 +26,6 @@ class MetricCapture(logging.Handler):
             "duration_ms",
             "generated_tokens",
             "output_token_limit",
-            "worker_intraop_threads",
-            "worker_interop_threads",
         ):
             value = getattr(record, key, None)
             if type(value) is int and value >= 0:
@@ -39,7 +37,6 @@ class MetricCapture(logging.Handler):
         for key in (
             "section_generated_tokens",
             "section_input_tokens",
-            "section_prepare_ms",
             "section_generation_ms",
             "section_first_token_ms",
             "section_limits_reached",

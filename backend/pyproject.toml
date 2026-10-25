@@ -18,7 +18,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-model = []  # Compatibility extra; Ollama owns all model dependencies.
 dev = ["httpx>=0.28,<1", "pytest>=8.4,<10", "ruff>=0.12,<1", "moto[dynamodb]>=5,<6", "pyyaml>=6,<7"]
 
 [tool.setuptools.packages.find]

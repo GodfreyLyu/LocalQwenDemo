@@ -154,7 +154,6 @@ The formatter may add only these fields:
 | `error_code`, `outcome` | Fixed enums; unknown values become a safe fallback |
 | `validation_reason` | One of the fixed validation enums; an unknown value is omitted |
 | generation detail maps | Integer, boolean or null values under the three fixed section names only |
-| `worker_intraop_threads`, `worker_interop_threads` | Null for Ollama; inference threads are outside the backend |
 | `stage`, `exception_type`, `errno`, `http_status` | Allowlisted stage, bounded exception class name and numeric diagnostics; no exception message |
 | `startup_attempt`, `startup_wait_ms`, `startup_elapsed_ms` | Bounded startup retry counts and timings |
 

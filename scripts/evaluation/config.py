@@ -1,11 +1,9 @@
 import json
-import logging
 
 from tooling_paths import ROOT
 
 from app.config import Settings  # noqa: E402
 
-logger = logging.getLogger("review")
 TOOL_VERSION = "3.1.0"
 FIXTURES = ROOT / "scripts/evaluation/fixtures-v1.json"
 OUTPUT_ROOT = ROOT / ".local/model-evaluations"

@@ -185,7 +185,7 @@ instance its own settings and stores. See the
 [implementation map](../reference/architecture.md#implementation-map) for module
 responsibilities and the [testing guide](../testing/README.md) for test coverage.
 
-### Canonical imports and compatibility
+### Canonical imports
 
 Use `app.api.*`, `app.inference.*` and `app.persistence.*` for their respective
 implementations. `app.inference.model` defines the model protocol, and
@@ -221,9 +221,8 @@ the selected model and safe startup events. Preserve partial downloads and exist
 ## Dependency maintenance
 
 `backend/requirements.lock`, `backend/requirements-dev.lock`, and
-`frontend/package-lock.json` pin resolved dependencies. The empty
-`backend/requirements-model.*` files and `model` extra remain compatibility inputs;
-Ollama owns the model dependencies. The backend Dockerfile installs only application
+`frontend/package-lock.json` pin resolved dependencies. Ollama owns the model
+dependencies. The backend Dockerfile installs only application
 and HTTP client dependencies, with no Torch or Transformers. To update Python locks,
 use `uv pip compile` with Python 3.12, then review and rerun the relevant checks.
 Review Docker base image tags before updating the local deployment.

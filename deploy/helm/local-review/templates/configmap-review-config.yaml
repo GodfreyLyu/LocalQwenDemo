@@ -4,12 +4,7 @@
 apiVersion: v1
 data:
   ALLOWED_ORIGIN: {{ .Values.config.allowedOrigin | toString | quote }}
-  AWS_ACCESS_KEY_ID: local
-  AWS_CONFIG_FILE: /dev/null
-  AWS_EC2_METADATA_DISABLED: 'true'
   AWS_REGION: ap-northeast-1
-  AWS_SECRET_ACCESS_KEY: local
-  AWS_SHARED_CREDENTIALS_FILE: /dev/null
   COOKIE_SECURE: {{ .Values.config.cookieSecure | toString | quote }}
   DATA_DIR: /data
   DEPLOYMENT_ENVIRONMENT: {{ .Values.config.deploymentEnvironment | toString | quote }}
