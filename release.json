@@ -1,23 +1,23 @@
 {
   "schemaVersion": 3,
-  "sourceSha": "a8d82dae3b544de571fd316e3bec035ebb84359a",
+  "sourceSha": "eb0e55089f73462bf7faa32819de9b896a249d82",
   "repository": "GodfreyLyu/LocalQwenDemo",
   "inputs": {
-    "backend": "4c7cc113beae38feb777382c86871a4f78977015a47d3c6361a35ef61df2a155",
-    "frontend": "50fd83680dfd7b8297b692e1c60a3893378bfa822a1b6f6417804ac284195f8f",
+    "backend": "d842de7be17af1b5a09a9c32b1d19bca380a5e452c29cb40825c2142426ed118",
+    "frontend": "0d5cc79482f0530bdc7c6d8481e11987797c9e1dcf58d365e8d29dd5abe765e8",
     "ollama": "f041dc402fcaa346bca837eb11bcc552b38866f0d60521846d5b081fb6817c62",
-    "deployment": "4977abd8a531663f902e80e3b6a2ac44682f53c3c6ccfc1fa3bb3e331ad0c313"
+    "deployment": "c107992033e2e97f540a3038de8f0df293eed90cbc1d41ca820b0b86312d65ae"
   },
   "images": {
     "backend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-backend",
-      "sourceSha": "2be4bb3c12f637a34b5dd8f8ba1a467648e7a7d6",
-      "digest": "sha256:ed0420b678bc2bccf28716ab2fb65021220a0a9c107fc2262d30902a7a077e52"
+      "sourceSha": "eb0e55089f73462bf7faa32819de9b896a249d82",
+      "digest": "sha256:70e4ea97edc24976482299baedaf23001a198943691d4299de0fa4f1bdb97712"
     },
     "frontend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-frontend",
-      "sourceSha": "2be4bb3c12f637a34b5dd8f8ba1a467648e7a7d6",
-      "digest": "sha256:2d567c0e9c91341e72563ab59043392a273ef034f3dbfdfa193fe5b0b743fd59"
+      "sourceSha": "eb0e55089f73462bf7faa32819de9b896a249d82",
+      "digest": "sha256:cff7d9e8cd1b9fcfa1f5ba72c59543558830eb8cb65ba048fe1d19767d5bd5a5"
     },
     "ollama": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-ollama",
@@ -26,15 +26,15 @@
     }
   },
   "candidate": {
-    "version": "0.1.3-rc.20",
-    "branch": "release-candidate/0.1.3-rc.20",
-    "runId": "40092062331",
-    "runNumber": 20,
-    "baseSha": "657d186b1c8c4ce16ca63eb78e4f2945bf6e425c"
+    "version": "0.1.3-rc.23",
+    "branch": "release-candidate/0.1.3-rc.23",
+    "runId": "40172906642",
+    "runNumber": 23,
+    "baseSha": "d5a2d4a17a349d51cc38727fd1f5cee4b51f3902"
   },
   "chartVersions": {
-    "local-review": "0.1.3-rc.20",
+    "local-review": "0.1.3-rc.23",
     "local-ollama": "0.1.1"
   },
-  "chartVersion": "0.1.3-rc.20"
+  "chartVersion": "0.1.3-rc.23"
 }
