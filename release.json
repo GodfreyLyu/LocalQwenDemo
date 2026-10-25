@@ -1,23 +1,23 @@
 {
   "schemaVersion": 3,
-  "sourceSha": "eb0e55089f73462bf7faa32819de9b896a249d82",
+  "sourceSha": "e9616b4ce1f13dd6371851d5fc8a1c5ebc7c3906",
   "repository": "GodfreyLyu/LocalQwenDemo",
   "inputs": {
-    "backend": "d842de7be17af1b5a09a9c32b1d19bca380a5e452c29cb40825c2142426ed118",
-    "frontend": "0d5cc79482f0530bdc7c6d8481e11987797c9e1dcf58d365e8d29dd5abe765e8",
+    "backend": "91186b290772f44f641e5153dd429cc82e3a6ee5514ed6e59118cdae28e02269",
+    "frontend": "9a02f9ba777593e44626a54d4fae997821232bd63d7ee9ead7039d6245f2abde",
     "ollama": "f041dc402fcaa346bca837eb11bcc552b38866f0d60521846d5b081fb6817c62",
     "deployment": "c107992033e2e97f540a3038de8f0df293eed90cbc1d41ca820b0b86312d65ae"
   },
   "images": {
     "backend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-backend",
-      "sourceSha": "eb0e55089f73462bf7faa32819de9b896a249d82",
-      "digest": "sha256:70e4ea97edc24976482299baedaf23001a198943691d4299de0fa4f1bdb97712"
+      "sourceSha": "e9616b4ce1f13dd6371851d5fc8a1c5ebc7c3906",
+      "digest": "sha256:c36032e145b80cd22ed9402abe5091fb9a6dfdcaa898200111db1f1abd8c7b63"
     },
     "frontend": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-frontend",
-      "sourceSha": "eb0e55089f73462bf7faa32819de9b896a249d82",
-      "digest": "sha256:cff7d9e8cd1b9fcfa1f5ba72c59543558830eb8cb65ba048fe1d19767d5bd5a5"
+      "sourceSha": "e9616b4ce1f13dd6371851d5fc8a1c5ebc7c3906",
+      "digest": "sha256:0836ff7f67dea6dd51b498b0b312d3395e13c6918531038f61829026dd73cbef"
     },
     "ollama": {
       "repository": "ghcr.io/godfreylyu/localqwendemo-ollama",
@@ -26,15 +26,15 @@
     }
   },
   "candidate": {
-    "version": "0.1.3-rc.23",
-    "branch": "release-candidate/0.1.3-rc.23",
-    "runId": "40172906642",
-    "runNumber": 23,
-    "baseSha": "d5a2d4a17a349d51cc38727fd1f5cee4b51f3902"
+    "version": "0.1.3-rc.24",
+    "branch": "release-candidate/0.1.3-rc.24",
+    "runId": "40184369792",
+    "runNumber": 24,
+    "baseSha": "7911fedc01db2db61c21c3835e47bd0705a1b0ff"
   },
   "chartVersions": {
-    "local-review": "0.1.3-rc.23",
+    "local-review": "0.1.3-rc.24",
     "local-ollama": "0.1.1"
   },
-  "chartVersion": "0.1.3-rc.23"
+  "chartVersion": "0.1.3-rc.24"
 }
