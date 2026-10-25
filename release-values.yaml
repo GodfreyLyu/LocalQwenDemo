@@ -1,14 +1,14 @@
 backend:
   image:
     repository: ghcr.io/godfreylyu/localqwendemo-backend
-    digest: sha256:70e4ea97edc24976482299baedaf23001a198943691d4299de0fa4f1bdb97712
-    tag: sha-eb0e55089f73462bf7faa32819de9b896a249d82
+    digest: sha256:c36032e145b80cd22ed9402abe5091fb9a6dfdcaa898200111db1f1abd8c7b63
+    tag: sha-e9616b4ce1f13dd6371851d5fc8a1c5ebc7c3906
     pullPolicy: IfNotPresent
 frontend:
   image:
     repository: ghcr.io/godfreylyu/localqwendemo-frontend
-    digest: sha256:cff7d9e8cd1b9fcfa1f5ba72c59543558830eb8cb65ba048fe1d19767d5bd5a5
-    tag: sha-eb0e55089f73462bf7faa32819de9b896a249d82
+    digest: sha256:0836ff7f67dea6dd51b498b0b312d3395e13c6918531038f61829026dd73cbef
+    tag: sha-e9616b4ce1f13dd6371851d5fc8a1c5ebc7c3906
     pullPolicy: IfNotPresent
 config:
-  releaseSha: eb0e55089f73462bf7faa32819de9b896a249d82
+  releaseSha: e9616b4ce1f13dd6371851d5fc8a1c5ebc7c3906
