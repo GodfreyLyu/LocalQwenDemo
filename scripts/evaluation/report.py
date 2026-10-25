@@ -95,7 +95,6 @@ def build_report(settings, suite, selected, real, manual):
                 ROOT / f"backend/{name}"
                 for name in (
                     "requirements.lock",
-                    "requirements-model.lock",
                     "requirements-dev.lock",
                 )
             ]

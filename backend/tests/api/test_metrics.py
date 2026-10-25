@@ -312,8 +312,6 @@ def test_partial_generation_skips_unobserved_values_and_unknown_sections(tmp_pat
     metrics.generation(
         GenerationMetrics(
             output_token_limit=20,
-            worker_intraop_threads=None,
-            worker_interop_threads=None,
             sections={
                 "summary": SectionMetrics(
                     generated_tokens=5,

@@ -18,7 +18,6 @@ class SectionMetrics:
     limit_reached: bool = False
     trailing_fragment_removed: bool = False
     # None means a stage was not observed, rather than completed in zero time.
-    prepare_ms: int | None = None
     generation_ms: int | None = None
     first_token_ms: int | None = None
     input_tokens: int | None = None
@@ -27,8 +26,6 @@ class SectionMetrics:
 @dataclass
 class GenerationMetrics:
     output_token_limit: int
-    worker_intraop_threads: int | None
-    worker_interop_threads: int | None
     sections: dict[str, SectionMetrics] = field(default_factory=dict)
     duration_seconds: float = 0.0
 
@@ -39,12 +36,9 @@ class GenerationMetrics:
             "generated_tokens": generated_tokens,
             "output_limit_reached": generated_tokens >= self.output_token_limit,
             "output_token_limit": self.output_token_limit,
-            "worker_intraop_threads": self.worker_intraop_threads,
-            "worker_interop_threads": self.worker_interop_threads,
         }
         for key, attribute in (
             ("section_generated_tokens", "generated_tokens"),
-            ("section_prepare_ms", "prepare_ms"),
             ("section_generation_ms", "generation_ms"),
             ("section_first_token_ms", "first_token_ms"),
             ("section_input_tokens", "input_tokens"),

@@ -8,8 +8,6 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
     "esModuleInterop": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },

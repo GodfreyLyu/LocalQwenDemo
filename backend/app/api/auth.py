@@ -13,9 +13,6 @@ from app.config import Settings
 from app.domain import SessionRecord, UserRecord
 from app.errors import AppError
 
-# Compatibility for existing imports; business code uses app.rate_limit directly.
-from app.rate_limit import RateLimiter as RateLimiter
-
 PASSWORDS = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1, type=Type.ID)
 DUMMY_HASH = PASSWORDS.hash(secrets.token_urlsafe(32))
 
