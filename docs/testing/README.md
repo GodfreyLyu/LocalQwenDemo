@@ -173,8 +173,9 @@ and frontend, and [independent service setup](../guides/apache-thrift.md#run-the
 for `inference-service/.venv`. No Docker daemon, Minikube cluster, cloud account or
 infrastructure provider is required when the matching Thrift compiler is installed
 locally. Maven may download dependencies/plugins on the first run; tests do not
-download model weights or container images. CI instead runs the compiler through
-the pinned `thrift:0.25.0` container image.
+download model weights or container images. CI builds the compiler from the
+official Apache Thrift 0.25.0 source archive after checking its pinned SHA-256,
+with language libraries, upstream tests and tutorials disabled.
 
 ```bash
 bash scripts/check.sh

@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     if not shutil.which("thrift"):
-        parser.error("Install Apache Thrift 0.25.0, or use the thrift:0.25.0 image.")
+        parser.error("Install Apache Thrift 0.25.0; see docs/guides/apache-thrift.md.")
     version = subprocess.check_output(["thrift", "--version"], text=True).strip()
     if version != "Thrift version 0.25.0":
         parser.error(f"Expected Apache Thrift 0.25.0; found {version}.")

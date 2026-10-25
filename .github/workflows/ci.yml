@@ -43,11 +43,16 @@ jobs:
           java-version: '11'
       - name: Install Thrift compiler
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bison cmake flex g++ make
           mkdir -p .local/thrift
-          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -w /work thrift:0.25.0 thrift --version
-          printf '#!/bin/sh\nexec docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:$PWD" -w "$PWD" -v /tmp:/tmp thrift:0.25.0 thrift "$@"\n' > .local/thrift/thrift
-          chmod +x .local/thrift/thrift
-          echo "$PWD/.local/thrift" >> "$GITHUB_PATH"
+          curl -fsSL --retry 3 https://archive.apache.org/dist/thrift/0.25.0/thrift-0.25.0.tar.gz -o .local/thrift/thrift-0.25.0.tar.gz
+          echo '66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214  .local/thrift/thrift-0.25.0.tar.gz' | sha256sum --check
+          tar -xzf .local/thrift/thrift-0.25.0.tar.gz -C .local/thrift
+          cmake -S .local/thrift/thrift-0.25.0 -B .local/thrift/build -DBUILD_LIBRARIES=OFF -DBUILD_TESTING=OFF -DBUILD_TUTORIALS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build .local/thrift/build --target thrift-compiler --parallel 2
+          .local/thrift/build/compiler/cpp/bin/thrift --version
+          echo "$PWD/.local/thrift/build/compiler/cpp/bin" >> "$GITHUB_PATH"
       - name: Independent inference and Java checks
         run: |
           python -m venv inference-service/.venv
