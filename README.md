@@ -98,6 +98,10 @@ both forwarding options, rollback and cleanup.
 
 ## Architecture
 
+Start with the [system diagram](docs/reference/architecture.md#system-layout),
+[backend and data design](docs/reference/architecture.md#types-and-dependency-boundaries),
+and [workflow diagrams](docs/reference/workflows.md) for a visual project walkthrough.
+
 The browser reaches Nginx through a loopback port-forward. Nginx serves the React UI
 and proxies `/api/` and `/health/` to FastAPI on the same origin.
 

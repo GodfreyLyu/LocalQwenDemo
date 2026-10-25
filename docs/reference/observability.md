@@ -8,6 +8,54 @@ the application Chart owns its ServiceMonitor, rules and dashboards. Use the
 [local runbook](../operations/observability.md) and record measured, unavailable and
 inferred facts separately. Monitoring does not run synthetic reviews or repair workloads.
 
+## Collection and ownership
+
+Solid arrows show collection or queries; dotted arrows show configuration supplied
+by the application Chart. The monitoring services belong to the optional Terraform
+platform in the `monitoring` namespace; application resources live in
+`local-review-demo`. Application logs remain a separate Kubernetes log stream.
+
+```mermaid
+flowchart TB
+    accTitle: Optional local monitoring and application log flow
+    accDescr: The application Chart supplies ServiceMonitor, alert rules and dashboard ConfigMaps. Terraform owns the monitoring platform. Prometheus scrapes internal backend metrics and cluster exporters, Grafana queries Prometheus and loads dashboard ConfigMaps, and Alertmanager receives local alerts. Operators read JSON logs separately through kubectl or the local Helm CLI.
+    subgraph application["Application resources"]
+        backend["Backend /metrics"]
+        monitor["ServiceMonitor"]
+        rules["PrometheusRule"]
+        dashboards["Dashboard ConfigMaps"]
+    end
+    subgraph platform["Monitoring platform"]
+        prometheus["Prometheus"]
+        grafana["Grafana and sidecar"]
+        alerts["Alertmanager"]
+        exporters["Node and K8s exporters"]
+    end
+    logs["JSON logs | stderr"]
+    operator["Operator logs command"]
+    monitor -.->|"Discover targets"| prometheus
+    rules -.->|"Alert rules"| prometheus
+    dashboards -.->|"Provision"| grafana
+    prometheus -->|"Scrape /metrics"| backend
+    prometheus -->|"Scrape"| exporters
+    grafana -->|"Query"| prometheus
+    prometheus -->|"Alert"| alerts
+    backend -->|"Emit"| logs
+    operator -->|"Read"| logs
+```
+
+The [system layout](architecture.md#system-layout) shows the inference and data
+services. Resource dashboards observe Ollama through Kubernetes/container metrics;
+the application does not expose an Ollama metrics endpoint. Scraping `/metrics`
+uses a read-only queue snapshot and never runs inference or the writable readiness
+probe. The frontend does not proxy `/metrics`. Alertmanager has no external receiver
+configured, and this platform has no centralized log database.
+
+Sources: [metrics endpoint](../../backend/app/api/routes/metrics.py),
+[ServiceMonitor](../../deploy/helm/local-review/templates/servicemonitor-review-backend.yaml),
+[monitoring platform](../../infra/local-platform/terraform/platform/monitoring.tf),
+[platform values](../../infra/local-platform/terraform/platform/values/monitoring.yaml).
+
 ## Metrics contract
 
 `GET /metrics` is an internal backend endpoint on port 8000. It needs no user session
