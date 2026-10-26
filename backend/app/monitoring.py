@@ -244,13 +244,9 @@ class Metrics:
                 self.first_content_duration.labels(section).observe(
                     observation.first_token_ms / 1000
                 )
-            if observation.input_tokens is not None:
-                self.input_tokens.labels(section).inc(observation.input_tokens)
-            # Only a terminal response supplies a real output token count; an interrupted
-            # stream may have content but cannot be reported as generating zero tokens.
-            if observation.output_tokens_observed:
-                self.generated_tokens.labels(section).inc(observation.generated_tokens)
-                self.output_limit.labels(section).inc(int(observation.limit_reached))
+            self.input_tokens.labels(section).inc(observation.input_tokens)
+            self.generated_tokens.labels(section).inc(observation.generated_tokens)
+            self.output_limit.labels(section).inc(int(observation.limit_reached))
 
     def render(self) -> bytes:
         return generate_latest(self.registry)

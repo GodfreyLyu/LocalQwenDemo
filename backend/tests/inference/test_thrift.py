@@ -211,14 +211,27 @@ def test_cancellation_reconciliation_is_bounded_without_claiming_remote_exit(rem
     ],
 )
 def test_native_failures_keep_application_error_codes_without_remote_content(
-    factory, remote, remote_code, public_code, capsys
+    factory, remote, remote_code, public_code, monkeypatch, capsys
 ):
     model, server = remote
-    server.state = State.FAILED
-    server.error = LlmError(remote_code, "PRIVATE_SOURCE_AND_GENERATED_CONTENT", False)
+    original = server.call
+
+    def fail_after_summary(method, *args):
+        if method == "startGeneration" and len(server.requests) == 1:
+            server.state = State.FAILED
+            server.error = LlmError(remote_code, "PRIVATE_SOURCE_AND_GENERATED_CONTENT", False)
+        return original(method, *args)
+
+    monkeypatch.setattr(model, "_call", fail_after_summary)
     client = factory(model)
+    model.metrics = client.app.state.metrics
     register(client)
     response = client.post("/api/v1/reviews", json={"source_code": SOURCE, "language": "python"})
     result = wait_review(client, response.json()["review_id"])
     assert result["status"] == "failed" and result["error_code"] == public_code
+    assert len(server.requests) == 2
+    metrics = client.get("/metrics").text
+    assert 'review_generated_tokens_total{section="summary"} 20.0' in metrics
+    assert 'review_generated_tokens_total{section="findings"}' not in metrics
+    assert 'review_generated_tokens_total{section="suggestions"}' not in metrics
     assert "PRIVATE" not in str(result) + capsys.readouterr().err

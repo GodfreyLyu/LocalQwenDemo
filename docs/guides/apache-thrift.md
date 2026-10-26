@@ -253,7 +253,7 @@ dependency declarations and connection behavior. Opt-in
 real review tests require a separately running service:
 
 ```bash
-RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py
+RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_service.py
 ```
 
 Both images use repository-root build context; each installs only its project and

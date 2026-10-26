@@ -32,7 +32,7 @@ backend/tests/
 scripts/tests/
   deployment/   # Helm rendering/lifecycle, ownership, state and shared process guards
   release/      # Planning, publishing, GitOps and chart contracts
-  inference/    # Ollama runtime doubles and separate chart tests
+  inference/    # Separate inference chart and application connection policy
   monitoring/   # Monitoring charts, platform configuration and PromQL scenarios
   evaluation/   # Evaluator behavior using model doubles
   persistence/  # Local users initializer
@@ -101,6 +101,14 @@ scripts also exclude `real_model` and `requires_cluster` explicitly, even if an 
 has exported that variable. Skipped or deselected inference tests are not model passes.
 No test may weaken ownership or security just to pass.
 
+`backend/tests/inference/test_review_policy.py` covers application review behavior,
+not local model execution. Its checks protect message roles, output structure,
+source binding, token-budget invariants and truncated-output handling. Prompt prose,
+function signatures and exact section-budget splits are implementation choices.
+The optional `test_real_service.py` keeps one API-to-service acceptance journey;
+native model startup, GPU checks and process supervision belong to the independent
+inference suite.
+
 ### Shared fixtures and test organization
 
 `backend/tests/conftest.py` owns the application factory; ordinary helpers are imported
@@ -132,7 +140,7 @@ and verify that requests cannot fall back to real cloud services.
 | Backend Thrift adapter | `backend/.venv/bin/pytest backend/tests/inference/test_thrift.py` | Application prompts, budgets, errors, metrics and uncertain-execution handling with an injected RPC double |
 | Independent inference and Java | `bash scripts/checks/inference.sh` | Binding drift, real TCP client/processor tests, registry deadlines/cancellation/retention, native HTTP doubles, child lifecycle, Maven SDK tests and a standalone consumer |
 | Java SDK | `mvn -f clients/java/pom.xml test` | Real loopback Java peers check RPC values, errors, connection cleanup, read timeouts, strict framing and concurrent callers |
-| Real Thrift review | `RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py::test_real_fastapi_review_persists_remote_identity` | Opt-in FastAPI → TCP Thrift → an already running inference service → real Ollama, with saved model provenance |
+| Real Thrift review | `RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_service.py::test_real_fastapi_review_persists_remote_identity` | Opt-in FastAPI → TCP Thrift → an already running inference service → real Ollama, with saved model provenance |
 | Minikube | `scripts/check_minikube_demo.sh` | Helm lifecycle, resource ownership, forwarding, queue fencing, storage retention and purge; simulated cluster APIs and real loopback fixtures |
 | Release and charts | Shared script gate | Helm rendering, GitOps, snapshot/provenance and simulated publishing with local Git remotes |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |

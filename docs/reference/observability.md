@@ -180,7 +180,7 @@ The formatter may add only these fields:
 | `error_code`, `outcome` | Fixed enums; unknown values become a safe fallback |
 | `validation_reason` | One of the fixed validation enums; an unknown value is omitted |
 | generation detail maps | Integer, boolean or null values under the three fixed section names only |
-| `stage`, `exception_type`, `errno`, `http_status` | Allowlisted stage, bounded exception class name and numeric diagnostics; no exception message |
+| `stage`, `exception_type`, `errno` | Allowlisted stage, bounded exception class name and OS error number; no exception message |
 | `startup_attempt`, `startup_wait_ms`, `startup_elapsed_ms` | Bounded startup retry counts and timings |
 
 HTTP duration and model generation duration use monotonic clocks. Queue wait and total
@@ -202,7 +202,7 @@ Pod/container and observation time when examining the two streams.
 
 ## Inference and startup measurement boundaries
 
-Backend startup diagnostics distinguish the Thrift handshake stage (`model_load`)
+Backend startup diagnostics distinguish the Thrift handshake stage (`inference_handshake`)
 from final storage checks. Worker startup performs Ollama metadata validation and
 the generation probe before listening. Its text formatter does not expose the
 same structured stage/error fields as backend JSON logs. Inspect the worker and
@@ -211,8 +211,11 @@ Ollama separately when the backend is waiting for its handshake.
 Generation metrics record generation and time to first content for each fixed section,
 plus input and output token counts. There are no application-side tokenizer or
 PyTorch thread measurements; Ollama owns those operations.
-Time to first content is included in generation duration; do not add it again. Missing
-sections remain unmeasured. Ollama placement is observed through `/api/ps` at startup
+Time to first content is included in generation duration; do not add it again. Backend
+section observations are created only after a successful generation response. Failed
+or unfinished sections remain absent from generation detail maps and token counters;
+a successful response reporting zero tokens records an observed zero. Missing RPC
+timing fields remain unmeasured. Ollama placement is observed through `/api/ps` at startup
 or the last successful review.
 
 To measure inference resource use, collect counters from the combined `inference`

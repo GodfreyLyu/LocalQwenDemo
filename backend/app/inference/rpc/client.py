@@ -190,10 +190,7 @@ class ThriftReviewModel:
             raise AppError("model_loading", "Inference service is not loaded.", 503)
         deadline = time.monotonic() + self.settings.inference_timeout_seconds
         limits = allocate_section_token_limits(self.settings.model_max_output_tokens)
-        metrics = GenerationMetrics(
-            output_token_limit=self.settings.model_max_output_tokens,
-            sections={section: SectionMetrics() for section, _, _ in SECTION_SPECS},
-        )
+        metrics = GenerationMetrics(output_token_limit=self.settings.model_max_output_tokens)
         bodies = []
         try:
             for section, title, _ in SECTION_SPECS:
@@ -209,18 +206,17 @@ class ThriftReviewModel:
                     deadline,
                     stop,
                 )
-                observation = metrics.sections[section]
-                observation.generated_tokens = result.usage.output_tokens
-                observation.input_tokens = result.usage.input_tokens
-                observation.output_tokens_observed = True
-                observation.limit_reached = (
-                    result.finish_reason == "length"
-                    or result.usage.output_tokens >= limits[section]
+                observation = SectionMetrics(
+                    generated_tokens=result.usage.output_tokens,
+                    input_tokens=result.usage.input_tokens,
+                    limit_reached=(
+                        result.finish_reason == "length"
+                        or result.usage.output_tokens >= limits[section]
+                    ),
+                    generation_ms=result.generation_ms,
+                    first_token_ms=result.first_token_ms,
                 )
-                observation.generation_ms, observation.first_token_ms = (
-                    result.generation_ms,
-                    result.first_token_ms,
-                )
+                metrics.sections[section] = observation
                 body = normalize_section_body(section, result.content)
                 body, observation.trailing_fragment_removed = trim_capped_section_tail(
                     body, observation.limit_reached
@@ -228,9 +224,6 @@ class ThriftReviewModel:
                 bodies.append(f"## {title}\n{body}")
             return validate_review_output("\n\n".join(bodies), source)
         finally:
-            metrics.duration_seconds = sum(
-                (s.generation_ms or 0) / 1000 for s in metrics.sections.values()
-            )
             logger.info("model_generation_finished", extra=metrics.fields())
             if self.metrics:
                 self.metrics.generation(metrics)

@@ -302,7 +302,7 @@ def test_coordinator_states_are_one_hot(factory, state):
 
 
 @pytest.mark.unit
-def test_partial_generation_skips_unobserved_values_and_unknown_sections(tmp_path):
+def test_completed_generations_distinguish_zero_tokens_from_unobserved_sections(tmp_path):
     metrics = Metrics(Store(tmp_path), 8)
     for section in ("summary", "findings", "suggestions"):
         assert value(metrics, "review_generation_duration_seconds_count", {"section": section}) == 0
@@ -315,15 +315,15 @@ def test_partial_generation_skips_unobserved_values_and_unknown_sections(tmp_pat
             sections={
                 "summary": SectionMetrics(
                     generated_tokens=5,
-                    output_tokens_observed=True,
                     generation_ms=100,
                     first_token_ms=25,
                     input_tokens=40,
                     limit_reached=True,
                 ),
-                "findings": SectionMetrics(generation_ms=50),
-                "suggestions": SectionMetrics(),
-                "PRIVATE_SECTION": SectionMetrics(generation_ms=100),
+                "findings": SectionMetrics(generated_tokens=0, input_tokens=10),
+                "PRIVATE_SECTION": SectionMetrics(
+                    generated_tokens=3, input_tokens=10, generation_ms=100
+                ),
             },
         )
     )
@@ -338,8 +338,13 @@ def test_partial_generation_skips_unobserved_values_and_unknown_sections(tmp_pat
     assert value(metrics, "review_generated_tokens_total", {"section": "summary"}) == 5
     assert value(metrics, "review_input_tokens_total", {"section": "summary"}) == 40
     assert value(metrics, "review_output_limit_total", {"section": "summary"}) == 1
-    assert value(metrics, "review_generation_duration_seconds_sum", {"section": "findings"}) == 0.05
-    assert value(metrics, "review_generated_tokens_total", {"section": "findings"}) is None
+    assert value(metrics, "review_generated_tokens_total", {"section": "findings"}) == 0
+    assert value(metrics, "review_input_tokens_total", {"section": "findings"}) == 10
+    assert value(metrics, "review_output_limit_total", {"section": "findings"}) == 0
+    assert value(metrics, "review_generated_tokens_total", {"section": "suggestions"}) is None
+    assert value(metrics, "review_input_tokens_total", {"section": "suggestions"}) is None
+    assert value(metrics, "review_output_limit_total", {"section": "suggestions"}) is None
+    assert value(metrics, "review_generation_duration_seconds_count", {"section": "findings"}) == 0
     assert (
         value(metrics, "review_first_content_duration_seconds_count", {"section": "findings"}) == 0
     )

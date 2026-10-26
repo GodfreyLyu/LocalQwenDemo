@@ -106,7 +106,7 @@ These tests do not load model weights.
 With a running service, opt into real review and FastAPI persistence checks:
 
 ```bash
-RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py
+RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_service.py
 ```
 
 For quality evaluation and manual judgments, see [model evaluation](../testing/model-evaluation.md).

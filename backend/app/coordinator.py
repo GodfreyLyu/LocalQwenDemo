@@ -88,12 +88,12 @@ class Coordinator:
             await asyncio.to_thread(
                 self.store.recover, self.settings.max_retries, self.settings.queue_capacity
             )
-            stage = "model_load"
+            stage = "inference_handshake"
             await asyncio.get_running_loop().run_in_executor(self.executor, self.model.load)
-            stage = "post_model_storage"
+            stage = "storage_recheck"
             await asyncio.to_thread(self.store.ping)
             self._transition(CoordinatorState.READY)
-            logger.info("model_ready")
+            logger.info("inference_ready")
             stage = "queue_processing"
             while not self.closing:
                 job = await asyncio.to_thread(self.store.claim)

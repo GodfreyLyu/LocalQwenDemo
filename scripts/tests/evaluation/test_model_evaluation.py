@@ -90,7 +90,6 @@ def test_plan_only_has_no_model_cache_or_network_side_effects(monkeypatch, tmp_p
     monkeypatch.setattr(runner_module, "ThriftReviewModel", blocked)
     monkeypatch.setattr(runner_module, "supervise", blocked)
     monkeypatch.setattr(socket.socket, "connect", blocked)
-    cache = tmp_path / "absent"
     assert ev.main(args) == 0
     report = json.loads(next(out.glob("*/report.json")).read_text())
     assert report["status"] == "not_run" and report["load"]["status"] == "not_run"
@@ -98,7 +97,6 @@ def test_plan_only_has_no_model_cache_or_network_side_effects(monkeypatch, tmp_p
     assert report["parameters"]["section_limits"] == report_module.allocate_section_token_limits(
         384
     )
-    assert not cache.exists()
     blocked.assert_not_called()
 
 
@@ -275,7 +273,7 @@ def test_metrics_capture_rejects_extra_text_and_malformed_values():
 
 
 @pytest.mark.integration
-def test_cli_selects_model_context_and_sampling_without_tokenizer(monkeypatch, tmp_path):
+def test_cli_selects_service_model_constraint_and_review_sampling(monkeypatch, tmp_path):
     monkeypatch.setattr(config_module, "OUTPUT_ROOT", tmp_path)
     assert (
         ev.main(
@@ -318,18 +316,20 @@ def test_fresh_private_reports_and_plan_metadata(monkeypatch, tmp_path):
 
 
 @pytest.mark.integration
-def test_cli_dry_run_from_other_directory_imports_no_model_dependencies(tmp_path):
+def test_cli_dry_run_outside_checkout_uses_configured_report_directory(tmp_path):
     code = (
         f"import sys; sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
         f"import evaluate_model as e; from pathlib import Path; "
         f"e.config.OUTPUT_ROOT=Path({str(tmp_path)!r}); "
-        "assert e.main(['--dry-run', '--case', 'square'])==0; "
-        "assert 'torch' not in sys.modules and 'transformers' not in sys.modules"
+        "assert e.main(['--dry-run', '--case', 'square'])==0"
     )
     result = subprocess.run(
         [sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
+    report = json.loads(next(tmp_path.glob("*/report.json")).read_text())
+    assert report["status"] == "not_run"
+    assert report["parameters"]["selected_cases"] == ["square"]
 
 
 class FakeRuntimeModel:

@@ -160,6 +160,7 @@ def test_loading_runtime_and_probe_do_not_check_storage(factory, monkeypatch):
         assert runtime.status_code == 200
         assert runtime.json()["service_status"] == "model_loading"
         assert runtime.json()["accepting_submissions"] is False
+        assert client.get("/health/live").status_code == 200
         assert probe.status_code == 503 and probe.json() == {"status": "model_loading"}
         assert calls == []
     finally:

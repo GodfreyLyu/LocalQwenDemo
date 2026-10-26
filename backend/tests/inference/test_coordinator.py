@@ -88,6 +88,7 @@ def test_stuck_worker_remains_unhealthy_after_late_exit_and_leaves_queue_intact(
         assert wait_review(client, first_id)["error_code"] == "inference_timeout"
         assert wait_status(client, "inference_stuck").status_code == 503
         assert client.get("/health/live").status_code == 503
+        assert client.post("/api/v1/reviews", json={"source_code": "next"}).status_code == 503
         model.release.set()
         for _ in range(200):
             if model.active == 0:
