@@ -1,4 +1,3 @@
-{{- if .Values.model.bootstrap }}
 {{- if .Values.verification.argoPostSync }}
 apiVersion: batch/v1
 kind: Job
@@ -12,6 +11,9 @@ spec:
   backoffLimit: 0
   activeDeadlineSeconds: 240
   template:
+    metadata:
+      labels:
+        llm-client: verification
     spec:
       restartPolicy: Never
       activeDeadlineSeconds: 240
@@ -30,7 +32,8 @@ spec:
         - name: verify
           image: {{ include "ollama.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: [verify, --url, {{ printf "http://%s:11434" .Release.Name | quote }}]
+          command: [python3, -m, llm_service.verify]
+          args: [--host, {{ .Release.Name | quote }}]
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
@@ -42,5 +45,4 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-{{- end }}
 {{- end }}

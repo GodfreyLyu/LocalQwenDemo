@@ -1,10 +1,10 @@
-{{- if .Values.model.bootstrap }}
 apiVersion: v1
 kind: Pod
 metadata:
   name: {{ .Release.Name }}-gpu-test
   namespace: {{ .Release.Namespace }}
   labels:
+    llm-client: verification
     {{- include "ollama.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: test
@@ -27,7 +27,8 @@ spec:
     - name: verify
       image: {{ include "ollama.image" . | quote }}
       imagePullPolicy: {{ .Values.image.pullPolicy }}
-      args: [verify, --url, {{ printf "http://%s:11434" .Release.Name | quote }}]
+      command: [python3, -m, llm_service.verify]
+      args: [--host, {{ .Release.Name | quote }}]
       envFrom:
         - configMapRef:
             name: {{ .Release.Name }}-config
@@ -39,4 +40,3 @@ spec:
         readOnlyRootFilesystem: true
         capabilities:
           drop: [ALL]
-{{- end }}
