@@ -20,8 +20,9 @@ and the frontend dependencies with:
 npm --prefix frontend ci
 ```
 
-The full repository check also runs the independent inference tests and Java SDK
-build. Install the inference-service development environment using the
+The full repository check also runs the independent inference tests and compiles
+the generated Java bindings and examples. Install the inference-service development
+environment using the
 [Thrift setup guide](apache-thrift.md#run-the-projects-independently), plus Apache
 Thrift 0.25.0, JDK 11+ and Maven 3.9+. Git, Helm and kubectl are needed for script
 checks. These extra tools are not required just to use the fake UI/API harness.

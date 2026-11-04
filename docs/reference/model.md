@@ -113,8 +113,9 @@ application-model split or public native HTTP endpoint in the new architecture.
 
 The service tests cover native translation with mocked HTTP, process ownership with
 real children, and TCP Thrift with controlled model doubles. The
-[Java SDK checks](../../clients/java/README.md#generate-test-and-package) add Maven
-packaging, error/timeout/cleanup/concurrency tests and an independent consumer.
+[Java interoperability checks](../guides/apache-thrift.md#regenerate-test-and-build)
+compile the generated Java client and exercise shared request IDs, structured errors,
+lost replies, cancellation, connection cleanup and concurrent calls over TCP.
 These tests do not load model weights.
 
 With a running service, opt into real review and FastAPI persistence checks:

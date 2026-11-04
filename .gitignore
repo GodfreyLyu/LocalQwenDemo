@@ -32,8 +32,7 @@ deploy/generated/
 
 *.log
 *.egg-info/
-clients/java/target/
-clients/java/examples/consumer/target/
+contracts/target/
 *.tsbuildinfo
 *-backend.hcl
 AGENTS.md

@@ -11,15 +11,14 @@ code reviews, Python source, or Summary / Findings / Suggestions.
 | --- | --- | --- |
 | `backend/` | FastAPI, auth, sessions, SQLite queue/history, DynamoDB accounts, prompts, section orchestration, review validation, Thrift client | `llm_service` |
 | `inference-service/` | Ollama child, native loopback HTTP, model pin, defaults, limits, registry, RPC processor, shutdown | `app` or backend modules |
-| `contracts/` | IDL, generated Python and Java bindings, tiny Java example | Either application's implementation |
-| `clients/java/` | Maven library containing existing Java bindings and a connection-managing SDK | Either application's implementation |
+| `contracts/` | IDL, generated Python and Java bindings, direct Java examples and their Maven build | Either application's implementation |
 
 Each Python application has its own `pyproject.toml`, runtime/development lockfiles,
 Dockerfile, entry point and tests. Install `contracts` into each environment, or
 build it as a wheel. Neither application needs the other's dependencies to run.
-Java applications use [`demo.llm:llm-client:0.1.0`](../../clients/java/README.md).
-Its POM compiles the existing Java bindings together with `LlmClient`; the calling
-application receives the required runtime libraries through Maven.
+Java examples call the generated `LlmService.Client` directly. The small
+[`contracts/pom.xml`](../../contracts/pom.xml) build compiles the checked-in bindings
+and examples, and Maven resolves their runtime dependencies.
 
 The inference entry point is `llm-service` (`python -m llm_service.runtime`). Its
 modules are intentionally small and direct:
@@ -37,19 +36,18 @@ application behavior, so the service cannot depend on them.
 
 ## The process and wire boundaries
 
-Generated bindings encode and decode the API. The backend adapter and Java SDK
-manage short RPC connections; the service's handler manages task admission and
-state. Model execution continues independently of any one RPC connection.
+Generated bindings encode and decode the API. Calling applications own connection
+lifetime; the service's handler manages task admission and state. Model execution
+continues independently of any one RPC connection.
 
 ```mermaid
 flowchart TB
     accTitle: Application code and the generic Thrift service
-    accDescr: A calling application uses its backend adapter or Java SDK and the generated client. Framed TCP with strict binary protocol reaches Python's generated processor and handler. Only admitted tasks run on the generation worker, which calls its supervised Ollama child over loopback HTTP.
+    accDescr: A calling application constructs messages and uses a generated client over framed TCP and strict binary protocol. The Python backend adds its review adapter; the Java example calls the generated client directly. Python's generated processor dispatches to the handler and generation worker, which calls its supervised Ollama child over loopback HTTP.
     subgraph caller["Calling application process"]
-        application["Review backend or another application"]
-        client["Backend adapter or Java LlmClient"]
+        application["Review backend or Java example"]
         bindings["Generated LlmService.Client"]
-        application --> client --> bindings
+        application -->|"Messages and connection setup"| bindings
     end
     subgraph inference["Inference container"]
         rpc["RPC threads :9091<br/>Generated Processor<br/>InferenceHandler"]
@@ -61,11 +59,13 @@ flowchart TB
     bindings -->|"TCP :9091 | framed, strict binary"| inference
 ```
 
-The Python backend and Java SDK open and close a separate connection for each RPC.
-The RPC thread returns a snapshot quickly; a different worker thread performs the
-long generation. The service keeps task state in memory, so reconnecting queries
-the same task by its instance and request IDs. The Java SDK adds no review prompts,
-polling loop or model-management behavior.
+The Python backend opens and closes a separate connection for each RPC. The Java
+generation example keeps one connection open while it submits and polls; its
+try-with-resources scope closes the transport when the example finishes or fails.
+The Java interoperability probe uses a separate connection per RPC and per concurrent
+caller. The RPC thread returns a snapshot quickly; a different worker thread performs
+the long generation. The service keeps task state in memory, so a new connection
+can query the same task by its instance and request IDs.
 
 ## One request, end to end
 
@@ -85,8 +85,9 @@ polling loop or model-management behavior.
 The wire stack is **TCP → framed transport → strict binary protocol**. Python and
 Java use the same stack, field IDs, signed 64-bit seeds and epoch milliseconds.
 The service limits frames and strings to 2 MiB and decoded containers to 64 entries.
-The Java SDK also bounds incoming and outgoing frames, with a 2 MiB default. The service
-supports up to 32 messages, 64,000 content characters, 128,000 result characters
+The Java examples use libthrift's 2 MiB incoming-frame bound; the service enforces
+request-frame limits. The service supports up to 32 messages, 64,000 content characters,
+128,000 result characters
 and 32 concurrent RPC connections by default. Idle connections time out after
 three seconds. This is an internal trusted-network API without TLS or RPC auth.
 
@@ -99,7 +100,7 @@ must explicitly set `REQUIRE_GPU=false`.
 
 | Concern | Behavior |
 | --- | --- |
-| RPC timeout | The Python backend uses a two-second socket timeout for connection/reads. The Java SDK configures connection and read timeouts separately. Neither is a generation deadline or a total wall-clock RPC deadline. |
+| RPC timeout | The Python backend uses a two-second socket timeout for connection/reads. The Java example sets two-second connection and read timeouts on `TSocket`. Neither is a generation deadline or a total wall-clock RPC deadline. |
 | Generation deadline | At most 300 seconds by default, measured from admission, including queue time; enforced even if all clients disconnect. |
 | Concurrency | Exactly one native generation. Up to eight pending requests. Full admission returns `overloaded`. |
 | Retention | At most 128 total live/retained entries. Every terminal result stays for 600 seconds from completion; no early eviction for a new request. Full registry returns `retention_full`. |
@@ -201,14 +202,31 @@ Thrift runtime. Running it submits a real generation to the selected service:
 backend/.venv/bin/python scripts/thrift_demo.py --prompt 'Translate Hello to French.'
 ```
 
+### Java example
+
+The Java example constructs `TSocket` → `TFramedTransport` → strict `TBinaryProtocol`
+→ generated `LlmService.Client`. It needs JDK 11+ and Maven 3.9+. Dependencies and
+plugins are pinned in [`contracts/pom.xml`](../../contracts/pom.xml); the build compiles
+`contracts/java` as its main sources and `contracts/examples/java` as its test sources.
+Build outputs stay in the ignored `contracts/target/` directory.
+
+Compile the bindings and examples without connecting to a service:
+
 ```bash
-backend/.venv/bin/python scripts/java_thrift.py
+backend/.venv/bin/python scripts/java_thrift.py --compile-only
 ```
 
-The Java script delegates to the [Java SDK Maven build](../../clients/java/README.md),
-then runs the external `Generate.java` example against the packaged JAR. It needs
-JDK 11+ and Maven 3.9+. Dependencies and plugins are pinned in `clients/java/pom.xml`;
-bindings are compiled directly from `contracts/java`, with no second copy or manual JAR list.
+Run [`Generate.java`](../../contracts/examples/java/Generate.java) against an already
+running service:
+
+```bash
+backend/.venv/bin/python scripts/java_thrift.py --host 127.0.0.1 --port 9091
+```
+
+The Python script asks Maven to compile and resolve the classpath, then invokes Java.
+It also accepts `--request-id`; the Java code owns its transport, request construction
+and polling loop. Other Java applications can compile the generated bindings with
+the same libthrift dependency and use this connection setup as an example.
 Use a fresh request ID for new work. The demos print the response to a synthetic
 prompt; the server does not log it. The response comes from the selected service,
 so running a demo against the real service performs real model inference.
@@ -217,7 +235,7 @@ so running a demo against the real service performs real model inference.
 
 Install Apache Thrift **0.25.0** to regenerate or check bindings. The combined
 inference gate also needs JDK 11+, Maven 3.9+ and the inference-service development
-environment. Normal Maven packaging uses checked-in bindings and does not invoke
+environment. The normal Java build uses checked-in bindings and does not invoke
 the Thrift compiler. Generated files must not be edited by hand.
 
 ```bash
@@ -228,10 +246,10 @@ python3 scripts/generate_thrift.py
 python3 scripts/generate_thrift.py --check
 ```
 
-Build and test the plain Java library JAR:
+Compile the generated Java bindings and examples:
 
 ```bash
-mvn -f clients/java/pom.xml clean package
+backend/.venv/bin/python scripts/java_thrift.py --compile-only
 ```
 
 ```bash
@@ -243,13 +261,15 @@ bash scripts/checks/inference.sh
 ```
 
 The inference gate includes real generated processors/clients over TCP, a Java/Python
-shared-ID test, Java SDK timeout/error/cleanup/concurrency tests, an independent
-Maven consumer, model doubles, mocked native HTTP and real child-process lifecycle
-tests. It installs the SDK into the selected local Maven repository to build the
-consumer outside the checkout. It neither publishes remotely nor runs real model
-inference. The [SDK guide](../../clients/java/README.md) covers local installation,
-dependency declarations and connection behavior. Opt-in
-real review tests require a separately running service:
+shared-ID test, structured errors, lost-response reconciliation, cancellation,
+connection cleanup, signed i64 values and eight concurrent Java callers. The
+[`InteropProbe.java`](../../contracts/examples/java/InteropProbe.java) program checks
+those controlled wire scenarios. Model doubles, mocked native HTTP and real
+child-process lifecycle tests cover the service. Maven compiles the examples once
+for this fixture; the gate performs no real model inference. `MAVEN` can select an
+absolute Maven executable, and Maven honors `MAVEN_ARGS` and `MAVEN_OPTS` for local
+settings such as an isolated dependency cache. Opt-in real review tests require a
+separately running service:
 
 ```bash
 RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_service.py

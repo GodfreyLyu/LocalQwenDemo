@@ -36,8 +36,8 @@ public internet access have not been validated.
 
 The repository has two Python application projects: `backend/` and `inference-service/`,
 with shared generated Python/Java bindings in `contracts/`. The
-[Java client library](clients/java/README.md) packages the existing Java bindings
-and a small SDK for other Maven applications. See the
+[Java example](docs/guides/apache-thrift.md#java-example) calls the generated
+Thrift client directly; a small Maven build compiles the bindings and examples. See the
 [migration and rollback plan](docs/operations/inference-migration.md) before changing
 an existing deployment.
 
@@ -152,8 +152,8 @@ and references. Common starting points are:
   [security](docs/reference/security.md).
 - [Troubleshooting and cleanup](docs/operations/recovery-and-cleanup.md).
 - [Testing](docs/testing/README.md) and [model evaluation](docs/testing/model-evaluation.md).
-- [Java SDK](clients/java/README.md), including local Maven installation and a
-  standalone consumer example.
+- [Java example and build](docs/guides/apache-thrift.md#java-example), using the
+  generated Thrift client directly.
 - [Dated reports](docs/reports/README.md), which preserve earlier results and their
   limits rather than describe the current deployment.
 

@@ -133,11 +133,11 @@ and Java types carry model information, role/content messages, generation snapsh
 structured errors and generic results. Review section names, source-language rules
 and output validation never enter that contract or the inference implementation.
 
-The optional [Java SDK](../../clients/java/README.md) packages these same Java
-bindings with `LlmClient` and immutable connection settings. A separate Maven
-application can use the generic service without importing backend code. The review
-backend continues to use its Python adapter; the Java library is not another
-deployed workload.
+The [Java example](../../contracts/examples/java/Generate.java) creates a generated
+`LlmService.Client` over a framed TCP transport and strict binary protocol. Its
+[Maven build](../../contracts/pom.xml) compiles the existing bindings and examples
+for direct use and interoperability checks. The review backend uses its Python
+adapter; Java callers can use the generic service without importing backend code.
 
 `create_app` assembles settings, stores, the limiter, review client, coordinator and service for
 each application instance. `api/dependencies.py` is the only route-facing adapter from
@@ -468,7 +468,7 @@ Use these sources when auditing or changing the design:
 | Single executor, readiness and cancellation/draining | [coordinator.py](../../backend/app/coordinator.py)                                               |
 | Inference and model/context verification | [service adapter](../../inference-service/src/llm_service/ollama.py) |
 | Thrift contract, client, handler and server | [llm.thrift](../../contracts/llm.thrift), [client](../../backend/app/inference/rpc), [service](../../inference-service/src/llm_service) |
-| Java SDK and independent consumer | [Maven module](../../clients/java/pom.xml), [LlmClient](../../clients/java/src/main/java/demo/llm/client/LlmClient.java), [consumer](../../clients/java/examples/consumer) |
+| Java generated client and interoperability examples | [Maven build](../../contracts/pom.xml), [Generate.java](../../contracts/examples/java/Generate.java), [InteropProbe.java](../../contracts/examples/java/InteropProbe.java) |
 | Prometheus metrics and read-only collection | [monitoring.py](../../backend/app/monitoring.py), [metrics.py](../../backend/app/api/routes/metrics.py) |
 | Prompt, output and generation policy | [prompts.py](../../backend/app/inference/prompts.py), [review_output.py](../../backend/app/inference/review_output.py), [generation.py](../../backend/app/inference/generation.py) |
 | Local accounts transport                             | [users.py](../../backend/app/persistence/users.py), [local_dynamodb.py](../../backend/app/persistence/local_dynamodb.py) |

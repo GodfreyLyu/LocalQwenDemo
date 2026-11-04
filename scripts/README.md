@@ -29,8 +29,8 @@ and manual uses carry both labels.
 
 | File | Usage | Caller or command |
 | --- | --- | --- |
-| `check.sh` | **Manual entry point** | Run `bash scripts/check.sh` for backend, frontend, script, independent inference and Java SDK checks. Browser tests, CI schema validation and real-model checks have separate entry points. |
-| `checks/inference.sh` | **Automatic invocation / Manual entry point** | Called by the full check and CI. Checks binding drift, the service tests, the Maven SDK and a standalone consumer. No real model is loaded. |
+| `check.sh` | **Manual entry point** | Run `bash scripts/check.sh` for backend, frontend, script, independent inference and Java/Python interoperability checks. Browser tests, CI schema validation and real-model checks have separate entry points. |
+| `checks/inference.sh` | **Automatic invocation / Manual entry point** | Called by the full check and CI. Checks binding drift, the service tests and direct Java/Python calls through generated bindings. No real model is loaded. |
 | `check_scripts.sh` | **Automatic invocation / Manual entry point** | Called directly by CI. Run `bash scripts/check_scripts.sh` locally to check all script test domains and Helm configuration. The full suite also uses its internal implementation. |
 | `check_minikube_demo.sh` | **Manual entry point** | Run `bash scripts/check_minikube_demo.sh` for deployment script checks and offline regression tests. It does not deploy to a cluster. |
 | `check_helm_schema.sh` | **Automatic invocation** | CI runs `bash scripts/check_helm_schema.sh`. Pass a snapshot root as the first argument to validate a snapshot. Requires Linux amd64, `RUNNER_TEMP`, `gh`, Helm, and `sha256sum`; downloads a pinned version of kubeconform. It cannot run directly on macOS. |
@@ -40,7 +40,7 @@ and manual uses carry both labels.
 | `local_demo.py` | **Automatic invocation / Manual entry point** | Playwright starts it with `--fake-model` and an isolated data directory. For manual development, run `backend/.venv/bin/python scripts/local_demo.py --fake-model`. Real mode uses the Thrift inference worker. |
 | `generate_thrift.py` | **Manual entry point** | Regenerates checked-in bindings from `contracts/llm.thrift` using Apache Thrift 0.25.0. `--check` verifies that they match. |
 | `thrift_demo.py` | **Manual entry point** | Submits one generic generation to an existing service and prints the result. Supports `--host`, `--port`, `--request-id` and `--prompt`; running it performs inference. See the [Thrift walkthrough](../docs/guides/apache-thrift.md). |
-| `java_thrift.py` | **Automatic invocation / Manual entry point** | Builds/tests/packages the Maven SDK and runs `Generate.java` against an existing service. `--compile-only` builds without submitting a generation; the Java interop fixture reuses its Maven helpers. |
+| `java_thrift.py` | **Automatic invocation / Manual entry point** | Compiles the generated Java bindings and examples with `contracts/pom.xml`, then runs `Generate.java` against an existing service. `--compile-only` compiles without submitting a generation; the Java interop fixture reuses its Maven helper. |
 | `init_local_users.py` | **Manual entry point** | Initializes DynamoDB Local from the host. Requires `DYNAMODB_ENDPOINT_URL`; see the example below. **Does not support `--help`.** |
 | `minikube_demo.sh` | **Manual entry point** | Development CLI for Docker-driver Minikube profiles: `bash scripts/minikube_demo.sh COMMAND --profile NAME`. Use standard Helm for krunkit clusters. |
 | `minikube_helm.py` | **Automatic invocation / Manual entry point** | Receives arguments from `minikube_demo.sh`. The equivalent direct command is `backend/.venv/bin/python scripts/minikube_helm.py COMMAND --profile NAME`. |
@@ -302,8 +302,8 @@ and [report contents and worker supervision](../docs/testing/model-evaluation.md
 
 `check.sh` calls `checks/all.sh`, which runs backend lint/tests, frontend
 lint/tests/build, `checks/scripts.sh`, then `checks/inference.sh`. The last stage
-checks generated bindings, the independent Python service and the Maven SDK, and
-installs the SDK into the selected local Maven repository for a consumer test.
+checks generated bindings, the independent Python service and Java/Python TCP
+interoperability using the generated Java client and compiled examples.
 Maven may download dependencies and plugins when the cache is empty.
 The standalone `check_scripts.sh` calls
 that same script gate. It syntax-checks maintained shell scripts, lints script code
@@ -406,8 +406,10 @@ See the [testing guide](../docs/testing/README.md) for test coverage and
 
 The independent service gate is `bash scripts/checks/inference.sh`. It checks both
 languages of generated bindings and runs Java/Python TCP interoperability without
-a real model. `java_thrift.py` builds/tests/packages the [Java SDK](../clients/java/README.md)
-with Maven and runs the external Java example; it requires JDK 11+ and Maven 3.9+.
-The inference gate also validates a standalone Maven consumer. `lock_dependencies.py`
+a real model. `java_thrift.py` compiles the generated bindings and
+[Java examples](../contracts/examples/java/) with `contracts/pom.xml`, then runs
+`Generate.java` directly; it requires JDK 11+ and Maven 3.9+. The interoperability
+fixture drives `InteropProbe.java` for lifecycle, lost-response and concurrent-call
+scenarios. `lock_dependencies.py`
 regenerates one application's locks using the local contract package. See the
 [Thrift guide](../docs/guides/apache-thrift.md) for setup and the real inference gate.
