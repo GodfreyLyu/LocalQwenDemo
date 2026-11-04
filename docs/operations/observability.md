@@ -15,14 +15,17 @@ platform observes the application without automatically repairing it.
 
 Install the pinned platform through [Terraform monitoring setup](../../infra/local-platform/README.md#monitoring)
 first. The `local-review-demo` namespace and external Grafana admin Secret must exist.
-Wait for the Operator/CRDs, Prometheus and Grafana before enabling application resources.
+Wait for the Operator/CRDs, Prometheus and Grafana before installing the application,
+whose default values enable monitoring resources.
 Do not use Helm to mutate an Argo-managed deployment.
 
-For standard Helm, append `deploy/helm/local-review/values-monitoring.yaml` after the
-release and environment files on install and every upgrade. For Argo CD, the application
-already lists that overlay last; merge its deployment snapshot only after platform
-setup. The AppProject permits the two monitoring resource kinds in the application
-namespace, while cluster-wide access remains prohibited.
+Both standard Helm and Argo CD use the monitoring settings in the Chart's single
+hand-maintained `values.yaml`. Generated release values only pin the images and
+source SHA. Merge an Argo deployment snapshot only after platform setup. For a
+standard Helm installation without the platform, use `--set monitoring.enabled=false`
+or keep that setting in a custom values file on every upgrade. The AppProject permits
+the two monitoring resource kinds in the application namespace, while cluster-wide
+access remains prohibited.
 
 Check that the monitoring workloads and application monitors exist:
 

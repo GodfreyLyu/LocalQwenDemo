@@ -504,15 +504,15 @@ def test_docker_limits_bound_overstated_node_capacity(session, monkeypatch):
 
     def run(*args, **kw):
         if args[:2] == ("docker", "inspect"):
-            return result([{"HostConfig": {"NanoCpus": 2_000_000_000, "Memory": 4 * 1024**3}}])
+            return result([{"HostConfig": {"NanoCpus": 100_000_000, "Memory": 128 * 1024**2}}])
         return result()
 
     values = session.options()
     resources = session.render(values)
     monkeypatch.setattr(diagnostics, "run", run)
     report = session.doctor(values, resources)
-    assert report["resources"]["cpu"]["capacity"] == 2
-    assert report["resources"]["memory"]["capacity"] == 4 * 1024**3
+    assert report["resources"]["cpu"]["capacity"] == 0.1
+    assert report["resources"]["memory"]["capacity"] == 128 * 1024**2
     assert len(report["warnings"]) == 2
 
 

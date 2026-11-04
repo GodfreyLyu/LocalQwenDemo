@@ -10,14 +10,31 @@ gh release download v0.7.0 --repo yannh/kubeconform \
 (cd "$tool_dir" && sha256sum --check --ignore-missing CHECKSUMS && tar -xzf kubeconform-linux-amd64.tar.gz)
 args=()
 if [ -f "$repo_root/release-values.yaml" ]; then args+=(-f "$repo_root/release-values.yaml"); fi
+# Archived rollback snapshots retain their original hand-written values files.
+# Accept the old Helm environment alone or the complete former Argo composition;
+# reject partial overlay sets rather than silently checking a different deployment.
+chart="$repo_root/deploy/helm/local-review"
+if [ -f "$chart/values-minikube.yaml" ]; then
+  args+=(-f "$chart/values-minikube.yaml")
+  if [ -f "$chart/values-minikube-ollama.yaml" ] && [ -f "$chart/values-monitoring.yaml" ]; then
+    args+=(-f "$chart/values-minikube-ollama.yaml" -f "$chart/values-monitoring.yaml")
+  elif [ -f "$chart/values-minikube-ollama.yaml" ] || [ -f "$chart/values-monitoring.yaml" ]; then
+    echo "Incomplete historical application values layout" >&2
+    exit 1
+  fi
+elif [ -f "$chart/values-minikube-ollama.yaml" ] || [ -f "$chart/values-monitoring.yaml" ]; then
+  echo "Incomplete historical application values layout" >&2
+  exit 1
+fi
 helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
+  | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0 \
+    -schema-location default \
+    -schema-location "$schema_dir/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
+helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
+  --set monitoring.enabled=false \
   | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
 helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
-  -f "$repo_root/deploy/helm/local-review/values-minikube.yaml" \
-  | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
-helm template local-review "$repo_root/deploy/helm/local-review" "${args[@]}" \
-  -f "$repo_root/deploy/helm/local-review/values-minikube.yaml" \
-  -f "$repo_root/deploy/helm/local-review/values-monitoring.yaml" \
+  --set networkPolicy.enabled=true \
   | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0 \
     -schema-location default \
     -schema-location "$schema_dir/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"

@@ -55,8 +55,9 @@ The documented access path uses a host loopback port-forward. Application resour
 are namespaced; the cluster can also host other workloads. The application deployment
 scripts do not install or change CNI or storage components.
 
-The default Chart enables NetworkPolicy; `values-minikube.yaml` explicitly disables
-it. With policies enabled, the application permits these inference paths:
+The application Chart's default Minikube configuration disables NetworkPolicy.
+Enable `networkPolicy.enabled` with an enforcing CNI to apply isolation. With policies
+enabled, the application permits these inference paths:
 
 | Caller | Destination | Purpose |
 | --- | --- | --- |

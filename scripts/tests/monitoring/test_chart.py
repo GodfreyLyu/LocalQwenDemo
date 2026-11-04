@@ -12,14 +12,13 @@ import yaml
 from scripts.tests.support.paths import ROOT
 
 CHART = ROOT / "deploy/helm/local-review"
-VALUES = CHART / "values-monitoring.yaml"
 pytestmark = [pytest.mark.integration, pytest.mark.requires_helm, pytest.mark.contract]
 
 
-def render(*settings, monitoring=True):
+def render(*settings, monitoring=None):
     command = ["helm", "template", "local-review", str(CHART), "--namespace", "local-review-demo"]
-    if monitoring:
-        command += ["-f", str(VALUES)]
+    if monitoring is not None:
+        command += ["--set", "monitoring.enabled=" + str(monitoring).lower()]
     for setting in settings:
         command += ["--set", setting]
     return {
@@ -34,10 +33,12 @@ def resources():
     return render()
 
 
-def test_monitoring_is_opt_in_and_its_parts_can_be_disabled(resources):
+def test_monitoring_is_enabled_by_default_and_its_parts_can_be_disabled(resources):
     disabled = render(monitoring=False)
     assert not any(kind in {"ServiceMonitor", "PrometheusRule"} for kind, _ in disabled)
-    assert not any(name.startswith("review-service-overview") for _, name in disabled)
+    assert not any(
+        name in {"review-service-overview", "review-inference-resources"} for _, name in disabled
+    )
     selected = render("monitoring.alerts.enabled=false", "monitoring.dashboards.enabled=false")
     assert ("ServiceMonitor", "review-backend") in selected
     assert ("PrometheusRule", "review-backend") not in selected
@@ -73,7 +74,8 @@ def test_only_backend_service_is_scraped_and_frontend_has_no_metrics_proxy(resou
 
 
 @pytest.mark.security
-def test_metrics_network_access_requires_both_namespace_and_prometheus_pod(resources):
+def test_metrics_network_access_requires_both_namespace_and_prometheus_pod():
+    resources = render("networkPolicy.enabled=true")
     ingress = resources["NetworkPolicy", "review-backend"]["spec"]["ingress"]
     assert len(ingress) == 2
     assert ingress[1] == {
@@ -90,7 +92,7 @@ def test_metrics_network_access_requires_both_namespace_and_prometheus_pod(resou
         ],
         "ports": [{"port": 8000, "protocol": "TCP"}],
     }
-    local = render("networkPolicy.enabled=false")
+    local = render()
     assert not any(kind == "NetworkPolicy" for kind, _ in local)
 
 
@@ -109,7 +111,7 @@ def test_metrics_network_access_requires_both_namespace_and_prometheus_pod(resou
 )
 def test_invalid_monitoring_settings_are_rejected(setting):
     result = subprocess.run(
-        ["helm", "template", "test", str(CHART), "-f", str(VALUES), "--set", setting],
+        ["helm", "template", "test", str(CHART), "--set", setting],
         capture_output=True,
         text=True,
     )

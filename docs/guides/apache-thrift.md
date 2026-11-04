@@ -24,8 +24,7 @@ application receives the required runtime libraries through Maven.
 The inference entry point is `llm-service` (`python -m llm_service.runtime`). Its
 modules are intentionally small and direct:
 
-- `lifecycle.py` starts, monitors and reaps the native process group. It is derived
-  from the former `deploy/images/ollama-vulkan/runtime.py`.
+- `lifecycle.py` starts, monitors and reaps the native process group.
 - `ollama.py` validates the pinned model and translates messages into native chat.
 - `handler.py` owns the bounded request registry and a single generation worker.
 - `server.py` accepts bounded TCP connections and calls the generated processor.
@@ -257,7 +256,8 @@ RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/in
 ```
 
 Both images use repository-root build context; each installs only its project and
-the contract. The inference image keeps the pinned Fedora/Ollama/Mesa Vulkan stack.
+the contract. The inference image keeps the pinned Fedora/Ollama/Mesa Vulkan stack;
+its Dockerfile and Mesa package repository configuration live in `inference-service/`.
 
 ```bash
 docker build -f backend/Dockerfile -t review-backend:local .

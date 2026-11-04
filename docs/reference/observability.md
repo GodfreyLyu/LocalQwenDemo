@@ -141,8 +141,9 @@ describe calls through this backend, not other clients of the shared Ollama serv
 ## Platform ownership and limits
 
 Terraform owns the optional `monitoring` Helm release and Operator CRDs. The application
-Chart defaults monitoring resources off; `values-monitoring.yaml` enables them after
-the platform is ready. Argo CD uses that overlay in its approved application snapshot.
+Chart enables monitoring resources in `values.yaml`, so install the platform before
+the application. Standard Helm and Argo CD share these defaults. For a deployment
+without the platform, explicitly set `monitoring.enabled=false`.
 Prometheus selects `release: monitoring` resources in `monitoring` and
 `local-review-demo`. Grafana reads dashboard ConfigMaps in those two namespaces.
 See the [platform setup](../../infra/local-platform/README.md#monitoring) for versions,
@@ -153,9 +154,10 @@ a 4 GiB TSDB retention target and a 5 GiB PVC. WAL/head data also consumes space
 retention is not a hard total-disk quota. Dashboards are provisioned from Git and UI
 changes are not durable. Alertmanager has no external notification receiver configured.
 
-NetworkPolicy isolation requires a capable CNI and an enabled policy. The Minikube
-profile disables policies. When enabled, the added ingress selects both the monitoring
-namespace and Prometheus Pods. Because metrics share backend port 8000, this is a port
+NetworkPolicy isolation requires a capable CNI and an enabled policy. The default
+Minikube configuration disables policies. When enabled, the added ingress selects
+both the monitoring namespace and Prometheus Pods. Because metrics share backend
+port 8000, this is a port
 boundary, not HTTP-path isolation. ClusterIP and lack of a frontend proxy do not imply
 that other in-cluster workloads cannot reach the endpoint.
 

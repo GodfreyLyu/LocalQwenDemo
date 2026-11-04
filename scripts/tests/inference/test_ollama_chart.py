@@ -94,7 +94,7 @@ def test_backend_egress_targets_thrift_and_inference_accepts_only_its_clients():
     from validation.helm import render as render_app
     from validation.resources import validate_resources
 
-    app = validate_resources(render_app(ROOT))
+    app = validate_resources(render_app(ROOT, settings=["networkPolicy.enabled=true"]))
     data = app["ConfigMap", "review-config"]["data"]
     assert data["THRIFT_HOST"] == "review-ollama.local-inference.svc.cluster.local"
     assert not any(k.startswith("OLLAMA_") for k in data)

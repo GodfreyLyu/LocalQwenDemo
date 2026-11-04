@@ -7,6 +7,7 @@ import yaml
 
 from validation.monitoring import validate_monitoring
 from validation.resources import require, validate_resources
+from validation.values import application_value_names
 
 
 def render_application(root, application):
@@ -50,12 +51,7 @@ def validate_snapshot(root, manifest):
         "local-review": (
             "local-review",
             "local-review-demo",
-            [
-                "values-release.yaml",
-                "values-minikube.yaml",
-                "values-minikube-ollama.yaml",
-                "values-monitoring.yaml",
-            ],
+            application_value_names(root),
         ),
     }
     allowed = {

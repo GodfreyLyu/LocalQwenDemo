@@ -239,9 +239,7 @@ def test_rollback_restores_exact_snapshot_with_new_identity_and_survives_normal_
     assert manifest["chartVersion"].endswith("-rc.3")
     assert manifest["rollback"]["targetSha"] == old["merged_sha"]
     helm.validate_tree(candidate)
-    resources = helm.render(
-        candidate, [candidate / "release-values.yaml", candidate / helm.MINIKUBE_VALUES]
-    )
+    resources = helm.render(candidate, [candidate / "release-values.yaml"])
     helm.validate_snapshot(candidate, helm.validate_resources(resources))
     publish.publish(source, workspace, "Owner/Repo")
     rollback_pr = lifecycle_api["prs"][-1]

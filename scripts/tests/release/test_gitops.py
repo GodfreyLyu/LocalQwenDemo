@@ -17,9 +17,13 @@ from scripts.tests.support.release import (
 
 @pytest.mark.integration
 @pytest.mark.requires_git
-def test_ollama_input_change_builds_only_ollama(source, tmp_path):
+@pytest.mark.parametrize(
+    "input_path",
+    ["inference-service/src/llm_service/runtime.py", "inference-service/mesa-krunkit.repo"],
+)
+def test_ollama_input_change_builds_only_ollama(source, tmp_path, input_path):
     previous = released(source, tmp_path)
-    committed(source, "inference-service/src/llm_service/runtime.py", "# changed runtime\n")
+    committed(source, input_path, (source / input_path).read_text() + "\n# changed release input\n")
     plan = snapshot.plan(source, previous, "Owner/Repo")
     assert plan["build"] == {"backend": False, "frontend": False, "ollama": True}
     assert plan["images"]["backend"] == previous["images"]["backend"]
@@ -69,7 +73,7 @@ def test_gitops_contract_rejects_drift(source, tmp_path, change):
         path = root / snapshot.ARGOCD / "local-review-application.yaml"
         data = yaml.safe_load(path.read_text())
         if change == "values-order":
-            data["spec"]["source"]["helm"]["valueFiles"].reverse()
+            data["spec"]["source"]["helm"]["valueFiles"].append("values.yaml")
         else:
             data["spec"]["destination"]["namespace"] = "default"
         path.write_text(yaml.safe_dump(data))

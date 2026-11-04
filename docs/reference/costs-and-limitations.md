@@ -13,14 +13,13 @@ the cluster; the release workflow does not provision cloud infrastructure. See t
 
 ## Resource diagnostics
 
-The base application Chart and the smaller backend profile have different resource
-settings. The maintained Argo CD application uses the smaller profile from
-`values-minikube-ollama.yaml`, since inference runs in a separate Ollama Pod.
+The application Chart's `values.yaml` contains the maintained Minikube configuration.
+Its backend uses lightweight resources because inference runs in a separate Ollama
+Pod. Standard Helm and Argo CD share these defaults.
 
-| Workload / profile | CPU request / limit | Memory request / limit |
+| Workload | CPU request / limit | Memory request / limit |
 | --- | --- | --- |
-| Backend, base Chart | 2 / 2 CPUs | 4 / 6 GiB |
-| Backend, `values-minikube-ollama.yaml` | 100m / 1 CPU | 256 / 768 MiB |
+| Backend | 100m / 1 CPU | 256 / 768 MiB |
 | Frontend | 25m / 200m | 32 / 96 MiB |
 | DynamoDB Local | 100m / 500m | 256 / 512 MiB |
 | Combined inference + Ollama, default Chart | 250m / 2 CPUs | 1 / 3 GiB |
@@ -31,7 +30,7 @@ weights and GPU use in one container. See its
 [Chart guide](../../deploy/helm/local-ollama/README.md) for the preserved GPU setup.
 
 The application Chart requests two PVCs: 10 GiB for history/queue/sessions and
-1 GiB for accounts. Ollama adds a 4 GiB model PVC; optional Prometheus monitoring
+1 GiB for accounts. Ollama adds a 4 GiB model PVC; the Prometheus platform
 adds a 5 GiB PVC. These requests do not
 reserve physical host disk, and declared sizes are not measured usage.
 Older installations may still retain an unused backend model-cache PVC; see the

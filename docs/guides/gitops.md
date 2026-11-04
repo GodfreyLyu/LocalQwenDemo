@@ -92,11 +92,12 @@ Grafana's Role and RoleBinding need `local-review-demo` to exist before this app
 Wait for the monitoring services and ServiceMonitor/PrometheusRule CRDs before the
 first application sync.
 
-The supplied Argo Application enables `values-monitoring.yaml` after its release,
-Minikube and Ollama values. Terraform owns the monitoring platform and CRDs; Argo owns
-the application monitors, rules and dashboard ConfigMaps. The application AppProject
-has no cluster-wide access. Standard Helm deployments can omit this overlay when
-monitoring is not needed.
+The application Chart keeps hand-maintained configuration in `values.yaml`, including
+lightweight backend resources and enabled monitoring. The supplied Argo Application
+adds only generated `values-release.yaml` for image digests and source SHA.
+Terraform owns the monitoring platform and CRDs; Argo owns the application monitors,
+rules and dashboard ConfigMaps. The application AppProject has no cluster-wide access.
+Standard Helm deployments without the platform must set `monitoring.enabled=false`.
 
 Finally, run the bootstrap commands from a separate checkout of the
 **approved format-3 deployment-release snapshot**:

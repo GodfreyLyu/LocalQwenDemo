@@ -28,8 +28,10 @@ def source(tmp_path):
     shutil.copytree(ROOT / snapshot.CHART, root / snapshot.CHART)
     shutil.copytree(ROOT / snapshot.OLLAMA_CHART, root / snapshot.OLLAMA_CHART)
     shutil.copytree(ROOT / snapshot.ARGOCD, root / snapshot.ARGOCD)
-    shutil.copytree(ROOT / "deploy/images", root / "deploy/images")
     (root / "inference-service/src/llm_service").mkdir(parents=True)
+    shutil.copyfile(
+        ROOT / "inference-service/mesa-krunkit.repo", root / "inference-service/mesa-krunkit.repo"
+    )
     (root / "inference-service/src/llm_service/runtime.py").write_text("# inference runtime\n")
     (root / "contracts/python/llm_contract").mkdir(parents=True)
     (root / "contracts/python/llm_contract/__init__.py").write_text("# shared bindings\n")

@@ -26,8 +26,6 @@ def test_schema_rejects_multiple_workers_and_invalid_configuration():
                 "template",
                 "test",
                 str(ROOT / snapshot.CHART),
-                "-f",
-                str(ROOT / validate_helm.MINIKUBE_VALUES),
                 "--set",
                 setting,
             ],
@@ -40,13 +38,10 @@ def test_schema_rejects_multiple_workers_and_invalid_configuration():
 @pytest.mark.requires_helm
 @pytest.mark.contract
 def test_external_volume_and_volume_retention():
-    before = validate_helm.validate_resources(
-        validate_helm.render(ROOT, [ROOT / validate_helm.MINIKUBE_VALUES])
-    )
+    before = validate_helm.validate_resources(validate_helm.render(ROOT))
     after = validate_helm.validate_resources(
         validate_helm.render(
             ROOT,
-            [ROOT / validate_helm.MINIKUBE_VALUES],
             settings=[
                 "volumePermissions.enabled=false",
                 "persistence.history.existingClaim=old-history",
@@ -74,15 +69,14 @@ def test_external_volume_and_volume_retention():
 def test_configuration_changes_roll_only_the_consuming_workload(tmp_path, change, expected):
     chart = tmp_path / snapshot.CHART
     shutil.copytree(ROOT / snapshot.CHART, chart)
-    values = [tmp_path / validate_helm.MINIKUBE_VALUES]
-    before = validate_helm.validate_resources(validate_helm.render(tmp_path, values))
+    before = validate_helm.validate_resources(validate_helm.render(tmp_path))
     settings = []
     if change == "config":
         settings.append("config.queueCapacity=6")
     else:
         nginx = chart / "files/nginx.conf"
         nginx.write_text(nginx.read_text() + "\n# updated frontend configuration\n")
-    after = validate_helm.validate_resources(validate_helm.render(tmp_path, values, settings))
+    after = validate_helm.validate_resources(validate_helm.render(tmp_path, settings=settings))
     changed = {
         name
         for (kind, name), resource in before.items()
@@ -96,12 +90,10 @@ def test_configuration_changes_roll_only_the_consuming_workload(tmp_path, change
 @pytest.mark.requires_helm
 @pytest.mark.contract
 def test_retired_model_cache_values_do_not_change_resources():
-    values = [ROOT / validate_helm.MINIKUBE_VALUES]
-    before = validate_helm.validate_resources(validate_helm.render(ROOT, values))
+    before = validate_helm.validate_resources(validate_helm.render(ROOT))
     after = validate_helm.validate_resources(
         validate_helm.render(
             ROOT,
-            values,
             settings=[
                 "persistence.modelCache.size=12Gi",
                 "persistence.modelCache.existingClaim=retained-model-cache",
@@ -118,7 +110,9 @@ def test_retired_model_cache_values_do_not_change_resources():
 @pytest.mark.integration
 @pytest.mark.requires_helm
 def test_thrift_egress_is_scoped_to_the_preserved_inference_release():
-    resources = validate_helm.validate_resources(validate_helm.render(ROOT))
+    resources = validate_helm.validate_resources(
+        validate_helm.render(ROOT, settings=["networkPolicy.enabled=true"])
+    )
     policy = resources["NetworkPolicy", "review-backend"]["spec"]
     assert any(rule["ports"] == [{"port": 9091, "protocol": "TCP"}] for rule in policy["egress"])
     assert not any(p["port"] == 11434 for r in policy["egress"] for p in r["ports"])
@@ -131,7 +125,16 @@ def test_thrift_egress_is_scoped_to_the_preserved_inference_release():
 )
 def test_enabled_policy_rejects_mismatched_inference_host(host):
     result = subprocess.run(
-        ["helm", "template", "test", str(ROOT / snapshot.CHART), "--set", "inference.host=" + host],
+        [
+            "helm",
+            "template",
+            "test",
+            str(ROOT / snapshot.CHART),
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "inference.host=" + host,
+        ],
         capture_output=True,
         text=True,
     )
