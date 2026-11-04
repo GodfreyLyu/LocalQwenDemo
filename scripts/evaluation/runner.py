@@ -4,7 +4,7 @@ import os
 import time
 
 from app.config import Settings  # noqa: E402
-from app.inference.rpc.client import ThriftReviewModel  # noqa: E402
+from app.inference.rpc.client import ThriftReviewClient  # noqa: E402
 from evaluation.config import DRAIN_SECONDS, LOAD_TIMEOUT_SECONDS
 from evaluation.metrics import MetricCapture, peak_rss_mib
 from evaluation.quality import aggregate, evaluate_case, manual_review
@@ -28,20 +28,21 @@ def worker(connection, configuration, cases, manual):
     settings = Settings(_env_file=None, **configuration)
     started = time.monotonic()
     phase = "model_load_failed"
+    review_client = None
     try:
-        model = ThriftReviewModel(settings)
-        model.load()
+        review_client = ThriftReviewClient(settings)
+        review_client.connect()
         connection.send(
             (
                 "load",
                 {
                     "status": "passed",
-                    "model_id": model.info.model_id,
-                    "model_revision": model.digest,
-                    "device": model.device,
-                    "quantization": model.quantization,
-                    "service_limits": vars(model.info.limits),
-                    "service_defaults": vars(model.info.defaults),
+                    "model_id": review_client.info.model_id,
+                    "model_revision": review_client.digest,
+                    "device": review_client.device,
+                    "quantization": review_client.quantization,
+                    "service_limits": vars(review_client.info.limits),
+                    "service_defaults": vars(review_client.info.defaults),
                     "seconds": round(time.monotonic() - started, 3),
                     "peak_process_rss_mib": peak_rss_mib(),
                 },
@@ -59,12 +60,16 @@ def worker(connection, configuration, cases, manual):
                 ):
                     return manual_review(result, current, terminal, answers)
 
-            row = evaluate_case(model, settings, case, capture, reviewer if manual else None)
+            row = evaluate_case(
+                review_client, settings, case, capture, reviewer if manual else None
+            )
             connection.send(("case", index, row))
         connection.send(("done",))
     except Exception:
         connection.send(("failure", phase, round(time.monotonic() - started, 3), peak_rss_mib()))
     finally:
+        if review_client is not None:
+            review_client.close()
         connection.close()
 
 

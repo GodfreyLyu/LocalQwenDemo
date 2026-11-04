@@ -14,7 +14,7 @@ from app.errors import AppError
 from app.inference.generation import GenerationMetrics, SectionMetrics
 from app.monitoring import COORDINATOR_STATES, Metrics
 from app.persistence.storage import Store
-from backend.tests.support import FakeModel, register, wait_review
+from backend.tests.support import FakeReviewClient, register, wait_review
 
 
 def samples(text):
@@ -254,14 +254,14 @@ def test_worker_remains_busy_after_timeout_until_the_executor_exits(factory, stu
     release = threading.Event()
     entered = threading.Event()
 
-    class ControlledModel(FakeModel):
+    class ControlledReviewClient(FakeReviewClient):
         def review(self, source, language, stop):
             entered.set()
             assert release.wait(5)
             return "Late result"
 
     client = factory(
-        ControlledModel(),
+        ControlledReviewClient(),
         inference_timeout_seconds=0.1,
         inference_drain_seconds=0.02 if stuck else 2,
     )

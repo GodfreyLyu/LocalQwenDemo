@@ -29,9 +29,11 @@ def child(tmp_path, monkeypatch, script="import time; time.sleep(60)"):
 def test_start_and_abort_reap_real_child_and_force_loopback(tmp_path, monkeypatch):
     output = tmp_path / "environment.json"
     script = (
-        "import json,os,time; "
-        f"open({str(output)!r},'w').write("
+        "import json,os,time; from pathlib import Path; "
+        f"output=Path({str(output)!r}); "
+        "output.with_suffix('.tmp').write_text("
         "json.dumps({'OLLAMA_HOST':os.environ['OLLAMA_HOST']})); "
+        "output.with_suffix('.tmp').replace(output); "
         "time.sleep(60)"
     )
     process = child(tmp_path, monkeypatch, script)
@@ -59,10 +61,18 @@ def test_start_and_abort_reap_real_child_and_force_loopback(tmp_path, monkeypatc
 
 def test_group_cleanup_kills_native_runner_even_if_owner_exits(tmp_path, monkeypatch):
     runner_pid = tmp_path / "runner.pid"
+    # Publish readiness only after the runner is ignoring SIGTERM, so cleanup
+    # must kill the surviving group even after its owner has exited.
+    runner = (
+        "import os,signal,time; from pathlib import Path; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"output=Path({str(runner_pid)!r}); "
+        "output.with_suffix('.tmp').write_text(str(os.getpid())); "
+        "output.with_suffix('.tmp').replace(output); time.sleep(60)"
+    )
     script = (
-        "import subprocess,sys,time; p=subprocess.Popen([sys.executable,'-c',"
-        "'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)']); "
-        f"open({str(runner_pid)!r},'w').write(str(p.pid)); time.sleep(60)"
+        "import subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable,'-c',{runner!r}]); time.sleep(60)"
     )
     process = child(tmp_path, monkeypatch, script)
     process.start()

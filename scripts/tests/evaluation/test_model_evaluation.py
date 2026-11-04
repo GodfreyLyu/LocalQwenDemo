@@ -87,7 +87,7 @@ def test_plan_only_has_no_model_cache_or_network_side_effects(monkeypatch, tmp_p
     out = tmp_path / "reports"
     monkeypatch.setattr(config_module, "OUTPUT_ROOT", out)
     blocked = Mock(side_effect=AssertionError("must not run"))
-    monkeypatch.setattr(runner_module, "ThriftReviewModel", blocked)
+    monkeypatch.setattr(runner_module, "ThriftReviewClient", blocked)
     monkeypatch.setattr(runner_module, "supervise", blocked)
     monkeypatch.setattr(socket.socket, "connect", blocked)
     assert ev.main(args) == 0
@@ -332,7 +332,7 @@ def test_cli_dry_run_outside_checkout_uses_configured_report_directory(tmp_path)
     assert report["parameters"]["selected_cases"] == ["square"]
 
 
-class FakeRuntimeModel:
+class FakeRuntimeClient:
     """Exercise the real worker/report boundary with synthetic content and deliberately noisy IO."""
 
     def __init__(self, settings):
@@ -345,9 +345,12 @@ class FakeRuntimeModel:
         self.device = "gpu"
         self.quantization = "Q4_K_M"
 
-    def load(self):
+    def connect(self):
         os.write(1, SECRET.encode())
         os.write(2, SECRET.encode())
+
+    def close(self):
+        pass
 
     def review(self, *_):
         runner_module.logger.handle(metric_record())
@@ -357,7 +360,7 @@ class FakeRuntimeModel:
 @pytest.mark.integration
 def test_real_worker_lifecycle_with_fake_model(monkeypatch, tmp_path, settings, case, capfd):
     # Fork preserves these in-memory doubles. No model libraries are imported or loaded.
-    monkeypatch.setattr(runner_module, "ThriftReviewModel", FakeRuntimeModel)
+    monkeypatch.setattr(runner_module, "ThriftReviewClient", FakeRuntimeClient)
     report = report_module.build_report(
         settings, config_module.load_fixtures(), [case["id"]], True, False
     )
@@ -398,8 +401,8 @@ def test_watchdog_reaps_only_its_worker_and_reports_incomplete_case(
     assert {p.pid for p in multiprocessing.active_children()} == before
 
 
-class LoadFailureModel(FakeRuntimeModel):
-    def load(self):
+class ConnectionFailureClient(FakeRuntimeClient):
+    def connect(self):
         raise RuntimeError(SECRET)
 
 
@@ -408,7 +411,7 @@ class LoadFailureModel(FakeRuntimeModel):
 def test_worker_preflight_and_load_failures_remain_sanitized(
     monkeypatch, tmp_path, settings, case, capfd
 ):
-    monkeypatch.setattr(runner_module, "ThriftReviewModel", LoadFailureModel)
+    monkeypatch.setattr(runner_module, "ThriftReviewClient", ConnectionFailureClient)
     report = report_module.build_report(
         settings, config_module.load_fixtures(), [case["id"]], True, False
     )

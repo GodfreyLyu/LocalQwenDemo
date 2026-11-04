@@ -154,7 +154,7 @@ for (const viewport of [
         json: {
           deployment_environment: 'minikube',
           inference_mode: 'real',
-          service_status: ready ? 'ready' : 'model_loading',
+          service_status: ready ? 'ready' : 'inference_connecting',
           accepting_submissions: ready,
           model_id: 'qwen3:' + 'long-model-display-fixture-'.repeat(6),
           model_revision: modelDigest,
@@ -180,7 +180,7 @@ for (const viewport of [
     await editor.fill('const preserved = "my unsaved input";');
     const run = page.getByRole('button', { name: 'Run review' });
     const service = page.getByRole('status', { name: 'Service status' });
-    await expect(service).toContainText('Model loading');
+    await expect(service).toContainText('Connecting to inference service');
     await expect(run).toBeDisabled();
     await expect(
       page.getByRole('status', { name: 'Review task status' }),

@@ -8,9 +8,9 @@ from enum import StrEnum
 
 from app.config import Settings
 from app.domain import ReviewRecord
-from app.errors import AppError, InferenceUncertain
+from app.errors import AppError, InferenceUnavailable, InferenceUncertain
+from app.inference.client import ReviewClient
 from app.inference.identity import model_identity
-from app.inference.model import ReviewModel
 from app.monitoring import Metrics
 from app.persistence.storage import Store
 from app.persistence.users import UserStore
@@ -18,6 +18,9 @@ from app.persistence.users_startup import check_users_storage
 from app.startup import failure_fields
 
 logger = logging.getLogger("review")
+INFERENCE_HEALTH_INTERVAL_SECONDS = 5.0
+INFERENCE_RETRY_INITIAL_SECONDS = 1.0
+INFERENCE_RETRY_MAX_SECONDS = 10.0
 
 
 def milliseconds_since(started_at: float, *, now: float | None = None) -> int:
@@ -25,7 +28,8 @@ def milliseconds_since(started_at: float, *, now: float | None = None) -> int:
 
 
 class CoordinatorState(StrEnum):
-    LOADING = "model_loading"
+    INITIALIZING = "initializing"
+    CONNECTING = "inference_connecting"
     READY = "ready"
     DRAINING = "inference_draining"
     STUCK = "inference_stuck"
@@ -37,16 +41,16 @@ class Coordinator:
         self,
         store: Store,
         users: UserStore,
-        model: ReviewModel,
+        review_client: ReviewClient,
         settings: Settings,
         metrics: Metrics,
     ) -> None:
         self.store = store
         self.users = users
-        self.model = model
+        self.review_client = review_client
         self.settings = settings
         self.metrics = metrics
-        self._state = CoordinatorState.LOADING
+        self._state = CoordinatorState.INITIALIZING
         self._closing = False
         self._shutdown = asyncio.Event()
         self.stop = threading.Event()
@@ -71,8 +75,6 @@ class Coordinator:
     def _transition(self, state: CoordinatorState) -> None:
         self._state = state
         self.metrics.coordinator_state(state)
-        if state is CoordinatorState.STUCK:
-            self._closing = True
 
     def start(self) -> None:
         self.task = asyncio.create_task(self.run())
@@ -88,17 +90,32 @@ class Coordinator:
             await asyncio.to_thread(
                 self.store.recover, self.settings.max_retries, self.settings.queue_capacity
             )
-            stage = "inference_handshake"
-            await asyncio.get_running_loop().run_in_executor(self.executor, self.model.load)
-            stage = "storage_recheck"
-            await asyncio.to_thread(self.store.ping)
-            self._transition(CoordinatorState.READY)
-            logger.info("inference_ready")
-            stage = "queue_processing"
-            while not self.closing:
+            if self.closing:
+                return
+            self._transition(CoordinatorState.CONNECTING)
+            next_health_check = 0.0
+            while not self.closing and self.state is not CoordinatorState.STUCK:
+                if (
+                    self.state is CoordinatorState.CONNECTING
+                    or time.monotonic() >= next_health_check
+                ):
+                    stage = "inference_handshake"
+                    if not await self.connect_inference():
+                        return
+                    if self.state is not CoordinatorState.READY:
+                        stage = "storage_recheck"
+                        await asyncio.to_thread(self.store.ping)
+                        if self.closing:
+                            return
+                        self._transition(CoordinatorState.READY)
+                        logger.info("inference_ready")
+                    next_health_check = time.monotonic() + INFERENCE_HEALTH_INTERVAL_SECONDS
+                if self.closing:
+                    return
+                stage = "queue_processing"
                 job = await asyncio.to_thread(self.store.claim)
                 if job is None:
-                    await asyncio.sleep(0.1)
+                    await self.wait_for_shutdown(0.1)
                     continue
                 await self.process(job)
         except asyncio.CancelledError:
@@ -106,6 +123,35 @@ class Coordinator:
         except Exception as exc:
             self._transition(CoordinatorState.FAILED)
             logger.error("coordinator_failed", extra={"stage": stage, **failure_fields(exc)})
+
+    async def connect_inference(self) -> bool:
+        """Retry only dependency unavailability, without replaying any review or generation."""
+        delay = INFERENCE_RETRY_INITIAL_SECONDS
+        while not self.closing:
+            try:
+                # Share the review executor: a handshake must never replace identity mid-review.
+                await asyncio.get_running_loop().run_in_executor(
+                    self.executor, self.review_client.connect
+                )
+            except InferenceUnavailable as exc:
+                if self.closing:
+                    return False
+                self._transition(CoordinatorState.CONNECTING)
+                logger.warning(
+                    "inference_reconnect_scheduled",
+                    extra={"stage": "inference_handshake", **failure_fields(exc)},
+                )
+                await self.wait_for_shutdown(delay)
+                delay = min(delay * 2, INFERENCE_RETRY_MAX_SECONDS)
+            else:
+                return not self.closing
+        return False
+
+    async def wait_for_shutdown(self, delay: float) -> None:
+        try:
+            await asyncio.wait_for(self._shutdown.wait(), timeout=delay)
+        except TimeoutError:
+            pass
 
     async def process(self, job: ReviewRecord) -> None:
         self.stop.clear()
@@ -138,6 +184,9 @@ class Coordinator:
         except InferenceUncertain as exc:
             self._transition(CoordinatorState.STUCK)
             error = exc
+        except InferenceUnavailable as exc:
+            self._transition(CoordinatorState.CONNECTING)
+            error = exc
         except AppError as exc:
             error = exc
         except Exception:
@@ -152,7 +201,7 @@ class Coordinator:
         started_at = time.monotonic()
         self.metrics.worker_started()
         try:
-            return self.model.review(source, language, stop)
+            return self.review_client.review(source, language, stop)
         finally:
             self.metrics.worker_finished(time.monotonic() - started_at)
 
@@ -176,7 +225,7 @@ class Coordinator:
         )
 
     async def finish(self, job: ReviewRecord, result: str | None, error: AppError | None) -> None:
-        identity = model_identity(self.model)
+        identity = model_identity(self.review_client)
         await asyncio.to_thread(
             self.store.finish,
             job["review_id"],
@@ -221,19 +270,26 @@ class Coordinator:
         except InferenceUncertain:
             self._transition(CoordinatorState.STUCK)
             return
+        except InferenceUnavailable:
+            self._transition(CoordinatorState.CONNECTING)
+            return
         except Exception:
             pass
-        self._transition(CoordinatorState.READY)
+        if not self.closing:
+            self._transition(CoordinatorState.READY)
 
     async def close(self) -> None:
         self._closing = True
         self._shutdown.set()
         self.stop.set()
-        close_model = getattr(self.model, "close", None)
-        if close_model is not None:
-            close_model()
+        self.review_client.close()
         try:
-            await asyncio.wait_for(asyncio.shield(self.task), self.settings.shutdown_grace_seconds)
-        except (TimeoutError, asyncio.CancelledError):
+            if not self.task.done():
+                await asyncio.wait_for(
+                    asyncio.shield(self.task), self.settings.shutdown_grace_seconds
+                )
+        except TimeoutError:
             self.task.cancel()
-        self.executor.shutdown(wait=False, cancel_futures=True)
+            await asyncio.gather(self.task, return_exceptions=True)
+        finally:
+            self.executor.shutdown(wait=False, cancel_futures=True)

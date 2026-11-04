@@ -36,10 +36,13 @@ def main():
     from app.main import create_app
     from app.persistence.users import DynamoUsers
 
-    class DemoModel:
+    class DemoReviewClient:
         simulated = True
 
-        def load(self):
+        def connect(self):
+            pass
+
+        def close(self):
             pass
 
         def review(self, source, language, stop):
@@ -87,7 +90,9 @@ def main():
                 self.table_name = settings.dynamodb_table
 
         app = create_app(
-            settings, users=DemoUsers(), model=DemoModel() if args.fake_model else None
+            settings,
+            users=DemoUsers(),
+            review_client=DemoReviewClient() if args.fake_model else None,
         )
         uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False, proxy_headers=False)
 

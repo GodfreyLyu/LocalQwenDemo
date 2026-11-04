@@ -1,15 +1,20 @@
 import time
 
 
-class FakeModel:
+class FakeReviewClient:
     simulated = True
 
     def __init__(self, result="## Summary\nCheck empty input before division.", delay=0.01):
         self.result, self.delay = result, delay
         self.calls = self.active = self.peak = 0
+        self.connections = 0
+        self.closed = False
 
-    def load(self):
-        pass
+    def connect(self):
+        self.connections += 1
+
+    def close(self):
+        self.closed = True
 
     def review(self, source, language, stop):
         self.calls += 1

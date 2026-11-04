@@ -23,8 +23,7 @@ a different installed revision is never silently replaced.
 | --- | --- |
 | `THRIFT_HOST` / `THRIFT_PORT` | Default cluster endpoint `review-ollama.local-inference.svc.cluster.local:9091`; local `.env.example` uses loopback. |
 | `THRIFT_SOCKET_TIMEOUT_SECONDS` | Two-second short RPC timeout; independent of generation execution. |
-| `THRIFT_STARTUP_TIMEOUT_SECONDS` | Maximum backend handshake wait; default 3600 seconds. |
-| `THRIFT_RECOVERY_SECONDS` | Reconnect/poll budget after a lost response or cancellation; default 20 seconds. |
+| `THRIFT_RECOVERY_SECONDS` | Reconciliation budget for an admitted generation after a lost response or cancellation; default 20 seconds. |
 | `EXPECTED_MODEL_ID` / `EXPECTED_MODEL_REVISION` | Optional application identity assertions; deployment pins the selected model. |
 | `MODEL_MAX_OUTPUT_TOKENS` | Review-wide output budget, 384 tokens: Summary 72, Findings 176, Suggestions 136. |
 | `MODEL_TEMPERATURE` / `MODEL_TOP_P` | Optional application overrides; omitted means the service default. |
@@ -33,6 +32,21 @@ a different installed revision is never silently replaced.
 The backend has no native URL, model context, keep-alive, concurrency, model-pull or
 GPU configuration. It discovers service limits/defaults through the handshake.
 Service policy can change without reproducing a full configuration in the client.
+
+`ThriftReviewClient.connect()` performs one read-only metadata/health handshake.
+The coordinator retries temporary dependency failures after 1, 2, 4, 8 and then
+at most 10 seconds, until shutdown. It checks health every five seconds between
+reviews, using the same executor as generation calls. A dependency outage pauses
+admission and queue consumption; recovery resumes existing queued work without
+reinitializing storage or replaying a failed review. Model-constraint or protocol
+errors fail the coordinator rather than entering this retry loop.
+
+`THRIFT_STARTUP_TIMEOUT_SECONDS` has been removed. The application's Helm
+`startupTimeoutSeconds` still bounds deployment startup probes and alert grace;
+it does not limit connection retries. Backend startup and liveness probes use
+`/health/live`, while readiness uses `/health/ready` and requires the inference
+dependency to be available. An unavailable dependency therefore does not itself
+cause a liveness restart.
 
 ## Service configuration
 

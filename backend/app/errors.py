@@ -28,6 +28,17 @@ class AppError(Exception):
         super().__init__(message)
 
 
+class InferenceUnavailable(AppError):
+    """The dependency is unavailable; callers must still reconcile any admitted request."""
+
+    def __init__(self):
+        super().__init__(
+            "inference_unavailable",
+            "The inference service is temporarily unavailable. Please retry shortly.",
+            503,
+        )
+
+
 class InferenceUncertain(AppError):
     """A remote call lost its execution state; admission must fail closed."""
 

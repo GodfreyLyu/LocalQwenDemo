@@ -197,7 +197,7 @@ responsibilities and the [testing guide](../testing/README.md) for test coverage
 ### Canonical imports
 
 Use `app.api.*`, `app.inference.*` and `app.persistence.*` for their respective
-implementations. `app.inference.model` defines the model protocol, and
+implementations. `app.inference.client` defines the `ReviewClient` protocol, and
 `app.inference.rpc.client` supplies the backend's real adapter. The separate
 service uses `llm_service.ollama` for native loopback HTTP calls; the applications share only `contracts`.
 

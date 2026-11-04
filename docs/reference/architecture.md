@@ -103,7 +103,7 @@ See the [review sequence](workflows.md#review-from-submission-to-history) and
    queue-depth snapshot. Only newly inserted reviews emit `review_submitted`.
    `ReviewAccepted` exposes three fields and the route returns 202 without waiting
    for inference. A storage failure never produces a successful acceptance response.
-5. The coordinator claims a queued review and calls `ThriftReviewModel` in its sole
+5. The coordinator claims a queued review and calls `ThriftReviewClient` in its sole
    client executor. The backend constructs Summary, Findings and Suggestions prompts
    and performs three generic generations under one review deadline. The service
    owns native execution and reports usage; the backend formats and validates output.
@@ -139,13 +139,13 @@ application can use the generic service without importing backend code. The revi
 backend continues to use its Python adapter; the Java library is not another
 deployed workload.
 
-`create_app` assembles settings, stores, the limiter, model, coordinator and service for
+`create_app` assembles settings, stores, the limiter, review client, coordinator and service for
 each application instance. `api/dependencies.py` is the only route-facing adapter from
 Request/app state to those typed dependencies. The service receives its Python
 dependencies explicitly and does not depend on HTTP Request or Response objects. Routes
 call `Store` directly for simple history and detail queries scoped to the authenticated
 user. Callers use `app.inference`, `app.persistence` and `app.api`.
-`app.inference.model` contains the injected model protocol;
+`app.inference.client` contains the injected `ReviewClient` protocol (`connect`, `review`, `close`);
 `app.inference.rpc.client` is the backend's real adapter. The independent service uses
 `llm_service.ollama` for loopback native HTTP calls. The
 [Thrift learning guide](../guides/apache-thrift.md) explains the IDL, transport,
@@ -165,8 +165,12 @@ closing skip that check. The last operational status in a shutdown health
 response is preserved even though its HTTP status is 503.
 
 These endpoints do not contact the Thrift worker or Ollama on every observation.
-The worker handshake happens at startup, and later reviews detect RPC or model
-failures. A ready observation therefore does not prove current end-to-end inference.
+The coordinator performs a read-only handshake at startup and every five seconds
+between reviews. It serializes handshakes with review calls so service identity
+cannot be replaced during a review. A failed dependency check pauses admission
+and queue consumption until a successful reconnect. A ready observation describes
+the last dependency check and writable SQLite status; it does not prove current
+end-to-end inference.
 
 Authentication and review admission share one `rate_limit.RateLimiter` per app.
 A lock keeps quota checking and recording atomic across worker threads. Attempts
@@ -310,12 +314,13 @@ before attempting recovery.
 
 `CoordinatorState` determines readiness and liveness. State changes go through
 `_transition`; `ready` and `live` are read-only properties.
-`closing` is an independent lifecycle flag: shutdown can occur during loading,
+`closing` is an independent lifecycle flag: shutdown can occur during initialization, reconnect,
 normal processing or draining without hiding the last operational state.
 
 | State | Ready (while not closing) | Live | Next behavior |
 | --- | --- | --- | --- |
-| `model_loading` | false | true | Initialize stores, recover the queue, and verify the Thrift worker's model identity and service readiness |
+| `initializing` | false | true | Initialize stores and recover the durable queue once |
+| `inference_connecting` | false | true | Retry read-only metadata/health handshakes with capped backoff; queued jobs remain untouched |
 | `ready` | true | true | Claim and execute jobs serially |
 | `inference_draining` | false | true | Wait for the timed-out executor future; never start another job |
 | `inference_stuck` | false | false | Stop claiming jobs; late thread exit cannot restore readiness |
@@ -325,9 +330,19 @@ Confirmed worker completion within the drain window restores `ready`; the stored
 job remains failed with its timeout. An adapter-reported timeout that has already
 returned can fail the job without entering this drain path.
 
+Connection failures before a start is sent, explicit pre-admission rejection by a
+new service instance, and confirmed terminal dependency failures can reconnect for
+later work. They never automatically replay the failed review. Once a start may
+have been accepted, only its existing request ID is polled or cancelled. A missing
+result, changed instance during lookup, or exhausted reconciliation budget enters
+`inference_stuck`; a healthy handshake alone cannot clear that uncertainty.
+
 Shutdown sets `closing`, closes admission, signals cancellation and waits for the
 configured grace period, which defaults to 20 seconds. It also interrupts a client
-waiting for its startup handshake. Backend Pods have a 60-second termination grace;
+waiting between reconnect attempts. In-flight handshakes use the configured short
+socket timeouts and shutdown grace; a late handshake never restores readiness.
+Socket timeouts do not impose an OS-level DNS deadline.
+Backend Pods have a 60-second termination grace;
 inference Pods retain 45 seconds. The inference runtime closes admission, stops and
 reaps its Ollama process group, joins the worker and closes listeners. Cancellation
 is terminal only after native operation exit. Model reload on cancellation can

@@ -6,7 +6,7 @@ import pytest
 
 from app.coordinator import CoordinatorState
 from app.inference.identity import model_identity
-from app.inference.rpc.client import ThriftReviewModel
+from app.inference.rpc.client import ThriftReviewClient
 
 
 @pytest.mark.component
@@ -65,10 +65,10 @@ def test_storage_failure_and_shutdown_never_claim_readiness(factory, monkeypatch
 
 @pytest.mark.component
 @pytest.mark.contract
-def test_real_adapter_identity_before_loading_is_not_fabricated(factory):
+def test_real_client_identity_before_connecting_is_not_fabricated(factory):
     client = factory()
     settings = client.app.state.settings
-    identity = model_identity(ThriftReviewModel(settings))
+    identity = model_identity(ThriftReviewClient(settings))
     assert identity == {
         "inference_mode": "real",
         "model_id": None,
@@ -140,28 +140,31 @@ def test_shutdown_runtime_override_does_not_change_probe_or_touch_storage(factor
 
 
 @pytest.mark.component
-def test_loading_runtime_and_probe_do_not_check_storage(factory, monkeypatch):
+def test_connecting_runtime_and_probe_do_not_check_storage(factory, monkeypatch):
     import threading
 
-    from backend.tests.support import FakeModel
+    from backend.tests.support import FakeReviewClient
 
     release = threading.Event()
+    entered = threading.Event()
 
-    class LoadingModel(FakeModel):
-        def load(self):
+    class ConnectingClient(FakeReviewClient):
+        def connect(self):
+            entered.set()
             assert release.wait(5)
 
-    client = factory(LoadingModel(), ready=False)
+    client = factory(ConnectingClient(), ready=False)
+    assert entered.wait(2)
     calls = []
     monkeypatch.setattr(client.app.state.store, "ping", lambda: calls.append("ping"))
     try:
         runtime = client.get("/api/v1/runtime")
         probe = client.get("/health/ready")
         assert runtime.status_code == 200
-        assert runtime.json()["service_status"] == "model_loading"
+        assert runtime.json()["service_status"] == "inference_connecting"
         assert runtime.json()["accepting_submissions"] is False
         assert client.get("/health/live").status_code == 200
-        assert probe.status_code == 503 and probe.json() == {"status": "model_loading"}
+        assert probe.status_code == 503 and probe.json() == {"status": "inference_connecting"}
         assert calls == []
     finally:
         release.set()

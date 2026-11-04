@@ -31,7 +31,6 @@ class InferenceSettings(ModelSettings, BaseSettings):
     thrift_host: str = "review-ollama.local-inference.svc.cluster.local"
     thrift_port: int = Field(default=9091, ge=1, le=65535)
     thrift_socket_timeout_seconds: float = Field(default=2, gt=0, le=10)
-    thrift_startup_timeout_seconds: float = Field(default=3600, gt=0, le=3600)
     thrift_recovery_seconds: float = Field(default=20, gt=0, le=60)
     source_max_chars: int = Field(default=12000, ge=1, le=32000)
 

@@ -28,7 +28,7 @@ backend/tests/
   core/         # Configuration and rate limiting
   inference/    # Prompts/output, RPC doubles, coordinator and opt-in real reviews
   persistence/  # SQLite, local DynamoDB transport and startup
-  support.py    # Model double and API helpers; fixtures live in conftest.py
+  support.py    # Review client double and API helpers; fixtures live in conftest.py
 scripts/tests/
   deployment/   # Helm rendering/lifecycle, ownership, state and shared process guards
   release/      # Planning, publishing, GitOps and chart contracts
@@ -108,6 +108,13 @@ function signatures and exact section-budget splits are implementation choices.
 The optional `test_real_service.py` keeps one API-to-service acceptance journey;
 native model startup, GPU checks and process supervision belong to the independent
 inference suite.
+
+Reconnect coverage exercises startup and runtime dependency outages, preserved
+queued jobs, capped backoff, shutdown during a handshake or retry wait, and fatal
+model-constraint/protocol failures. RPC recovery tests distinguish a rejected start
+from an accepted request with a lost reply: only the latter requires reconciliation
+by request ID and may enter `inference_stuck`. A successful reconnect never replays
+a failed review or clears an unknown execution outcome.
 
 ### Shared fixtures and test organization
 

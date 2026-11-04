@@ -6,7 +6,7 @@ from argon2 import extract_parameters
 from argon2.low_level import Type
 from fastapi.testclient import TestClient
 
-from backend.tests.support import FakeModel, register, wait_review
+from backend.tests.support import FakeReviewClient, register, wait_review
 
 
 @pytest.mark.component
@@ -107,8 +107,8 @@ def test_csrf_and_json_only(factory):
 @pytest.mark.contract
 @pytest.mark.security
 def test_user_isolation_and_model_provenance(factory):
-    model = FakeModel()
-    client = factory(model)
+    review_client = FakeReviewClient()
+    client = factory(review_client)
     register(client)
     response = client.post("/api/v1/reviews", json={"source_code": "def f(x): return 1/x"})
     assert response.status_code == 202
@@ -125,13 +125,13 @@ def test_user_isolation_and_model_provenance(factory):
     assert other.get("/api/v1/reviews").json()["items"] == []
     assert other.get(f"/api/v1/reviews?before={review_id}").status_code == 400
     assert client.get("/api/v1/reviews").json()["items"][0]["review_id"] == review_id
-    assert model.peak == 1
+    assert review_client.peak == 1
 
 
 @pytest.mark.component
 def test_submission_and_login_rate_limits(factory):
     client = factory(
-        FakeModel(delay=0.4), queue_capacity=1, submission_rate_limit=2, login_rate_limit=2
+        FakeReviewClient(delay=0.4), queue_capacity=1, submission_rate_limit=2, login_rate_limit=2
     )
     register(client)
     assert client.post("/api/v1/reviews", json={"source_code": "x"}).status_code == 202

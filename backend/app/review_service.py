@@ -74,7 +74,9 @@ class ReviewService:
             )
         if not self.coordinator.ready:
             raise AppError(
-                self.coordinator.state, "The model is not ready. Please retry shortly.", 503
+                self.coordinator.state,
+                "The review service is not ready. Please retry shortly.",
+                503,
             )
 
     def _log_queue_rejection(self) -> None:

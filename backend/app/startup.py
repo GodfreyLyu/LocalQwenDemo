@@ -47,6 +47,7 @@ def failure_fields(exc):
         if isinstance(exc, AppError)
         and exc.code
         in {
+            "inference_unavailable",
             "ollama_unavailable",
             "ollama_model_missing",
             "ollama_model_mismatch",

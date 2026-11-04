@@ -115,6 +115,9 @@ def test_all_application_containers_remain_hardened_and_single_replica(resources
     backend = resource(resources, "Deployment", "review-backend")["spec"]["template"]["spec"]
     assert backend["securityContext"]["runAsUser"] == 10001
     assert backend["containers"][0]["resources"]["limits"]["memory"] == "6Gi"
+    container = backend["containers"][0]
+    assert container["startupProbe"]["httpGet"]["path"] == "/health/live"
+    assert container["readinessProbe"]["httpGet"]["path"] == "/health/ready"
     for init in backend["initContainers"]:
         if init["name"] != "volume-permissions":
             continue

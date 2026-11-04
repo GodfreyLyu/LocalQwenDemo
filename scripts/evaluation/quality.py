@@ -65,14 +65,14 @@ def manual_review(result, case, terminal, answers):
     return verdicts
 
 
-def evaluate_case(model, settings, case, capture, reviewer=None, clock=time.monotonic):
+def evaluate_case(review_client, settings, case, capture, reviewer=None, clock=time.monotonic):
     """Reuse production guards; only complete contract/metrics AND manual judgments can pass."""
     row = pending_case(case["id"])
     started = clock()
     elapsed = None
     before = len(capture.records)
     try:
-        result = model.review(case["source"], case["language"], threading.Event())
+        result = review_client.review(case["source"], case["language"], threading.Event())
         elapsed = clock() - started
         row["checks"]["runtime_budget"] = (
             "passed" if elapsed < settings.inference_timeout_seconds else "failed"

@@ -84,12 +84,16 @@ export const isActive = (status: Status) =>
   ['submitting', 'queued', 'running'].includes(status);
 
 const errorMessages: Record<string, string> = {
-  model_loading:
-    'The local model service is preparing and loading. Submit when it is ready.',
+  initializing:
+    'The review service is initializing storage and recovering queued jobs.',
+  inference_connecting:
+    'The inference service is unavailable or preparing. Connection retries are automatic.',
+  inference_unavailable:
+    'The inference service is temporarily unavailable. Please retry shortly.',
   inference_draining:
     'The previous inference is stopping. Please wait for service readiness.',
   inference_stuck:
-    'Inference has not stopped. Check the backend logs before restarting the service.',
+    'The previous inference outcome could not be confirmed. New submissions are paused; check the backend logs before recovery.',
   startup_or_storage_failure:
     'Service startup or storage failed. Check the backend logs for details.',
   storage_unavailable:

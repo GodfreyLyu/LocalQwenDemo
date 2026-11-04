@@ -115,13 +115,27 @@ none starts at or after the deadline. An in-flight call is allowed to finish, bu
 late success still fails startup. Reporting can therefore take longer than 120 seconds;
 socket timeouts do not provide a hard wall-clock limit for DNS or scheduling.
 
-During retries, liveness stays healthy, readiness returns 503 with `model_loading`,
-and submissions are rejected. Success continues with queue recovery, model validation
+During retries, liveness stays healthy, readiness returns 503 with `initializing`,
+and submissions are rejected. Success continues with queue recovery, the inference handshake
 and the final storage check. Retry exhaustion or another error enters
 `startup_or_storage_failure`. Later database recovery does not restart initialization
 within that process. Inspect the dependency and Pod state before deciding whether a
 restart is needed. Only the account-store check retries; earlier startup stages and
 inference do not repeat as part of this loop.
+
+Inference connection recovery has its own loop after storage initialization. While
+`inference_connecting`, readiness returns 503, liveness stays healthy, and saved
+queued jobs remain queued. The coordinator retries metadata/health handshakes with
+1, 2, 4, 8 and at most 10 seconds between attempts. It also probes every five seconds
+between reviews, so an idle backend notices a dependency outage or restart. Storage
+initialization and queue recovery are not repeated. Backend startup probes use
+liveness rather than dependency readiness, allowing reconnection without a Pod
+restart. Model-constraint and protocol failures still require correction and recovery.
+
+Reconnect does not resubmit a failed review. If generation may already have been
+accepted, the client reconciles only the original RPC request ID. An unknown result
+or service restart during that lookup remains `inference_stuck`, even if the new
+service is healthy. Resolve that uncertainty before reopening admission.
 
 Shutdown interrupts retry waits and schedules no further calls. An in-flight call
 uses the coordinator's shutdown grace, which defaults to 20 seconds. Cancelling the

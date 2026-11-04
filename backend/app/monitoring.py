@@ -13,7 +13,8 @@ from app.persistence.storage import Store
 
 HTTP_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 COORDINATOR_STATES = (
-    "model_loading",
+    "initializing",
+    "inference_connecting",
     "ready",
     "inference_draining",
     "inference_stuck",
@@ -74,7 +75,7 @@ class CoordinatorCollector:
     """Take one state snapshot so a concurrent transition cannot break the one-hot series."""
 
     def __init__(self) -> None:
-        self.state = "model_loading"
+        self.state = "initializing"
 
     def collect(self):
         state = self.state

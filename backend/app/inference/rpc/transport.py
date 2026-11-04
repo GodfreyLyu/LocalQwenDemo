@@ -4,6 +4,7 @@ from llm_contract.generated import LlmService
 from thrift.protocol import TBinaryProtocol
 from thrift.transport import TSocket, TTransport
 
+from app.errors import InferenceUnavailable
 from app.inference.settings import InferenceSettings
 
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -37,8 +38,11 @@ class Connection:
     def __enter__(self) -> LlmService.Client:
         try:
             self.transport.open()
-        except Exception:
+        except Exception as exc:
             self.transport.close()
+            if isinstance(exc, (OSError, TTransport.TTransportException)):
+                # No generated RPC has run yet, so no request was sent on this connection.
+                raise InferenceUnavailable() from None
             raise
         return LlmService.Client(binary(self.transport))
 

@@ -87,7 +87,7 @@ Scrapes do not increment HTTP metrics or emit normal request logs.
 | `review_queue_depth`, `review_queue_capacity` | Current persisted waiting count and configured capacity |
 | `review_queue_oldest_age_seconds` | Age from original submission of the oldest waiting review; zero only for a successfully observed empty queue |
 | `review_metrics_collection_success` | Whether the read-only queue snapshot succeeded |
-| `review_coordinator_state` | One-hot operational state: `model_loading`, `ready`, `inference_draining`, `inference_stuck`, `startup_or_storage_failure` |
+| `review_coordinator_state` | One-hot operational state: `initializing`, `inference_connecting`, `ready`, `inference_draining`, `inference_stuck`, `startup_or_storage_failure` |
 | `review_worker_busy` | Whether the backend's Thrift client executor call is running, including drain; not a direct remote-worker or GPU measurement |
 | `review_queue_wait_seconds` | Histogram from original submission to this execution attempt starting |
 | `review_duration_seconds` | Histogram from original submission to persisted terminal state |
@@ -207,6 +207,12 @@ from final storage checks. Worker startup performs Ollama metadata validation an
 the generation probe before listening. Its text formatter does not expose the
 same structured stage/error fields as backend JSON logs. Inspect the worker and
 Ollama separately when the backend is waiting for its handshake.
+
+`inference_reconnect_scheduled` records a temporary handshake failure using fixed
+diagnostic fields. Reconnect waits increase from one to at most ten seconds and
+are interrupted by shutdown. Healthy dependency checks run between reviews every
+five seconds. `inference_ready` is emitted on initial connection and recovery,
+not on every healthy check. These checks never start model generation.
 
 Generation metrics record generation and time to first content for each fixed section,
 plus input and output token counts. There are no application-side tokenizer or

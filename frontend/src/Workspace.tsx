@@ -194,7 +194,8 @@ export function Workspace({
       const rejectedByReadiness =
         error instanceof ApiError &&
         [
-          'model_loading',
+          'initializing',
+          'inference_connecting',
           'inference_draining',
           'inference_stuck',
           'startup_or_storage_failure',
