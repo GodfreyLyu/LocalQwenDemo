@@ -43,8 +43,18 @@ if [ -d "$repo_root/deploy/helm/local-ollama" ]; then
   if [ -f "$repo_root/deploy/helm/local-ollama/values-release.yaml" ]; then
     ollama_args+=(-f "$repo_root/deploy/helm/local-ollama/values-release.yaml")
   fi
+  # Standard Helm keeps PostSync verification disabled and retains its test Pod.
   helm template review-ollama "$repo_root/deploy/helm/local-ollama" \
     --namespace local-inference "${ollama_args[@]}" \
-    -f "$repo_root/deploy/helm/local-ollama/values-argocd.yaml" \
+    | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
+  # Preserve archived snapshots' overlay; current Argo Applications use this parameter.
+  ollama_argo_args=("${ollama_args[@]}")
+  if [ -f "$repo_root/deploy/helm/local-ollama/values-argocd.yaml" ]; then
+    ollama_argo_args+=(-f "$repo_root/deploy/helm/local-ollama/values-argocd.yaml")
+  else
+    ollama_argo_args+=(--set verification.argoPostSync=true)
+  fi
+  helm template review-ollama "$repo_root/deploy/helm/local-ollama" \
+    --namespace local-inference --skip-tests "${ollama_argo_args[@]}" \
     | "$tool_dir/kubeconform" -strict -summary -kubernetes-version 1.35.0
 fi

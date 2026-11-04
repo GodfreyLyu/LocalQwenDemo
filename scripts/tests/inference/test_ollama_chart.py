@@ -27,6 +27,7 @@ def render(*settings):
 @pytest.mark.contract
 def test_inference_retains_models_and_owns_both_processes_in_one_image():
     resources = render()
+    assert not any(kind == "Job" for kind, _ in resources)
     deployment = resources["Deployment", "review-ollama"]["spec"]
     assert deployment["replicas"] == 1 and deployment["strategy"] == {"type": "Recreate"}
     pod = deployment["template"]["spec"]
@@ -47,6 +48,7 @@ def test_inference_retains_models_and_owns_both_processes_in_one_image():
     assert {p["port"] for p in service["ports"]} == {9091, 11435}
     assert 11434 not in {p["containerPort"] for p in container["ports"]}
     test = resources["Pod", "review-ollama-gpu-test"]
+    assert test["metadata"]["annotations"]["helm.sh/hook"] == "test"
     assert "devic.es/dri" not in json.dumps(test)
     assert test["spec"]["containers"][0]["command"] == ["python3", "-m", "llm_service.verify"]
     dockerfile = (ROOT / "inference-service/Dockerfile").read_text()

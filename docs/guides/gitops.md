@@ -48,6 +48,10 @@ pinned values, `release.json` and a short README. The root `release-values.yaml`
 retained for existing Helm commands and is checked to be identical to local-review's
 Chart-local `values-release.yaml`.
 
+Previously approved snapshots retain their original configuration layout during
+rollback. Current validators read supported archived layouts without rewriting
+their values files or Application manifests.
+
 Apply repository protection using a maintainer identity:
 
 ```bash
@@ -173,9 +177,12 @@ resources or the global kubectl context.
 
 ## Verification, storage and ownership
 
-The Ollama Application skips Helm test hooks and enables a separate `PostSync` Job when
-model bootstrap is enabled. The Job calls the Service to generate text and verify the
-pinned model, digest, and full GPU placement. It does not request a second GPU slot.
+The Ollama Application skips Helm test hooks and sets
+`verification.argoPostSync=true` through `helm.parameters`, enabling a separate
+`PostSync` Job. The Chart default remains `false` for ordinary Helm installations,
+which use `helm test` for verification. The Job calls the Service to generate text
+and verify the pinned model, digest, and full GPU placement. It does not request a
+second GPU slot.
 A failed Job fails sync. The runtime's readiness endpoint checks the adapter's
 loaded flag, child health and shutdown state. It is false during recovery, but
 does not continuously recheck native model residency or GPU placement. Startup

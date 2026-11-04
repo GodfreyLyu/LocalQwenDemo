@@ -193,9 +193,13 @@ With Minikube's `standard` StorageClass, this also deletes the stored model data
 
 When its build inputs change, the main release workflow builds this image for
 linux/arm64 after PR checks and merge, publishes a GHCR digest, and includes this
-Chart in the deployment snapshot. Argo CD uses `values-release.yaml` plus
-`values-argocd.yaml`. When bootstrap is enabled, its PostSync Job verifies GPU inference
-for the pinned model through
-the Service. The Job is disabled for normal Helm installs, where `helm test` remains
-available. See the
+Chart in the deployment snapshot. Argo CD reads the generated `values-release.yaml`
+and sets `verification.argoPostSync=true` through the Application's `helm.parameters`.
+This enables a PostSync Job that verifies GPU inference for the pinned model through
+the Service. The Chart's `values.yaml` keeps this setting `false` for normal Helm
+installs, where `helm test` performs the verification.
+
+Previously approved release snapshots can retain the former overlay layout.
+Rollback validation reads that saved configuration without rewriting the archived
+values or Application manifests. See the
 [GitOps guide](../../../docs/guides/gitops.md) for first installation and migration.

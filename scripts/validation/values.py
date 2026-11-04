@@ -28,6 +28,28 @@ def application_value_names(root):
     return names
 
 
+def inference_helm_options(root):
+    """Validate current parameters or the exact archived inference overlay layout."""
+    application = yaml.safe_load(
+        (root / "deploy/argocd/review-ollama-application.yaml").read_text()
+    )
+    options = application["spec"]["source"]["helm"]
+    current = {
+        "releaseName": "review-ollama",
+        "skipTests": True,
+        "valueFiles": RELEASE_VALUES,
+        "parameters": [{"name": "verification.argoPostSync", "value": "true"}],
+    }
+    # Old approved snapshots retain this file and ordering during rollback.
+    legacy = {
+        "releaseName": "review-ollama",
+        "skipTests": True,
+        "valueFiles": ["values-release.yaml", "values-argocd.yaml"],
+    }
+    require(options in (current, legacy), "Unexpected Argo source or value precedence")
+    return options
+
+
 def snapshot_values(root):
     """Use a snapshot's saved configuration, including supported historical Helm releases."""
     manifest = json.loads((root / "release.json").read_text())

@@ -1,6 +1,9 @@
 """Release inputs, Argo rendering and CI admission boundaries."""
 
+import copy
 import json
+import subprocess
+import sys
 
 import pytest
 import release.snapshot_impl as snapshot
@@ -43,6 +46,106 @@ def test_backend_change_preserves_ollama_pod_template(source, tmp_path):
     manifest = snapshot.materialize(source, root, plan, {"backend": "sha256:" + "e" * 64})
     validate_snapshot(root, manifest)
     assert render_application(root, app) == before
+
+
+@pytest.mark.integration
+@pytest.mark.requires_git
+@pytest.mark.requires_helm
+@pytest.mark.contract
+def test_inference_argo_parameter_adds_only_the_post_sync_verification_job(source, tmp_path):
+    released(source, tmp_path)
+    root = tmp_path / "release"
+    app = yaml.safe_load((root / snapshot.ARGOCD / "review-ollama-application.yaml").read_text())
+    argo = {
+        (resource["kind"], resource["metadata"]["name"]): resource
+        for resource in render_application(root, app)
+    }
+    plain_app = copy.deepcopy(app)
+    plain_app["spec"]["source"]["helm"].pop("parameters")
+    plain = {
+        (resource["kind"], resource["metadata"]["name"]): resource
+        for resource in render_application(root, plain_app)
+    }
+    verification = ("Job", "review-ollama-gpu-verify")
+    assert argo.keys() - plain.keys() == {verification}
+    assert not plain.keys() - argo.keys()
+    assert all(argo[key] == resource for key, resource in plain.items())
+    assert argo[verification]["metadata"]["annotations"]["argocd.argoproj.io/hook"] == "PostSync"
+
+
+@pytest.mark.integration
+@pytest.mark.requires_git
+@pytest.mark.requires_helm
+@pytest.mark.contract
+@pytest.mark.recovery
+def test_archived_inference_overlay_matches_parameters_and_validates_without_rewriting(
+    source, tmp_path
+):
+    released(source, tmp_path)
+    root = tmp_path / "release"
+    path = root / snapshot.ARGOCD / "review-ollama-application.yaml"
+    app = yaml.safe_load(path.read_text())
+    current = render_application(root, app)
+    helm = app["spec"]["source"]["helm"]
+    helm.pop("parameters")
+    helm["valueFiles"] = ["values-release.yaml", "values-argocd.yaml"]
+    path.write_text(yaml.safe_dump(app))
+    (root / snapshot.OLLAMA_CHART / "values-argocd.yaml").write_text(
+        "verification:\n  argoPostSync: true\n"
+    )
+    assert render_application(root, app) == current
+    archived = {
+        item.relative_to(root): item.read_bytes() for item in root.rglob("*") if item.is_file()
+    }
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/validate_helm.py"),
+        "--root",
+        str(root),
+        "--snapshot",
+    ]
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert archived == {
+        item.relative_to(root): item.read_bytes() for item in root.rglob("*") if item.is_file()
+    }
+    helm["valueFiles"].reverse()
+    path.write_text(yaml.safe_dump(app))
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode != 0
+
+
+@pytest.mark.integration
+@pytest.mark.requires_git
+@pytest.mark.requires_helm
+@pytest.mark.contract
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        None,
+        [{"name": "verification.argoPostSync", "value": "false"}],
+        [
+            {"name": "verification.argoPostSync", "value": "true"},
+            {"name": "image.tag", "value": "unreviewed"},
+        ],
+    ],
+    ids=["missing", "disabled", "extra"],
+)
+def test_inference_argo_parameters_cannot_drop_verification_or_override_release_values(
+    source, tmp_path, parameters
+):
+    manifest = released(source, tmp_path)
+    root = tmp_path / "release"
+    path = root / snapshot.ARGOCD / "review-ollama-application.yaml"
+    app = yaml.safe_load(path.read_text())
+    helm = app["spec"]["source"]["helm"]
+    if parameters is None:
+        helm.pop("parameters")
+    else:
+        helm["parameters"] = parameters
+    path.write_text(yaml.safe_dump(app))
+    with pytest.raises(ValueError, match="Argo"):
+        validate_snapshot(root, manifest)
 
 
 @pytest.mark.integration
