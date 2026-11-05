@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 from tooling_paths import ROOT
 from validation.monitoring import check_prometheus
+from validation.values import snapshot_values
 
 
 def main():
@@ -16,12 +17,15 @@ def main():
     args = parser.parse_args()
     if "/" in args.promtool:
         args.promtool = str(Path(args.promtool).resolve())
-    chart = args.root.resolve() / "deploy/helm/local-review"
+    root = args.root.resolve()
+    chart = root / "deploy/helm/local-review"
     command = ["helm", "template", "local-review", str(chart), "-n", "local-review-demo"]
-    if (chart / "values-release.yaml").exists():
-        command.extend(["-f", str(chart / "values-release.yaml")])
-    for name in ("values-minikube.yaml", "values-minikube-ollama.yaml", "values-monitoring.yaml"):
-        command.extend(["-f", str(chart / name)])
+    values = snapshot_values(root) if (root / "release.json").exists() else []
+    if not values and (chart / "values-release.yaml").exists():
+        values = [chart / "values-release.yaml"]
+    for path in values:
+        command.extend(["-f", str(path)])
+    command.extend(["--set", "monitoring.enabled=true"])
     resources = list(yaml.safe_load_all(subprocess.check_output(command, text=True)))
     check_prometheus(resources, args.promtool, ROOT / "scripts/tests/monitoring/rules.test.yaml")
     print("Monitoring rules, scenarios, and dashboard expressions validated.")

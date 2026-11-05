@@ -2,9 +2,28 @@
 
 `llm.thrift` is the source of truth. `python/llm_contract/generated` and
 `java/demo/llm/generated` are reproducible outputs of Apache Thrift 0.25.0.
-Python applications install this directory as the `local-llm-contract` package;
-Java applications use the Maven library [`demo.llm:llm-client:0.1.0`](../clients/java/README.md),
-which compiles these existing sources with `libthrift:0.25.0` and includes a small handwritten SDK.
+Python applications install this directory as the `local-llm-contract` package.
+Java examples use the generated `LlmService.Client` directly with
+`TSocket`, `TFramedTransport` and strict `TBinaryProtocol`. The [Maven build](pom.xml)
+compiles the existing Java bindings and [examples](examples/java/) against
+`libthrift:0.25.0`.
+
+With JDK 11+ and Maven 3.9+, compile from the repository root without calling a service:
+
+```bash
+backend/.venv/bin/python scripts/java_thrift.py --compile-only
+```
+
+Run the [generation example](examples/java/Generate.java) against an already running service:
+
+```bash
+backend/.venv/bin/python scripts/java_thrift.py --host 127.0.0.1 --port 9091
+```
+
+The [interop probe](examples/java/InteropProbe.java) is driven by the inference
+tests to check Java/Python wire behavior. `contracts/target/` contains local build
+outputs. See the [Java walkthrough](../docs/guides/apache-thrift.md#java-example)
+for connection handling and the combined check.
 
 Run `python3 scripts/generate_thrift.py` from the repo root; `--check` compares both
 languages byte-for-byte. The Java generation suppresses timestamp annotations so

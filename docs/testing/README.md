@@ -17,8 +17,10 @@ namespace-package resolution let test directories reuse filenames and let
 multiprocessing workers import their test doubles.
 
 The independent service uses `inference-service/pytest.ini` and its own virtual
-environment. Java unit tests use Maven/JUnit. Neither is collected by the root
-pytest defaults; the complete check invokes the separate inference gate.
+environment. Its Java interoperability fixture compiles the generated bindings and
+Java examples through Maven, then drives them against Python TCP peers. These service
+tests are not collected by the root pytest defaults; the complete check invokes
+the separate inference gate.
 
 Tests stay with their owning components and are grouped by domain:
 
@@ -28,11 +30,11 @@ backend/tests/
   core/         # Configuration and rate limiting
   inference/    # Prompts/output, RPC doubles, coordinator and opt-in real reviews
   persistence/  # SQLite, local DynamoDB transport and startup
-  support.py    # Model double and API helpers; fixtures live in conftest.py
+  support.py    # Review client double and API helpers; fixtures live in conftest.py
 scripts/tests/
   deployment/   # Helm rendering/lifecycle, ownership, state and shared process guards
   release/      # Planning, publishing, GitOps and chart contracts
-  inference/    # Ollama runtime doubles and separate chart tests
+  inference/    # Separate inference chart and application connection policy
   monitoring/   # Monitoring charts, platform configuration and PromQL scenarios
   evaluation/   # Evaluator behavior using model doubles
   persistence/  # Local users initializer
@@ -40,10 +42,8 @@ scripts/tests/
   support/      # Shared paths, deployment helpers and release helpers
 inference-service/tests/
                 # Generic RPC registry, native HTTP doubles, process lifecycle and Java interop
-clients/java/src/test/java/
-                # JUnit TCP tests and a Java probe for the Python interop fixture
-clients/java/examples/consumer/
-                # Independent Maven application with only the SDK dependency
+contracts/examples/java/
+                # Direct generated-client example and Java probe for Python interop tests
 frontend/src/
   tests/        # Authentication, reviews, history, runtime and Markdown behavior
   test-support/ # Shared workspace responses and editor double
@@ -101,6 +101,21 @@ scripts also exclude `real_model` and `requires_cluster` explicitly, even if an 
 has exported that variable. Skipped or deselected inference tests are not model passes.
 No test may weaken ownership or security just to pass.
 
+`backend/tests/inference/test_review_policy.py` covers application review behavior,
+not local model execution. Its checks protect message roles, output structure,
+source binding, token-budget invariants and truncated-output handling. Prompt prose,
+function signatures and exact section-budget splits are implementation choices.
+The optional `test_real_service.py` keeps one API-to-service acceptance journey;
+native model startup, GPU checks and process supervision belong to the independent
+inference suite.
+
+Reconnect coverage exercises startup and runtime dependency outages, preserved
+queued jobs, capped backoff, shutdown during a handshake or retry wait, and fatal
+model-constraint/protocol failures. RPC recovery tests distinguish a rejected start
+from an accepted request with a lost reply: only the latter requires reconciliation
+by request ID and may enter `inference_stuck`. A successful reconnect never replays
+a failed review or clears an unknown execution outcome.
+
 ### Shared fixtures and test organization
 
 `backend/tests/conftest.py` owns the application factory; ordinary helpers are imported
@@ -130,9 +145,9 @@ and verify that requests cannot fall back to real cloud services.
 | Backend | `backend/.venv/bin/pytest backend/tests -m 'not real_model and not requires_cluster'` | Queue/capacity/idempotency/restart, authentication, Cookie/CSRF, isolation, prompts/budgets/output, RPC recovery, startup and logging; Moto accounts and model doubles |
 | Local transport | Backend local-DynamoDB tests | Missing/remote endpoints rejected; SDK host credentials/profiles/metadata/proxies cannot replace local transport |
 | Backend Thrift adapter | `backend/.venv/bin/pytest backend/tests/inference/test_thrift.py` | Application prompts, budgets, errors, metrics and uncertain-execution handling with an injected RPC double |
-| Independent inference and Java | `bash scripts/checks/inference.sh` | Binding drift, real TCP client/processor tests, registry deadlines/cancellation/retention, native HTTP doubles, child lifecycle, Maven SDK tests and a standalone consumer |
-| Java SDK | `mvn -f clients/java/pom.xml test` | Real loopback Java peers check RPC values, errors, connection cleanup, read timeouts, strict framing and concurrent callers |
-| Real Thrift review | `RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_model.py::test_real_fastapi_review_persists_remote_identity` | Opt-in FastAPI → TCP Thrift → an already running inference service → real Ollama, with saved model provenance |
+| Independent inference and Java | `bash scripts/checks/inference.sh` | Binding drift, real TCP client/processor tests, registry deadlines/cancellation/retention, native HTTP doubles, child lifecycle and Java/Python interoperability |
+| Java example compilation | `backend/.venv/bin/python scripts/java_thrift.py --compile-only` | Maven compiles the existing generated bindings, generation example and interoperability probe without calling a service |
+| Real Thrift review | `RUN_REAL_MODEL=1 THRIFT_HOST=127.0.0.1 backend/.venv/bin/pytest backend/tests/inference/test_real_service.py::test_real_fastapi_review_persists_remote_identity` | Opt-in FastAPI → TCP Thrift → an already running inference service → real Ollama, with saved model provenance |
 | Minikube | `scripts/check_minikube_demo.sh` | Helm lifecycle, resource ownership, forwarding, queue fencing, storage retention and purge; simulated cluster APIs and real loopback fixtures |
 | Release and charts | Shared script gate | Helm rendering, GitOps, snapshot/provenance and simulated publishing with local Git remotes |
 | Local initializer | Shared script gate | Idempotent create/reuse, ACTIVE schema checks, local-only endpoints, no data replacement |
@@ -165,7 +180,7 @@ their owning application), and the Node 24/npm dependencies. The gate also needs
 
 - Git, Helm and kubectl for temporary repositories and offline rendering.
 - Apache Thrift 0.25.0 for the generated-binding drift check.
-- JDK 11+ and Maven 3.9+ for the SDK, example and independent consumer.
+- JDK 11+ and Maven 3.9+ for the generated Java bindings and examples.
 - Permission to bind temporary loopback sockets.
 
 Use the [local development guide](../guides/local-development.md) for the backend
@@ -184,10 +199,10 @@ bash scripts/check.sh
 This runs Ruff lint/format checks, backend pytest, frontend lint/Vitest/build, shell syntax,
 all maintained script regressions (including release, GitOps and Ollama charts),
 manifest validation and Helm lint/render validation, then the inference gate.
-That last stage checks bindings, runs the independent Python tests, builds/tests/
-packages the Java SDK and installs it locally for the copied consumer test. Set
-`MAVEN_ARGS` to select an isolated local Maven repository if desired; see the
-[SDK guide](../../clients/java/README.md#generate-test-and-package).
+That last stage checks bindings, runs the independent Python tests, compiles the
+Java bindings/examples once and tests their interoperability over TCP. Maven resolves
+dependencies using `contracts/pom.xml`; set `MAVEN_ARGS` to select an isolated local
+Maven repository if desired. See the [Java example guide](../guides/apache-thrift.md#java-example).
 The full check stops at the first failed stage. It never builds container images,
 deploys, migrates existing application data or runs real inference. Do not export
 `RUN_REAL_MODEL=1` during routine checks.
@@ -322,7 +337,7 @@ fixtures and must not be rewritten or deleted by the gate.
 ## Independent inference checks
 
 [The Thrift guide](../guides/apache-thrift.md#regenerate-test-and-build) documents
-the service's environment, binding drift checks, Java SDK/example/consumer,
+the service's environment, binding drift checks, direct generated-client Java examples,
 real TCP/processor tests, bounded registry, native HTTP doubles and real child
 process tests. Run `bash scripts/checks/inference.sh` with the compiler and Java
 tools above installed. `INFERENCE_PYTHON` selects the service interpreter;

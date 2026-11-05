@@ -1,21 +1,16 @@
 """Bounded startup diagnostics: never format exceptions, URLs or model/user content."""
 
-import logging
 import re
-from contextlib import contextmanager
 
 from app.errors import AppError
 
-logger = logging.getLogger("review")
 STAGES = frozenset(
     {
         "storage_initialize",
         "users_storage",
         "queue_recovery",
-        "model_load",
-        "ollama_validation",
-        "startup_generation",
-        "post_model_storage",
+        "inference_handshake",
+        "storage_recheck",
         "queue_processing",
     }
 )
@@ -30,7 +25,6 @@ def safe_diagnostic_fields(fields):
         result["exception_type"] = name
     for key, lower, upper in (
         ("errno", 1, 4095),
-        ("http_status", 100, 599),
         ("startup_attempt", 0, 1000),
         ("startup_wait_ms", 0, 10000),
         ("startup_elapsed_ms", 0, 3600000),
@@ -46,7 +40,6 @@ def failure_fields(exc):
         {
             "exception_type": type(exc).__name__,
             "errno": getattr(exc, "errno", None),
-            "http_status": getattr(getattr(exc, "response", None), "status_code", None),
         }
     )
     fields["error_code"] = (
@@ -54,6 +47,7 @@ def failure_fields(exc):
         if isinstance(exc, AppError)
         and exc.code
         in {
+            "inference_unavailable",
             "ollama_unavailable",
             "ollama_model_missing",
             "ollama_model_mismatch",
@@ -63,16 +57,3 @@ def failure_fields(exc):
         else "startup_or_storage_failure"
     )
     return fields
-
-
-@contextmanager
-def startup_stage(stage):
-    assert stage in STAGES
-    logger.info("startup_stage_started", extra={"stage": stage})
-    try:
-        yield
-    except Exception as exc:
-        logger.error("startup_stage_failed", extra={"stage": stage, **failure_fields(exc)})
-        raise
-    else:
-        logger.info("startup_stage_completed", extra={"stage": stage})

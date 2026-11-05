@@ -7,14 +7,14 @@ import pytest
 from app.errors import AppError, ValidationReason
 from app.inference.review_output import INVALID_REVIEW_MESSAGE, validate_review_output
 from app.logging import SERVICE_NAME
-from backend.tests.support import FakeModel, register, wait_review
+from backend.tests.support import FakeReviewClient, register, wait_review
 
 
 @pytest.mark.component
 @pytest.mark.recovery
 def test_idempotency_conflicts_and_completed_retry(factory):
-    model = FakeModel(delay=0.1)
-    client = factory(model)
+    review_client = FakeReviewClient(delay=0.1)
+    client = factory(review_client)
     register(client)
     payload = {"source_code": "hello arbitrary source", "client_request_id": str(uuid4())}
     first = client.post("/api/v1/reviews", json=payload)
@@ -27,7 +27,7 @@ def test_idempotency_conflicts_and_completed_retry(factory):
     )
     wait_review(client, first.json()["review_id"])
     assert client.post("/api/v1/reviews", json=payload).json()["status"] == "completed"
-    assert model.calls == 1
+    assert review_client.calls == 1
 
 
 @pytest.mark.component
@@ -74,7 +74,7 @@ def test_invalid_id_body_limit_and_no_sensitive_echo(factory, capsys):
     ],
 )
 def test_model_failure_translation(factory, result, code):
-    client = factory(FakeModel(result=result))
+    client = factory(FakeReviewClient(result=result))
     register(client)
     job = client.post("/api/v1/reviews", json={"source_code": "x"}).json()
     review = wait_review(client, job["review_id"])
@@ -85,7 +85,7 @@ def test_model_failure_translation(factory, result, code):
 @pytest.mark.component
 @pytest.mark.contract
 def test_invalid_model_response_public_contract_and_safe_validation_log(factory, capsys):
-    class ValidatingModel(FakeModel):
+    class ValidatingReviewClient(FakeReviewClient):
         def review(self, source, language, stop):
             return validate_review_output(self.result, source)
 
@@ -94,7 +94,7 @@ def test_invalid_model_response_public_contract_and_safe_validation_log(factory,
         "## Summary\nMODEL_OUTPUT_SENTINEL generic routine.\n"
         "## Findings\nNo issue.\n## Suggestions\nAdd tests."
     )
-    client = factory(ValidatingModel(result=rejected_output))
+    client = factory(ValidatingReviewClient(result=rejected_output))
     register(client)
     capsys.readouterr()
 
@@ -136,7 +136,7 @@ def test_truncated_section_keeps_public_error_generic_and_logs_only_fixed_reason
         502,
         validation_reason=ValidationReason.TRUNCATED_SECTION,
     )
-    client = factory(FakeModel(result=error))
+    client = factory(FakeReviewClient(result=error))
     register(client)
     capsys.readouterr()
 
@@ -169,12 +169,12 @@ def test_truncated_section_keeps_public_error_generic_and_logs_only_fixed_reason
 
 @pytest.mark.component
 def test_inference_timeout(factory):
-    model = FakeModel(delay=1)
-    client = factory(model, inference_timeout_seconds=0.03)
+    review_client = FakeReviewClient(delay=1)
+    client = factory(review_client, inference_timeout_seconds=0.03)
     register(client)
     job = client.post("/api/v1/reviews", json={"source_code": "x"}).json()
     assert wait_review(client, job["review_id"])["error_code"] == "inference_timeout"
-    assert model.peak == 1 and client.get("/health/live").status_code == 200
+    assert review_client.peak == 1 and client.get("/health/live").status_code == 200
 
 
 @pytest.mark.component

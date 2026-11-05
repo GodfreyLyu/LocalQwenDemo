@@ -7,6 +7,7 @@ import yaml
 
 from validation.monitoring import validate_monitoring
 from validation.resources import require, validate_resources
+from validation.values import application_value_names, inference_helm_options
 
 
 def render_application(root, application):
@@ -26,6 +27,9 @@ def render_application(root, application):
         path = chart / value
         require(path.resolve().is_relative_to(chart.resolve()), "Values must stay inside Chart")
         command += ["-f", str(path)]
+    for parameter in source["helm"].get("parameters", []):
+        option = "--set-string" if parameter.get("forceString", False) else "--set"
+        command += [option, f"{parameter['name']}={parameter['value']}"]
     return list(yaml.safe_load_all(subprocess.check_output(command, text=True)))
 
 
@@ -45,17 +49,16 @@ def validate_snapshot(root, manifest):
         "review-ollama": (
             "local-ollama",
             "local-inference",
-            ["values-release.yaml", "values-argocd.yaml"],
+            inference_helm_options(root),
         ),
         "local-review": (
             "local-review",
             "local-review-demo",
-            [
-                "values-release.yaml",
-                "values-minikube.yaml",
-                "values-minikube-ollama.yaml",
-                "values-monitoring.yaml",
-            ],
+            {
+                "releaseName": "local-review",
+                "skipTests": True,
+                "valueFiles": application_value_names(root),
+            },
         ),
     }
     allowed = {
@@ -89,7 +92,7 @@ def validate_snapshot(root, manifest):
         "AppProject must target only the two application namespaces",
     )
     rendered = {}
-    for name, (chart, namespace, values) in expected.items():
+    for name, (chart, namespace, helm) in expected.items():
         app = yaml.safe_load((root / f"deploy/argocd/{name}-application.yaml").read_text())
         require(
             app["apiVersion"] == "argoproj.io/v1alpha1"
@@ -106,7 +109,7 @@ def validate_snapshot(root, manifest):
                 "repoURL": repo,
                 "targetRevision": "deployment-release",
                 "path": "deploy/helm/" + chart,
-                "helm": {"releaseName": name, "skipTests": True, "valueFiles": values},
+                "helm": helm,
             },
             "Unexpected Argo source or value precedence",
         )

@@ -10,7 +10,7 @@ import pytest
 from app.coordinator import milliseconds_since
 from app.errors import AppError
 from app.logging import SafeFormatter
-from backend.tests.support import FakeModel, register, wait_ready, wait_review
+from backend.tests.support import FakeReviewClient, register, wait_ready, wait_review
 
 
 @pytest.mark.unit
@@ -133,12 +133,12 @@ def test_successful_health_probes_are_suppressed_but_failures_are_logged(factory
     release = threading.Event()
     entered = threading.Event()
 
-    class LoadingModel(FakeModel):
-        def load(self):
+    class ConnectingClient(FakeReviewClient):
+        def connect(self):
             entered.set()
             assert release.wait(5)
 
-    loading = factory(LoadingModel(), ready=False)
+    loading = factory(ConnectingClient(), ready=False)
     try:
         # Account-startup logs must finish before asserting the last HTTP event.
         assert entered.wait(2)
@@ -151,7 +151,7 @@ def test_successful_health_probes_are_suppressed_but_failures_are_logged(factory
     assert [event["route"] for event in events if event["event"] == "http_request"] == [
         "/health/ready"
     ]
-    assert events[-1]["error_code"] == "model_loading"
+    assert events[-1]["error_code"] == "inference_connecting"
 
 
 @pytest.mark.component

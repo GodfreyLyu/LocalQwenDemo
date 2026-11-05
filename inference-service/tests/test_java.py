@@ -1,9 +1,8 @@
-"""Packaged Java SDK and an independent Maven consumer use real Python Thrift over TCP."""
+"""Generated Java clients and Python processors interoperate over real TCP."""
 
 import importlib.util
 import os
 import queue
-import shutil
 import socketserver
 import subprocess
 import threading
@@ -197,11 +196,9 @@ def assert_closed(server, count):
 
 
 @pytest.mark.parametrize("mode,connections", [("lifecycle", 7), ("lost", 4), ("concurrent", 10)])
-def test_sdk_python_wire_semantics_and_cleanup(java_classpath, mode, connections):
+def test_generated_java_python_wire_semantics_and_cleanup(java_classpath, mode, connections):
     with controlled_server(mode) as server:
-        output = run_java(
-            java_classpath, "demo.llm.client.InteropProbe", server.server_address[1], mode
-        )
+        output = run_java(java_classpath, "InteropProbe", server.server_address[1], mode)
         assert f"ok={mode}" in output
         assert_closed(server, connections)
         if mode != "concurrent":
@@ -210,23 +207,3 @@ def test_sdk_python_wire_semantics_and_cleanup(java_classpath, mode, connections
             assert server.handler.requests[0].options.seed == 2**63 - 1
         if mode == "lifecycle":
             assert server.handler.cancelled == ["cancel-me"]
-
-
-def test_independent_maven_consumer_uses_only_installed_sdk(java_classpath, java_tools, tmp_path):
-    # Build outside the checkout: no parent reactor, generated source tree, or SDK test classes.
-    consumer = tmp_path / "consumer"
-    shutil.copytree(java_tools.CONSUMER, consumer, ignore=shutil.ignore_patterns("target"))
-    java_tools.compile_consumer(consumer)
-    with controlled_server("consumer") as server:
-        result = java_tools.maven(
-            consumer / "pom.xml",
-            "exec:java",
-            f"-Dexec.args=127.0.0.1 {server.server_address[1]} cancel",
-            capture_output=True,
-        )
-        output = result.stdout
-        assert "Bonjour" in output
-        assert "state=SUCCEEDED" in output and "state=CANCELLED" in output
-        assert len(server.handler.requests) == 2
-        assert server.handler.cancelled == [server.handler.requests[1].request_id]
-        assert_closed(server, 7)

@@ -87,7 +87,7 @@ Scrapes do not increment HTTP metrics or emit normal request logs.
 | `review_queue_depth`, `review_queue_capacity` | Current persisted waiting count and configured capacity |
 | `review_queue_oldest_age_seconds` | Age from original submission of the oldest waiting review; zero only for a successfully observed empty queue |
 | `review_metrics_collection_success` | Whether the read-only queue snapshot succeeded |
-| `review_coordinator_state` | One-hot operational state: `model_loading`, `ready`, `inference_draining`, `inference_stuck`, `startup_or_storage_failure` |
+| `review_coordinator_state` | One-hot operational state: `initializing`, `inference_connecting`, `ready`, `inference_draining`, `inference_stuck`, `startup_or_storage_failure` |
 | `review_worker_busy` | Whether the backend's Thrift client executor call is running, including drain; not a direct remote-worker or GPU measurement |
 | `review_queue_wait_seconds` | Histogram from original submission to this execution attempt starting |
 | `review_duration_seconds` | Histogram from original submission to persisted terminal state |
@@ -141,8 +141,9 @@ describe calls through this backend, not other clients of the shared Ollama serv
 ## Platform ownership and limits
 
 Terraform owns the optional `monitoring` Helm release and Operator CRDs. The application
-Chart defaults monitoring resources off; `values-monitoring.yaml` enables them after
-the platform is ready. Argo CD uses that overlay in its approved application snapshot.
+Chart enables monitoring resources in `values.yaml`, so install the platform before
+the application. Standard Helm and Argo CD share these defaults. For a deployment
+without the platform, explicitly set `monitoring.enabled=false`.
 Prometheus selects `release: monitoring` resources in `monitoring` and
 `local-review-demo`. Grafana reads dashboard ConfigMaps in those two namespaces.
 See the [platform setup](../../infra/local-platform/README.md#monitoring) for versions,
@@ -153,9 +154,10 @@ a 4 GiB TSDB retention target and a 5 GiB PVC. WAL/head data also consumes space
 retention is not a hard total-disk quota. Dashboards are provisioned from Git and UI
 changes are not durable. Alertmanager has no external notification receiver configured.
 
-NetworkPolicy isolation requires a capable CNI and an enabled policy. The Minikube
-profile disables policies. When enabled, the added ingress selects both the monitoring
-namespace and Prometheus Pods. Because metrics share backend port 8000, this is a port
+NetworkPolicy isolation requires a capable CNI and an enabled policy. The default
+Minikube configuration disables policies. When enabled, the added ingress selects
+both the monitoring namespace and Prometheus Pods. Because metrics share backend
+port 8000, this is a port
 boundary, not HTTP-path isolation. ClusterIP and lack of a frontend proxy do not imply
 that other in-cluster workloads cannot reach the endpoint.
 
@@ -180,7 +182,7 @@ The formatter may add only these fields:
 | `error_code`, `outcome` | Fixed enums; unknown values become a safe fallback |
 | `validation_reason` | One of the fixed validation enums; an unknown value is omitted |
 | generation detail maps | Integer, boolean or null values under the three fixed section names only |
-| `stage`, `exception_type`, `errno`, `http_status` | Allowlisted stage, bounded exception class name and numeric diagnostics; no exception message |
+| `stage`, `exception_type`, `errno` | Allowlisted stage, bounded exception class name and OS error number; no exception message |
 | `startup_attempt`, `startup_wait_ms`, `startup_elapsed_ms` | Bounded startup retry counts and timings |
 
 HTTP duration and model generation duration use monotonic clocks. Queue wait and total
@@ -202,17 +204,26 @@ Pod/container and observation time when examining the two streams.
 
 ## Inference and startup measurement boundaries
 
-Backend startup diagnostics distinguish the Thrift handshake stage (`model_load`)
+Backend startup diagnostics distinguish the Thrift handshake stage (`inference_handshake`)
 from final storage checks. Worker startup performs Ollama metadata validation and
 the generation probe before listening. Its text formatter does not expose the
 same structured stage/error fields as backend JSON logs. Inspect the worker and
 Ollama separately when the backend is waiting for its handshake.
 
+`inference_reconnect_scheduled` records a temporary handshake failure using fixed
+diagnostic fields. Reconnect waits increase from one to at most ten seconds and
+are interrupted by shutdown. Healthy dependency checks run between reviews every
+five seconds. `inference_ready` is emitted on initial connection and recovery,
+not on every healthy check. These checks never start model generation.
+
 Generation metrics record generation and time to first content for each fixed section,
 plus input and output token counts. There are no application-side tokenizer or
 PyTorch thread measurements; Ollama owns those operations.
-Time to first content is included in generation duration; do not add it again. Missing
-sections remain unmeasured. Ollama placement is observed through `/api/ps` at startup
+Time to first content is included in generation duration; do not add it again. Backend
+section observations are created only after a successful generation response. Failed
+or unfinished sections remain absent from generation detail maps and token counters;
+a successful response reporting zero tokens records an observed zero. Missing RPC
+timing fields remain unmeasured. Ollama placement is observed through `/api/ps` at startup
 or the last successful review.
 
 To measure inference resource use, collect counters from the combined `inference`

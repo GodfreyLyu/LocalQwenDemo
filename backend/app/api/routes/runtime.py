@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Request
 
-from app.api.dependencies import AppSettings, InferenceModel, ReviewCoordinator, ReviewStore
+from app.api.dependencies import AppSettings, InferenceClient, ReviewCoordinator, ReviewStore
 from app.health import check_readiness
 from app.inference.identity import model_identity
 
@@ -15,7 +15,7 @@ def runtime(
     settings: AppSettings,
     coordinator: ReviewCoordinator,
     store: ReviewStore,
-    model: InferenceModel,
+    review_client: InferenceClient,
 ) -> dict:
     observation = check_readiness(coordinator, store)
     # Runtime remains HTTP 200 while retaining the probe's diagnostic error code.
@@ -28,5 +28,5 @@ def runtime(
         "deployment_environment": settings.deployment_environment,
         "service_status": state,
         "accepting_submissions": state == "ready",
-        **model_identity(model),
+        **model_identity(review_client),
     }

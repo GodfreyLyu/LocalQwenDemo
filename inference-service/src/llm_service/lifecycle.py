@@ -1,4 +1,4 @@
-"""Ollama child ownership, adapted from deploy/images/ollama-vulkan/runtime.py."""
+"""Own, monitor and reap the native Ollama child process group."""
 
 import os
 import signal

@@ -38,7 +38,6 @@ def settings_for(
         dynamodb_endpoint_url="http://127.0.0.1:8001",
         thrift_host="127.0.0.1",
         thrift_port=9091,
-        thrift_startup_timeout_seconds=60,
         expected_model_revision=expected_model_revision,
         model_max_output_tokens=model_max_output_tokens,
         inference_timeout_seconds=inference_timeout_seconds,

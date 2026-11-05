@@ -56,14 +56,13 @@ def inputs(root):
     ollama = [
         p
         for p in tracked
-        if p.startswith(
-            ("deploy/images/ollama-vulkan/", "inference-service/src/", "contracts/python/")
-        )
+        if p.startswith(("inference-service/src/", "contracts/python/"))
         or p
         in {
             "contracts/pyproject.toml",
             "contracts/llm.thrift",
             "inference-service/Dockerfile",
+            "inference-service/mesa-krunkit.repo",
             "inference-service/requirements.lock",
             "inference-service/pyproject.toml",
             ".dockerignore",

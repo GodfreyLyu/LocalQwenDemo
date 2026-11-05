@@ -260,19 +260,25 @@ pending queue; independent clients can still submit generic tasks and query snap
 ```mermaid
 stateDiagram-v2
     accTitle: Backend coordinator startup and timeout recovery
-    accDescr: The coordinator initializes stores, recovers the queue and checks the Thrift service's model identity and readiness before becoming ready. A coordinator deadline enters draining. Confirmed completion within the drain allowance restores readiness. Uncertain execution can move ready or draining directly to stuck; an expired drain also becomes stuck. Startup and storage errors require recovery.
-    state "model_loading" as loading
+    accDescr: The coordinator initializes stores and recovers the queue once, then connects to the inference service with capped retries. Healthy checks between reviews refresh the connection. A dependency outage pauses admission and queued work until recovery. A coordinator deadline enters draining. Unknown execution stops the coordinator and cannot be cleared by reconnecting. Configuration, protocol and storage errors require recovery.
+    state "initializing" as initializing
+    state "inference_connecting" as connecting
     state "ready" as readyState
     state "inference_draining" as draining
     state "inference_stuck" as stuck
     state "startup_or_storage_failure" as failure
-    [*] --> loading
-    loading --> readyState: Startup checks pass
-    loading --> failure: Startup error
+    [*] --> initializing
+    initializing --> connecting: Stores and queue initialized
+    initializing --> failure: Storage initialization error
+    connecting --> connecting: Temporary failure and capped backoff
+    connecting --> readyState: Handshake and storage check pass
+    connecting --> failure: Protocol, model constraint or storage error
+    readyState --> connecting: Dependency unavailable with no unresolved execution
     readyState --> draining: Timeout
     readyState --> stuck: Remote execution uncertain
     readyState --> failure: Storage or loop error
     draining --> readyState: Completion confirmed
+    draining --> connecting: Call exited with dependency unavailable
     draining --> stuck: Drain expires or execution uncertain
     draining --> failure: Write error
 ```
@@ -284,9 +290,15 @@ retries only allowlisted transport failures, serially, within a 120-second retry
 budget; an in-flight SDK call is allowed to finish. In Kubernetes, an init container
 first ensures the users table exists. See [startup recovery](../operations/recovery-and-cleanup.md).
 
+The client performs one handshake attempt. The coordinator owns reconnect waits
+of 1, 2, 4, 8 and at most 10 seconds and periodic checks every five seconds between
+reviews. It does not repeat storage initialization or queue recovery. New submissions
+are rejected while connecting, and already saved queued jobs stay queued.
+
 | Operational state | Ready when not closing | Live | Consequence |
 | --- | --- | --- | --- |
-| `model_loading` | No | Yes | Wait for initialization |
+| `initializing` | No | Yes | Initialize storage and recover the queue once |
+| `inference_connecting` | No | Yes | Retry handshakes; preserve queued jobs |
 | `ready` | Yes, if writable SQLite check passes | Yes | Admit and claim jobs |
 | `inference_draining` | No | Yes | Send worker cancellation and wait for confirmed completion |
 | `inference_stuck` | No | No | Stop coordinator; Kubernetes liveness restart |

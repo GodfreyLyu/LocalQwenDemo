@@ -35,8 +35,6 @@ def test_model_selection_and_sampling_are_configurable_from_environment(monkeypa
     config = Settings(dynamodb_endpoint_url="http://localhost:8001", signing_secret="x" * 32)
     assert config.expected_model_id == "llama3.2:1b"
     assert config.model_temperature == 0.1
-    assert "model_context_tokens" not in type(config).model_fields
-    assert "ollama_base_url" not in type(config).model_fields
 
 
 @pytest.mark.unit

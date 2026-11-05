@@ -2,11 +2,15 @@
 
 import copy
 import json
+import subprocess
+import sys
 
 import pytest
 import release.snapshot_impl as snapshot  # noqa: E402
 import validation.helm as validate_helm  # noqa: E402
+import yaml
 
+from scripts.tests.support.paths import ROOT
 from scripts.tests.support.release import (
     committed,
     git,
@@ -23,9 +27,7 @@ def test_first_release_builds_both_and_matches_provenance(source, tmp_path):
     manifest = released(source, tmp_path)
     root = tmp_path / "release"
     validate_helm.validate_tree(root)
-    resources = validate_helm.render(
-        root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
-    )
+    resources = validate_helm.render(root, [root / "release-values.yaml"])
     validate_helm.validate_snapshot(root, validate_helm.validate_resources(resources))
     assert manifest["images"]["backend"]["repository"] == "ghcr.io/owner/repo-backend"
     assert not (root / "backend").exists()
@@ -122,7 +124,7 @@ def test_standard_helm_snapshot_is_deterministic_and_preserves_image_pins(source
         "imagePullSecrets:\n  - name: ghcr-pull\n"
         "config:\n  allowedOrigin: http://localhost:8081\n"
     )
-    values = [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES, site_values]
+    values = [root / "release-values.yaml", site_values]
     resources = validate_helm.render(root, values)
     assert resources == validate_helm.render(root, values)
     keyed = validate_helm.validate_resources(resources)
@@ -149,13 +151,69 @@ def test_standard_helm_snapshot_is_deterministic_and_preserves_image_pins(source
 @pytest.mark.requires_git
 @pytest.mark.requires_helm
 @pytest.mark.contract
+@pytest.mark.recovery
+def test_archived_overlay_snapshot_validates_without_rewriting_and_rejects_reordered_values(
+    source, tmp_path
+):
+    released(source, tmp_path)
+    root = tmp_path / "release"
+    chart = root / snapshot.CHART
+    defaults_path = chart / "values.yaml"
+    defaults = yaml.safe_load(defaults_path.read_text())
+    defaults["backend"]["resources"]["requests"].update(cpu="2", memory="4Gi")
+    defaults["backend"]["resources"]["limits"].update(cpu="2", memory="6Gi")
+    defaults["networkPolicy"]["enabled"] = True
+    defaults["monitoring"]["enabled"] = False
+    defaults_path.write_text(yaml.safe_dump(defaults, sort_keys=False))
+    overlays = {
+        "values-minikube.yaml": {"networkPolicy": {"enabled": False}},
+        "values-minikube-ollama.yaml": {
+            "backend": {
+                "resources": {
+                    "requests": {"cpu": "100m", "memory": "256Mi"},
+                    "limits": {"cpu": "1", "memory": "768Mi"},
+                }
+            },
+            "networkPolicy": {"enabled": False},
+        },
+        "values-monitoring.yaml": {"monitoring": {"enabled": True}},
+    }
+    for name, values in overlays.items():
+        (chart / name).write_text(yaml.safe_dump(values))
+    application_path = root / snapshot.ARGOCD / "local-review-application.yaml"
+    application = yaml.safe_load(application_path.read_text())
+    application["spec"]["source"]["helm"]["valueFiles"] = ["values-release.yaml", *overlays]
+    application_path.write_text(yaml.safe_dump(application))
+    archived = {
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/validate_helm.py"),
+        "--root",
+        str(root),
+        "--snapshot",
+    ]
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert archived == {
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+    application["spec"]["source"]["helm"]["valueFiles"].reverse()
+    application_path.write_text(yaml.safe_dump(application))
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode != 0
+
+
+@pytest.mark.integration
+@pytest.mark.requires_git
+@pytest.mark.requires_helm
+@pytest.mark.contract
 def test_snapshot_rejects_digest_drift_and_extra_source(source, tmp_path):
     released(source, tmp_path)
     root = tmp_path / "release"
     resources = validate_helm.validate_resources(
-        validate_helm.render(
-            root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
-        )
+        validate_helm.render(root, [root / "release-values.yaml"])
     )
     changed = copy.deepcopy(resources)
     changed["Deployment", "review-backend"]["spec"]["template"]["spec"]["containers"][0][
@@ -186,9 +244,7 @@ def test_snapshot_rejects_invalid_version_provenance(source, tmp_path, field, va
     released(source, tmp_path)
     root = tmp_path / "release"
     resources = validate_helm.validate_resources(
-        validate_helm.render(
-            root, [root / "release-values.yaml", root / validate_helm.MINIKUBE_VALUES]
-        )
+        validate_helm.render(root, [root / "release-values.yaml"])
     )
     path = root / "release.json"
     manifest = json.loads(path.read_text())

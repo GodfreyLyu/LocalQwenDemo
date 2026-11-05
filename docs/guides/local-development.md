@@ -20,8 +20,9 @@ and the frontend dependencies with:
 npm --prefix frontend ci
 ```
 
-The full repository check also runs the independent inference tests and Java SDK
-build. Install the inference-service development environment using the
+The full repository check also runs the independent inference tests and compiles
+the generated Java bindings and examples. Install the inference-service development
+environment using the
 [Thrift setup guide](apache-thrift.md#run-the-projects-independently), plus Apache
 Thrift 0.25.0, JDK 11+ and Maven 3.9+. Git, Helm and kubectl are needed for script
 checks. These extra tools are not required just to use the fake UI/API harness.
@@ -197,7 +198,7 @@ responsibilities and the [testing guide](../testing/README.md) for test coverage
 ### Canonical imports
 
 Use `app.api.*`, `app.inference.*` and `app.persistence.*` for their respective
-implementations. `app.inference.model` defines the model protocol, and
+implementations. `app.inference.client` defines the `ReviewClient` protocol, and
 `app.inference.rpc.client` supplies the backend's real adapter. The separate
 service uses `llm_service.ollama` for native loopback HTTP calls; the applications share only `contracts`.
 

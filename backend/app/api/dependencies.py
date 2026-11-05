@@ -6,7 +6,7 @@ from fastapi import Depends, Request
 
 from app.config import Settings
 from app.coordinator import Coordinator
-from app.inference.model import ReviewModel
+from app.inference.client import ReviewClient
 from app.monitoring import Metrics
 from app.persistence.storage import Store
 from app.persistence.users import UserStore
@@ -26,8 +26,8 @@ def get_users(request: Request) -> UserStore:
     return request.app.state.users
 
 
-def get_model(request: Request) -> ReviewModel:
-    return request.app.state.model
+def get_review_client(request: Request) -> ReviewClient:
+    return request.app.state.review_client
 
 
 def get_limiter(request: Request) -> RateLimiter:
@@ -53,5 +53,5 @@ RequestLimiter = Annotated[RateLimiter, Depends(get_limiter)]
 ReviewCoordinator = Annotated[Coordinator, Depends(get_coordinator)]
 Reviews = Annotated[ReviewService, Depends(get_review_service)]
 
-InferenceModel = Annotated[ReviewModel, Depends(get_model)]
+InferenceClient = Annotated[ReviewClient, Depends(get_review_client)]
 Monitoring = Annotated[Metrics, Depends(get_metrics)]

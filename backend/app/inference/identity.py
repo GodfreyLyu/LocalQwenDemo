@@ -2,8 +2,8 @@
 
 from typing import Literal, NotRequired, TypedDict
 
-from app.inference.model import ReviewModel
-from app.inference.rpc.client import ThriftReviewModel
+from app.inference.client import ReviewClient
+from app.inference.rpc.client import ThriftReviewClient
 
 
 class ModelIdentity(TypedDict):
@@ -16,18 +16,19 @@ class ModelIdentity(TypedDict):
     quantization: NotRequired[str | None]
 
 
-def model_identity(model: ReviewModel) -> ModelIdentity:
-    if isinstance(model, ThriftReviewModel):
+def model_identity(review_client: ReviewClient) -> ModelIdentity:
+    if isinstance(review_client, ThriftReviewClient):
+        info = review_client.info
         return {
             "inference_mode": "real",
-            "model_id": model.info.model_id if model.info else None,
-            "model_revision": model.digest,
+            "model_id": info.model_id if info else None,
+            "model_revision": info.model_revision if info else None,
             "model_source": "ollama_api",
-            "device": model.device,
+            "device": info.device if info else None,
             "inference_backend": "ollama",
-            "quantization": model.quantization,
+            "quantization": info.quantization if info else None,
         }
-    if getattr(model, "simulated", False) is True:
+    if getattr(review_client, "simulated", False) is True:
         return {
             "inference_mode": "simulated",
             "model_id": "Simulated model",

@@ -13,7 +13,8 @@ export function RuntimePanel({ runtime }: { runtime: RuntimeState }) {
   if (acceptingSubmissions) {
     statusClass = 'completed';
   } else if (
-    runtime.info?.service_status === 'model_loading' ||
+    runtime.info?.service_status === 'initializing' ||
+    runtime.info?.service_status === 'inference_connecting' ||
     runtime.connection === 'checking'
   ) {
     statusClass = 'queued';

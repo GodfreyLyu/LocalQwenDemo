@@ -95,48 +95,55 @@ it.each([
   },
 );
 
-it('preserves input through loading, disconnect and recovery without submitting', async () => {
-  let current: Response | Error = response({
-    ...runtimeInfo,
-    service_status: 'model_loading',
-    accepting_submissions: false,
-  });
-  const fetcher = mockWorkspace((path) =>
-    path === '/api/v1/runtime'
-      ? current instanceof Error
-        ? Promise.reject(current)
-        : current.clone()
-      : undefined,
-  );
-  render(<App />);
-  const editor = await screen.findByLabelText('Source code');
-  await waitFor(() => expect(editor).not.toBeDisabled());
-  fireEvent.change(editor, { target: { value: 'keep this snippet' } });
-  const run = screen.getByRole('button', { name: 'Run review' });
-  expect(run).toBeDisabled();
-  expect(
-    screen.getByRole('status', { name: 'Service status' }),
-  ).toHaveTextContent('Model loading');
-  expect(
-    screen.getByRole('status', { name: 'Review task status' }),
-  ).toHaveTextContent('No active review');
-  current = new Error('disconnected');
-  await waitFor(
-    () =>
-      expect(
-        screen.getByRole('status', { name: 'Service status' }),
-      ).toHaveTextContent('Connection interrupted'),
-    { timeout: 6500 },
-  );
-  expect(editor).toHaveValue('keep this snippet');
-  expect(run).toBeDisabled();
-  current = response(runtimeInfo);
-  await waitFor(() => expect(run).not.toBeDisabled(), { timeout: 6500 });
-  expect(editor).toHaveValue('keep this snippet');
-  expect(
-    fetcher.mock.calls.filter(([, options]) => options?.method === 'POST'),
-  ).toHaveLength(0);
-}, 15000);
+it.each([
+  ['initializing', 'Starting service'],
+  ['inference_connecting', 'Connecting to inference service'],
+])(
+  'preserves input through %s, disconnect and recovery without submitting',
+  async (serviceStatus, presentation) => {
+    let current: Response | Error = response({
+      ...runtimeInfo,
+      service_status: serviceStatus,
+      accepting_submissions: false,
+    });
+    const fetcher = mockWorkspace((path) =>
+      path === '/api/v1/runtime'
+        ? current instanceof Error
+          ? Promise.reject(current)
+          : current.clone()
+        : undefined,
+    );
+    render(<App />);
+    const editor = await screen.findByLabelText('Source code');
+    await waitFor(() => expect(editor).not.toBeDisabled());
+    fireEvent.change(editor, { target: { value: 'keep this snippet' } });
+    const run = screen.getByRole('button', { name: 'Run review' });
+    expect(run).toBeDisabled();
+    expect(
+      screen.getByRole('status', { name: 'Service status' }),
+    ).toHaveTextContent(presentation);
+    expect(
+      screen.getByRole('status', { name: 'Review task status' }),
+    ).toHaveTextContent('No active review');
+    current = new Error('disconnected');
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole('status', { name: 'Service status' }),
+        ).toHaveTextContent('Connection interrupted'),
+      { timeout: 6500 },
+    );
+    expect(editor).toHaveValue('keep this snippet');
+    expect(run).toBeDisabled();
+    current = response(runtimeInfo);
+    await waitFor(() => expect(run).not.toBeDisabled(), { timeout: 6500 });
+    expect(editor).toHaveValue('keep this snippet');
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'POST'),
+    ).toHaveLength(0);
+  },
+  15000,
+);
 
 it.each([
   {

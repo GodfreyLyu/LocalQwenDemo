@@ -1,6 +1,6 @@
 # Validated on ARM64 krunkit; the downstream Mesa build fixes 16 KiB alignment.
 FROM registry.fedoraproject.org/fedora@sha256:dbb22055c0c19f4eba2afbbb717667b0c76aa956c4283700041980ad3710bb73
-COPY deploy/images/ollama-vulkan/mesa-krunkit.repo /etc/yum.repos.d/mesa-krunkit.repo
+COPY inference-service/mesa-krunkit.repo /etc/yum.repos.d/mesa-krunkit.repo
 RUN dnf install -y --disablerepo=fedora-cisco-openh264 --setopt=install_weak_deps=False \
       ollama-0.24.0-4.fc45 ollama-vulkan-0.24.0-4.fc45 \
       mesa-vulkan-drivers-25.3.6-102.fc44 mesa-filesystem-25.3.6-102.fc44 \

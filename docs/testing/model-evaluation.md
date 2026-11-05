@@ -1,9 +1,14 @@
 # Current-model evaluation through Thrift and Ollama
 
-The evaluator uses the backend's `ThriftReviewModel` client, which owns the review
+The evaluator uses the backend's `ThriftReviewClient`, which owns the review
 prompts, three serial section requests, seed policy and output validation. The
 generic service executes each request through `OllamaAdapter` without knowing
 about review sections. Run commands from the repository root.
+
+Evaluation expects an already ready service and performs one `connect()` attempt.
+Its schema-3 report retains the historical `load` field and `model_load_failed`
+code for the connection measurement; the evaluator never loads model weights.
+The running application's coordinator separately owns automatic reconnects.
 
 ## Evaluation flow
 

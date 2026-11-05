@@ -7,10 +7,11 @@ from pathlib import Path
 import yaml
 from tooling_paths import ROOT
 
-from validation.constants import CHART, MINIKUBE_VALUES
+from validation.constants import CHART
 from validation.monitoring import validate_monitoring
 from validation.resources import require, validate_resources
 from validation.snapshot import validate_snapshot, validate_tree
+from validation.values import snapshot_values
 
 
 def render(root, values=(), settings=()):
@@ -37,8 +38,7 @@ def main():
     root = args.root.resolve()
     if args.snapshot:
         validate_tree(root)
-    values = [root / "release-values.yaml"] if args.snapshot else []
-    values.append(root / MINIKUBE_VALUES)
+    values = snapshot_values(root) if args.snapshot else []
     subprocess.run(
         ["helm", "lint", str(root / CHART), *sum((["-f", str(v)] for v in values), [])],
         check=True,
@@ -46,8 +46,9 @@ def main():
     keyed = validate_resources(render(root, values))
     require(
         not any(kind == "NetworkPolicy" for kind, _ in keyed),
-        "The Minikube profile must explicitly disable network policies",
+        "The application defaults must disable network policies",
     )
+    validate_monitoring(list(keyed.values()))
     if args.snapshot:
         validate_snapshot(root, keyed)
     validate_resources(
@@ -60,11 +61,18 @@ def main():
             ],
         )
     )
-    monitoring_values = [*values, root / CHART / "values-monitoring.yaml"]
-    for policies in ("false", "true"):
-        monitored = render(root, monitoring_values, settings=["networkPolicy.enabled=" + policies])
-        validate_resources(monitored)
-        validate_monitoring(monitored)
+    for monitoring in ("false", "true"):
+        for policies in ("false", "true"):
+            resources = render(
+                root,
+                values,
+                settings=[
+                    "monitoring.enabled=" + monitoring,
+                    "networkPolicy.enabled=" + policies,
+                ],
+            )
+            validate_resources(resources)
+            validate_monitoring(resources)
     validate_resources(
         render(
             root,

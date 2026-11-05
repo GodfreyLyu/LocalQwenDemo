@@ -22,6 +22,10 @@ service and expose its Thrift endpoint; a native Ollama HTTP URL cannot replace
 `inference.host/port`. Configure the endpoint and policies as described in the
 [Helm guide](helm-release.md).
 For the krunkit GPU cluster, use standard Helm commands instead of this script.
+The Chart enables monitoring by default. Install the
+[monitoring platform and CRDs](../../infra/local-platform/README.md#monitoring)
+before deployment, or set `monitoring: {enabled: false}` in your custom values file
+and pass it with `-f` on every deployment.
 
 Start with 4 CPUs / 8 GiB for one application, leaving host capacity for Ollama.
 `doctor` considers both node allocatable resources and the Docker container limits;
@@ -85,9 +89,9 @@ scripts/minikube_demo.sh init --profile minikube -f /path/to/site.yaml
 scripts/minikube_demo.sh up --profile minikube -f /path/to/site.yaml --port 8081
 ```
 
-Values are applied in this order: Chart defaults, `values-minikube.yaml`, user `-f`
-files, explicit CLI options, then local build image identities. Later values override
-earlier ones; multiple `-f` files are applied in the order supplied. User values are not
+Values are applied in this order: Chart `values.yaml`, user `-f` files, explicit CLI
+options, then local build image identities. Later values override earlier ones;
+multiple `-f` files are applied in the order supplied. User values are not
 silently imported from the previous release. Repeat your values/options on each upgrade.
 `--port` sets the browser Origin, and `--storage-class` overrides the StorageClass.
 Deployment waits default to 3900 seconds (`--timeout`, also

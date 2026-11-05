@@ -100,7 +100,7 @@ Errors use:
 | 413/415 | Body too large / non-JSON write                                           |
 | 422     | Blank/oversized source, invalid language hint, UUID or credentials format |
 | 429     | Login/submission rate limit or full queue; includes Retry-After           |
-| 503     | Model loading/draining, storage failure, unavailable account service      |
+| 503     | Service initializing/connecting/draining, storage failure, unavailable account service |
 
 Inference errors mark the stored job as `failed`, with codes such as `token_limit`,
 `inference_timeout`, `empty_model_response`, `invalid_model_response`,

@@ -5,14 +5,14 @@ from moto import mock_aws
 
 from app.config import Settings
 from app.main import create_app
-from backend.tests.support import FakeModel, wait_ready
+from backend.tests.support import FakeReviewClient, wait_ready
 
 
 @pytest.fixture
 def factory(tmp_path, monkeypatch):
     """Create real API/coordinator lifecycles with Moto accounts and temporary SQLite.
 
-    FakeModel replaces only inference. Closing clients in reverse order drains
+    FakeReviewClient replaces only inference. Closing clients in reverse order drains
     their lifespan workers before the Moto context and temporary storage disappear."""
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
@@ -36,7 +36,7 @@ def factory(tmp_path, monkeypatch):
         )
         clients = []
 
-        def make(model=None, ready=True, **overrides):
+        def make(review_client=None, ready=True, **overrides):
             values = dict(
                 environment="test",
                 signing_secret="test-only-" * 5,
@@ -48,7 +48,9 @@ def factory(tmp_path, monkeypatch):
                 dynamodb_endpoint_url="http://127.0.0.1:8001",
             )
             values.update(overrides)
-            app = create_app(Settings(**values), model=model or FakeModel())
+            if review_client is None:
+                review_client = FakeReviewClient()
+            app = create_app(Settings(**values), review_client=review_client)
             client = TestClient(
                 app, base_url="https://testserver", headers={"Origin": "https://testserver"}
             )

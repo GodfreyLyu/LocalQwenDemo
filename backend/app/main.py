@@ -10,8 +10,8 @@ from app.api.middleware import RequestGuard
 from app.api.routes import auth, health, metrics, reviews, runtime
 from app.config import Settings
 from app.coordinator import Coordinator
-from app.inference.model import ReviewModel
-from app.inference.rpc.client import ThriftReviewModel
+from app.inference.client import ReviewClient
+from app.inference.rpc.client import ThriftReviewClient
 from app.logging import configure_logging
 from app.monitoring import Metrics
 from app.persistence.storage import Store
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(
     settings: Settings | None = None,
     *,
-    model: ReviewModel | None = None,
+    review_client: ReviewClient | None = None,
     users: UserStore | None = None,
 ) -> FastAPI:
     config = settings or Settings()
@@ -49,8 +49,10 @@ def create_app(
     app.state.store = store = Store(config.data_dir)
     app.state.metrics = monitoring = Metrics(store, config.queue_capacity)
     app.state.users = user_store = users or DynamoUsers(config)
-    app.state.model = review_model = model or ThriftReviewModel(config, metrics=monitoring)
-    app.state.coordinator = Coordinator(store, user_store, review_model, config, monitoring)
+    if review_client is None:
+        review_client = ThriftReviewClient(config, metrics=monitoring)
+    app.state.review_client = review_client
+    app.state.coordinator = Coordinator(store, user_store, review_client, config, monitoring)
     app.state.limiter = limiter = RateLimiter()
     app.state.review_service = ReviewService(
         config, store, app.state.coordinator, limiter, monitoring

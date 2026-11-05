@@ -37,9 +37,15 @@ requires ARM64 krunkit; the optional local image-build CLI requires the Docker d
 For the default application resource settings, start with 4 CPUs and 8 GiB of cluster
 memory. Check available capacity for Ollama, platform services and the host before
 installing. The application requests 11 GiB across two PVCs; Ollama adds a 4 GiB PVC.
-Allow additional disk space for images and any monitoring storage. The
-`values-minikube-ollama.yaml` overlay offers smaller backend resource settings when
-inference runs in the independent Ollama service.
+Allow additional disk space for images and monitoring storage. The default backend
+requests 100m CPU / 256 MiB and is limited to 1 CPU / 768 MiB because inference runs
+in the independent Ollama service.
+
+Application monitoring is enabled in `values.yaml`. Install the
+[monitoring platform](../../infra/local-platform/README.md#monitoring) and wait for
+its Prometheus Operator CRDs before installing the application. For an installation
+without monitoring, append `--set monitoring.enabled=false` to the Helm install/upgrade
+command, or persist that setting in your custom values file.
 
 Run from a separate checkout of the **approved `deployment-release` branch**,
 using a new namespace for the first Helm installation:
@@ -51,6 +57,11 @@ export REVIEW_CONTEXT=minikube
 ```bash
 export REVIEW_NAMESPACE=local-review-helm
 ```
+
+The supplied monitoring platform discovers `local-review-demo` and `monitoring`.
+For the example's `local-review-helm` namespace, update its Prometheus namespace
+selectors and Grafana sidecar search namespaces/RBAC, or disable application
+monitoring. See the [monitoring runbook](../operations/observability.md).
 
 ```bash
 kubectl config get-contexts "$REVIEW_CONTEXT"
@@ -130,37 +141,25 @@ registry credentials are separate concerns.
 
 ### Configure, inspect and install
 
-There are three configuration layers, applied in this order:
+There are two maintained configuration layers, applied in this order:
 
-1. Chart `values.yaml`: application defaults.
+1. Chart `values.yaml`: all hand-maintained application and Minikube settings.
 2. Root `release-values.yaml`: generated, reviewed image digests and source SHA.
-3. Your `values-minikube.yaml`: environment settings and Secret references.
 
-The environment example ships **inside the Chart**, so it is also included in
-every generated release snapshot. Copy it outside the checkout:
-
-```bash
-mkdir -p "$HOME/.config/local-qwen"
-```
-
-```bash
-export REVIEW_VALUES="$HOME/.config/local-qwen/values-minikube.yaml"
-```
-
-```bash
-cp deploy/helm/local-review/values-minikube.yaml "$REVIEW_VALUES"
-```
-
-Only make this copy on initial setup; keep your existing environment file on
-upgrades. For private images, set `imagePullSecrets: [{name: ghcr-pull}]` in that file.
+If your environment needs additional overrides, create a custom file outside the
+checkout containing only the keys you need to change. Append `-f /path/to/site.yaml`
+after the release values in each command below and keep using that file on upgrades.
+For private images, set `imagePullSecrets: [{name: ghcr-pull}]` in that file.
 Other supported overrides include `signingSecret.existingSecret`,
 `persistence.storageClass`, `persistence.*.existingClaim` and `inference.host/port`.
 Application model identity assertions use `model.expectedId/expectedRevision`.
 Execution policy belongs to the inference chart, not a shared backend ConfigMap.
-Do not override release image digests in the environment file.
+Do not copy the entire `values.yaml` into a custom override file: its development
+image defaults would override the generated release settings. Keep release image
+digests out of the custom environment file.
 
-The Minikube application overlay disables its NetworkPolicy. For isolation, use an
-enforcing CNI and enable `networkPolicy.enabled`, with `inferenceNamespace` and
+The default Minikube configuration disables application NetworkPolicy. For isolation,
+use an enforcing CNI and enable `networkPolicy.enabled`, with `inferenceNamespace` and
 `inferenceRelease` selecting the actual model release. Match `inference.host` to
 that release's fully qualified Service name. Configure the inference chart's
 `networkPolicy.backendNamespace/backendRelease` to accept the selected application
@@ -171,24 +170,24 @@ registry egress when enabled.
 Inspect the approved configuration without contacting the cluster:
 
 ```bash
-helm lint ./deploy/helm/local-review -f release-values.yaml -f "$REVIEW_VALUES"
+helm lint ./deploy/helm/local-review -f release-values.yaml
 ```
 
 ```bash
-helm template local-review ./deploy/helm/local-review --namespace "$REVIEW_NAMESPACE" -f release-values.yaml -f "$REVIEW_VALUES"
+helm template local-review ./deploy/helm/local-review --namespace "$REVIEW_NAMESPACE" -f release-values.yaml
 ```
 
 Install or upgrade using the same inputs:
 
 ```bash
-helm upgrade --install local-review ./deploy/helm/local-review --kube-context "$REVIEW_CONTEXT" --namespace "$REVIEW_NAMESPACE" --create-namespace -f release-values.yaml -f "$REVIEW_VALUES" --wait --timeout 65m
+helm upgrade --install local-review ./deploy/helm/local-review --kube-context "$REVIEW_CONTEXT" --namespace "$REVIEW_NAMESPACE" --create-namespace -f release-values.yaml --wait --timeout 65m
 ```
 
-Always pass both values files when upgrading to another approved snapshot. Helm does not
-automatically load `release-values.yaml`. Without it, Chart defaults reference local
-development images, not the published release. On main, use the provided Minikube file
+Always pass the generated release values when upgrading to another approved snapshot.
+Helm does not automatically load `release-values.yaml`. Without it, Chart defaults
+reference local development images, not the published release. On main, default values are sufficient
 for offline linting and rendering. To install from main, you must also supply or load
-the application images.
+the application images and prepare the monitoring platform or disable monitoring.
 
 The startup budget defaults to 3600 seconds; the worker opens its listener only
 after validating Ollama, and the backend checks the service's model identity and
@@ -206,7 +205,7 @@ kubectl --context "$REVIEW_CONTEXT" -n "$REVIEW_NAMESPACE" port-forward --addres
 ```
 
 Visit **http://localhost:8080**, register/log in, and complete a real review.
-If changing the local port, also change `config.allowedOrigin` in the environment
+If changing the local port, also change `config.allowedOrigin` in your custom
 file, run the Helm upgrade, and use the matching forwarding port. Origin matching
 is exact; do not substitute `127.0.0.1` in the browser URL.
 
@@ -220,8 +219,9 @@ this guide. Avoid running both forwarding options on the same local port.
 
 ### Argo CD integration
 
-Argo CD can render the same Chart with release values followed by environment
-overrides. The [GitOps guide](gitops.md) covers installation, first sync and migration. Templates use no random secret generation, host discovery,
+Argo CD renders the same hand-maintained `values.yaml` defaults with generated
+Chart-local `values-release.yaml`. The [GitOps guide](gitops.md) covers installation,
+first sync and migration. Templates use no random secret generation, host discovery,
 cluster `lookup`, or deployment hooks. Prepare external Secrets independently.
 Argo CD uses Helm to render resources and owns their synchronization; its instances
 are not ordinary Helm releases. Use one manager for each deployment, and validate

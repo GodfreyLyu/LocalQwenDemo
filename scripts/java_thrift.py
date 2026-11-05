@@ -1,4 +1,4 @@
-"""Build the Java SDK and run its external example through the shared Maven build."""
+"""Compile generated Java bindings and run the direct Thrift example."""
 
 import argparse
 import os
@@ -8,43 +8,33 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SDK = ROOT / "clients/java"
-CONSUMER = SDK / "examples/consumer"
-
-
-def maven(pom, *goals, capture_output=False):
-    """MAVEN selects an executable; Maven itself also honors MAVEN_ARGS/MAVEN_OPTS."""
-    executable = shutil.which(os.environ.get("MAVEN", "mvn"))
-    if executable is None:
-        raise RuntimeError("Maven 3.9+ is required; put mvn on PATH or set MAVEN to its path")
-    return subprocess.run(
-        [executable, "-B", "-ntp", "-f", str(pom), *goals],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=capture_output,
-    )
+CONTRACTS = ROOT / "contracts"
 
 
 def compile_example():
-    maven(
-        SDK / "pom.xml",
-        "package",
-        "dependency:build-classpath",
-        "-DincludeScope=test",
-        "-Dmdep.outputFile=target/example-classpath.txt",
+    """Compile checked-in bindings and examples; no SDK is installed or published."""
+    executable = shutil.which(os.environ.get("MAVEN", "mvn"))
+    if executable is None:
+        raise RuntimeError("Maven 3.9+ is required; put mvn on PATH or set MAVEN to its path")
+    subprocess.run(
+        [
+            executable,
+            "-B",
+            "-ntp",
+            "-f",
+            str(CONTRACTS / "pom.xml"),
+            "test-compile",
+            "dependency:build-classpath",
+            "-DincludeScope=test",
+            "-Dmdep.outputFile=target/java-classpath.txt",
+        ],
+        cwd=ROOT,
+        check=True,
     )
-    dependencies = (SDK / "target/example-classpath.txt").read_text().strip()
-    # Execute against the packaged JAR, not an accidental second copy of the bindings.
+    dependencies = (CONTRACTS / "target/java-classpath.txt").read_text().strip()
     return os.pathsep.join(
-        (str(SDK / "target/test-classes"), str(SDK / "target/llm-client-0.1.0.jar"), dependencies)
+        (str(CONTRACTS / "target/test-classes"), str(CONTRACTS / "target/classes"), dependencies)
     )
-
-
-def compile_consumer(directory=CONSUMER):
-    """Install locally, then build a standalone application with only the SDK dependency."""
-    maven(SDK / "pom.xml", "install", "-DskipTests")
-    maven(directory / "pom.xml", "clean", "package")
 
 
 def main():

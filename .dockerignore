@@ -7,6 +7,7 @@
 !backend/app/**
 !inference-service/
 !inference-service/Dockerfile
+!inference-service/mesa-krunkit.repo
 !inference-service/pyproject.toml
 !inference-service/requirements.lock
 !inference-service/src/
@@ -15,10 +16,6 @@
 !contracts/pyproject.toml
 !contracts/python/
 !contracts/python/**
-!deploy/
-!deploy/images/
-!deploy/images/ollama-vulkan/
-!deploy/images/ollama-vulkan/mesa-krunkit.repo
 **/__pycache__
 **/*.pyc
 **/*.egg-info

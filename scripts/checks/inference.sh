@@ -6,5 +6,5 @@ inference_python="${INFERENCE_PYTHON:-inference-service/.venv/bin/python}"
 "$inference_python" -m ruff check --config inference-service/pyproject.toml inference-service/src inference-service/tests
 "$inference_python" -m ruff format --check --config inference-service/pyproject.toml inference-service/src inference-service/tests
 "$REVIEW_PYTHON" scripts/generate_thrift.py --check
-# The Java fixture packages/tests the Maven SDK once and also verifies an independent consumer.
+# The Java fixture compiles the generated bindings and direct-client examples once.
 RUN_JAVA_INTEROP=1 "$inference_python" -m pytest -c inference-service/pytest.ini inference-service/tests

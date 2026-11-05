@@ -259,7 +259,6 @@ class Session:
 
     def options(self):
         values = yaml.safe_load((CHART / "values.yaml").read_text())
-        values = merge(values, yaml.safe_load((CHART / "values-minikube.yaml").read_text()))
         for path in self.args.values:
             override = yaml.safe_load(Path(path).expanduser().read_text())
             require(isinstance(override, dict), "Each values file must contain a mapping.")

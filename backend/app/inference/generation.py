@@ -1,4 +1,4 @@
-"""Fixed sampling policy, shared cancellation and content-free generation metrics."""
+"""Review generation policy and measurements from completed remote generations."""
 
 from __future__ import annotations
 
@@ -13,26 +13,26 @@ from app.inference.prompts import SECTION_SPECS
 
 @dataclass
 class SectionMetrics:
-    generated_tokens: int = 0
-    output_tokens_observed: bool = False
+    generated_tokens: int
+    input_tokens: int
     limit_reached: bool = False
     trailing_fragment_removed: bool = False
-    # None means a stage was not observed, rather than completed in zero time.
+    # Timing fields are optional in the RPC contract, even for completed generations.
     generation_ms: int | None = None
     first_token_ms: int | None = None
-    input_tokens: int | None = None
 
 
 @dataclass
 class GenerationMetrics:
     output_token_limit: int
     sections: dict[str, SectionMetrics] = field(default_factory=dict)
-    duration_seconds: float = 0.0
 
     def fields(self) -> dict[str, object]:
         generated_tokens = sum(section.generated_tokens for section in self.sections.values())
         fields: dict[str, object] = {
-            "duration_ms": max(0, round(self.duration_seconds * 1000)),
+            "duration_ms": max(
+                0, sum(section.generation_ms or 0 for section in self.sections.values())
+            ),
             "generated_tokens": generated_tokens,
             "output_limit_reached": generated_tokens >= self.output_token_limit,
             "output_token_limit": self.output_token_limit,
@@ -51,8 +51,8 @@ class GenerationMetrics:
         return fields
 
 
-def check_deadline(stop: threading.Event, deadline: float, *, now: float | None = None) -> None:
-    if stop.is_set() or (time.monotonic() if now is None else now) >= deadline:
+def check_deadline(stop: threading.Event, deadline: float) -> None:
+    if stop.is_set() or time.monotonic() >= deadline:
         raise AppError("inference_timeout", "Review timed out. Try a shorter submission.", 504)
 
 

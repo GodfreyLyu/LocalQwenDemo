@@ -129,7 +129,7 @@ it('keeps server readiness authoritative and does not automatically retry a reje
   const fetcher = mockWorkspace((path, options) =>
     path === '/api/v1/reviews' && options?.method === 'POST'
       ? response(
-          { error: { code: 'model_loading', message: 'Not ready' } },
+          { error: { code: 'inference_connecting', message: 'Not ready' } },
           503,
         )
       : undefined,
@@ -140,7 +140,7 @@ it('keeps server readiness authoritative and does not automatically retry a reje
   fireEvent.change(editor, { target: { value: 'x = 1' } });
   fireEvent.click(screen.getByRole('button', { name: 'Run review' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'local model service is preparing',
+    'inference service is unavailable or preparing',
   );
   expect(editor).not.toBeDisabled();
   expect(

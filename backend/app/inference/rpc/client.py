@@ -13,13 +13,15 @@ from llm_contract.generated.ttypes import (
     GenerationRequest,
     LlmError,
     Message,
+    ModelInfo,
 )
 from llm_contract.generated.ttypes import (
     GenerationState as State,
 )
 from thrift.Thrift import TException
+from thrift.transport.TTransport import TTransportException
 
-from app.errors import AppError, InferenceUncertain
+from app.errors import AppError, InferenceUnavailable, InferenceUncertain
 from app.inference.generation import (
     GenerationMetrics,
     SectionMetrics,
@@ -49,16 +51,14 @@ def app_error(error: LlmError) -> AppError:
         return AppError("token_limit", "Source exceeds the model input token limit.", 422)
     if error.code in {"cancelled", "deadline_exceeded", "shutdown"}:
         return AppError("inference_timeout", "Review timed out. Try a shorter submission.", 504)
-    if error.code in {"overloaded", "retention_full", "unavailable"}:
+    if error.code in {"overloaded", "retention_full"}:
         return AppError("inference_draining", "Inference service is temporarily unavailable.", 503)
+    if error.code in {"unavailable", "ollama_unavailable"}:
+        return InferenceUnavailable()
     if error.code == "invalid_response":
         return AppError("invalid_model_response", "The model returned an invalid response.", 502)
     if error.code == "model_missing":
         return AppError("ollama_model_missing", "The configured model is not installed.", 503)
-    if error.code == "ollama_unavailable":
-        return AppError(
-            "ollama_unavailable", "The inference model is temporarily unavailable.", 503
-        )
     if error.code in {"model_mismatch", "gpu_required"}:
         return AppError(
             "ollama_model_mismatch", "Inference model does not match configuration.", 503
@@ -68,11 +68,11 @@ def app_error(error: LlmError) -> AppError:
     return AppError("inference_failed", "The model could not complete this review.", 502)
 
 
-class ThriftReviewModel:
+class ThriftReviewClient:
     def __init__(self, settings: InferenceSettings, *, metrics: Metrics | None = None):
         self.settings = settings.model_copy(deep=True)
         self.metrics = metrics
-        self.info = None
+        self.info: ModelInfo | None = None
         self.digest = self.device = self.quantization = None
         self.closing = threading.Event()
 
@@ -80,41 +80,45 @@ class ThriftReviewModel:
         with Connection(self.settings) as client:
             return getattr(client, method)(*args)
 
-    def load(self):
-        deadline = time.monotonic() + self.settings.thrift_startup_timeout_seconds
-        while not self.closing.is_set():
-            try:
-                info = self._call("getModelInfo")
-                health = self._call("getHealth")
-                if not health.ready:
-                    raise OSError("Service is not ready")
-            except (TException, OSError):
-                if time.monotonic() >= deadline:
-                    raise AppError(
-                        "ollama_unavailable", "Cannot connect to the inference service.", 503
-                    ) from None
-                self.closing.wait(min(1, max(0, deadline - time.monotonic())))
-                continue
+    def connect(self) -> None:
+        """One read-only handshake. The coordinator owns retries and shutdown waits."""
+        try:
+            if self.closing.is_set():
+                raise InferenceUnavailable()
+            info = self._call("getModelInfo")
+            health = self._call("getHealth")
+            if self.closing.is_set() or not health.ready or health.draining:
+                raise InferenceUnavailable()
+            if not info.instance_id or not info.model_id or not info.model_revision:
+                raise AppError("inference_failed", "Invalid inference service metadata.", 503)
             if (
-                not info.model_revision
-                or (
-                    self.settings.expected_model_id
-                    and info.model_id != self.settings.expected_model_id
-                )
-                or (
-                    self.settings.expected_model_revision
-                    and info.model_revision != self.settings.expected_model_revision
-                )
+                self.settings.expected_model_id and info.model_id != self.settings.expected_model_id
+            ) or (
+                self.settings.expected_model_revision
+                and info.model_revision != self.settings.expected_model_revision
             ):
                 raise AppError("ollama_model_mismatch", "Unexpected inference model identity.", 503)
-            self.info = info
-            self.digest, self.device, self.quantization = (
-                info.model_revision,
-                info.device,
-                info.quantization,
-            )
-            return
-        raise AppError("model_loading", "Inference startup was interrupted.", 503)
+        except (InferenceUnavailable, TTransportException, OSError):
+            self._forget_connection()
+            raise InferenceUnavailable() from None
+        except TException:
+            self._forget_connection()
+            raise AppError(
+                "inference_failed", "Incompatible inference service protocol.", 503
+            ) from None
+        except AppError:
+            self._forget_connection()
+            raise
+        self.info = info
+        self.digest, self.device, self.quantization = (
+            info.model_revision,
+            info.device,
+            info.quantization,
+        )
+
+    def _forget_connection(self) -> None:
+        self.info = None
+        self.digest = self.device = self.quantization = None
 
     def _generate(self, messages, options, deadline, stop):
         info = self.info
@@ -136,16 +140,25 @@ class ThriftReviewModel:
                 snapshot = self._call(method, *args)
                 uncertain_since = None
             except LlmError as error:
-                if error.code in {"instance_changed", "not_found"}:
+                if method != "startGeneration":
+                    # A lookup/cancel error cannot establish whether admitted work stopped.
                     raise InferenceUncertain() from None
+                if error.code == "instance_changed":
+                    # The service fenced this start before admission; reconnect for later jobs.
+                    raise InferenceUnavailable() from None
                 raise app_error(error) from None
-            except (TException, OSError):
+            except (TException, OSError, InferenceUnavailable) as error:
+                if isinstance(error, InferenceUnavailable) and method == "startGeneration":
+                    # Connection.open failed before the request could be sent.
+                    raise
                 # A lost start response is recovered by ID; start is never resent.
                 uncertain_since = uncertain_since or time.monotonic()
                 if time.monotonic() - uncertain_since >= self.settings.thrift_recovery_seconds:
                     raise InferenceUncertain() from None
                 method, args = "getGeneration", (request.instance_id, request.request_id)
-                self.closing.wait(0.1)
+                # Shutdown still needs reconciliation; an already-set close event must
+                # not turn failed lookups into a busy retry loop.
+                time.sleep(0.1)
                 continue
             if (
                 snapshot.instance_id != request.instance_id
@@ -186,14 +199,11 @@ class ThriftReviewModel:
             time.sleep(0.05)
 
     def review(self, source, language, stop):
-        if self.info is None:
-            raise AppError("model_loading", "Inference service is not loaded.", 503)
+        if self.info is None or self.closing.is_set():
+            raise InferenceUnavailable()
         deadline = time.monotonic() + self.settings.inference_timeout_seconds
         limits = allocate_section_token_limits(self.settings.model_max_output_tokens)
-        metrics = GenerationMetrics(
-            output_token_limit=self.settings.model_max_output_tokens,
-            sections={section: SectionMetrics() for section, _, _ in SECTION_SPECS},
-        )
+        metrics = GenerationMetrics(output_token_limit=self.settings.model_max_output_tokens)
         bodies = []
         try:
             for section, title, _ in SECTION_SPECS:
@@ -209,18 +219,17 @@ class ThriftReviewModel:
                     deadline,
                     stop,
                 )
-                observation = metrics.sections[section]
-                observation.generated_tokens = result.usage.output_tokens
-                observation.input_tokens = result.usage.input_tokens
-                observation.output_tokens_observed = True
-                observation.limit_reached = (
-                    result.finish_reason == "length"
-                    or result.usage.output_tokens >= limits[section]
+                observation = SectionMetrics(
+                    generated_tokens=result.usage.output_tokens,
+                    input_tokens=result.usage.input_tokens,
+                    limit_reached=(
+                        result.finish_reason == "length"
+                        or result.usage.output_tokens >= limits[section]
+                    ),
+                    generation_ms=result.generation_ms,
+                    first_token_ms=result.first_token_ms,
                 )
-                observation.generation_ms, observation.first_token_ms = (
-                    result.generation_ms,
-                    result.first_token_ms,
-                )
+                metrics.sections[section] = observation
                 body = normalize_section_body(section, result.content)
                 body, observation.trailing_fragment_removed = trim_capped_section_tail(
                     body, observation.limit_reached
@@ -228,9 +237,6 @@ class ThriftReviewModel:
                 bodies.append(f"## {title}\n{body}")
             return validate_review_output("\n\n".join(bodies), source)
         finally:
-            metrics.duration_seconds = sum(
-                (s.generation_ms or 0) / 1000 for s in metrics.sections.values()
-            )
             logger.info("model_generation_finished", extra=metrics.fields())
             if self.metrics:
                 self.metrics.generation(metrics)

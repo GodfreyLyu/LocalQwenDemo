@@ -21,7 +21,7 @@ from app.logging import SafeFormatter
 from app.persistence import users_startup
 from app.persistence.storage import Store
 from app.persistence.users import DynamoUsers
-from backend.tests.support import FakeModel, register, wait_ready
+from backend.tests.support import FakeReviewClient, register, wait_ready
 
 PRIVATE = "http://PRIVATE_KEY:PRIVATE_PASSWORD@private-address:8000"
 
@@ -158,9 +158,9 @@ def test_coordinator_stays_responsive_then_continues_once_or_fails(
         if not recover or order.count("users") < 3:
             raise connection_error()
 
-    class Model(FakeModel):
-        def load(self):
-            order.append("model")
+    class RecordingClient(FakeReviewClient):
+        def connect(self):
+            order.append("connect")
 
     async def wait(shutdown, delay):
         waiting.set()
@@ -171,12 +171,12 @@ def test_coordinator_stays_responsive_then_continues_once_or_fails(
     monkeypatch.setattr(Store, "recover", queue)
     monkeypatch.setattr(DynamoUsers, "ping", ping)
     monkeypatch.setattr(users_startup, "wait_for_stop", wait)
-    client = factory(Model(), ready=False)
+    client = factory(RecordingClient(), ready=False)
     try:
         assert waiting.wait(2)
         assert order == ["initialize", "users"]
         assert client.get("/health/live").status_code == 200
-        assert client.get("/health/ready").json() == {"status": "model_loading"}
+        assert client.get("/health/ready").json() == {"status": "initializing"}
         assert client.get("/health/ready").status_code == 503
         assert client.get("/api/v1/runtime").json()["accepting_submissions"] is False
         register(client)
@@ -184,7 +184,7 @@ def test_coordinator_stays_responsive_then_continues_once_or_fails(
         client.portal.call(resume.set)
         if recover:
             wait_ready(client)
-            assert order == ["initialize", "users", "users", "users", "recover", "model"]
+            assert order == ["initialize", "users", "users", "users", "recover", "connect"]
             assert client.get("/api/v1/runtime").json()["accepting_submissions"] is True
             assert client.post("/api/v1/reviews", json={"source_code": "x = 1"}).status_code == 202
         else:
@@ -196,7 +196,7 @@ def test_coordinator_stays_responsive_then_continues_once_or_fails(
             assert client.get("/health/ready").json() == {"status": "startup_or_storage_failure"}
             assert client.get("/health/live").status_code == 503
             assert order.count("initialize") == 1
-            assert "recover" not in order and "model" not in order
+            assert "recover" not in order and "connect" not in order
             assert clock.now == 120
     finally:
         client.portal.call(resume.set)
@@ -208,8 +208,8 @@ def test_shutdown_wakes_actual_backoff_without_more_checks(factory, monkeypatch)
     waiting = threading.Event()
     actual_wait = users_startup.wait_for_stop
     ping = Mock(side_effect=connection_error())
-    model = FakeModel()
-    model.load = Mock()
+    review_client = FakeReviewClient()
+    review_client.connect = Mock()
     recover = Mock()
 
     async def wait(shutdown, _delay):
@@ -219,7 +219,7 @@ def test_shutdown_wakes_actual_backoff_without_more_checks(factory, monkeypatch)
     monkeypatch.setattr(DynamoUsers, "ping", ping)
     monkeypatch.setattr(Store, "recover", recover)
     monkeypatch.setattr(users_startup, "wait_for_stop", wait)
-    client = factory(model, ready=False)
+    client = factory(review_client, ready=False)
     assert waiting.wait(2)
 
     async def close():
@@ -228,7 +228,7 @@ def test_shutdown_wakes_actual_backoff_without_more_checks(factory, monkeypatch)
     client.portal.call(close)
     ping.assert_called_once_with()
     recover.assert_not_called()
-    model.load.assert_not_called()
+    review_client.connect.assert_not_called()
     assert client.get("/health/ready").status_code == 503
 
 
@@ -238,8 +238,8 @@ def test_shutdown_wakes_actual_backoff_without_more_checks(factory, monkeypatch)
 def test_shutdown_drains_inflight_check_and_never_starts_next_stage(factory, monkeypatch, fail):
     entered, release, exited = threading.Event(), threading.Event(), threading.Event()
     calls = []
-    model = FakeModel()
-    model.load = Mock()
+    review_client = FakeReviewClient()
+    review_client.connect = Mock()
     recover = Mock()
 
     def ping(_users):
@@ -254,7 +254,7 @@ def test_shutdown_drains_inflight_check_and_never_starts_next_stage(factory, mon
 
     monkeypatch.setattr(DynamoUsers, "ping", ping)
     monkeypatch.setattr(Store, "recover", recover)
-    client = factory(model, ready=False)
+    client = factory(review_client, ready=False)
     try:
         assert entered.wait(2)
         assert client.get("/health/live").status_code == 200
@@ -270,7 +270,7 @@ def test_shutdown_drains_inflight_check_and_never_starts_next_stage(factory, mon
         client.portal.call(close)
         assert exited.is_set() and calls == ["ping"]
         recover.assert_not_called()
-        model.load.assert_not_called()
+        review_client.connect.assert_not_called()
         assert not client.app.state.coordinator.ready
     finally:
         release.set()
@@ -332,12 +332,12 @@ def test_formatter_drops_invalid_startup_retry_fields():
 )
 def test_nonretryable_failure_enters_existing_failed_state(factory, monkeypatch, clock, error):
     ping = Mock(side_effect=error)
-    model = FakeModel()
-    model.load = Mock()
+    review_client = FakeReviewClient()
+    review_client.connect = Mock()
     recover = Mock()
     monkeypatch.setattr(DynamoUsers, "ping", ping)
     monkeypatch.setattr(Store, "recover", recover)
-    client = factory(model, ready=False)
+    client = factory(review_client, ready=False)
 
     async def finished():
         await asyncio.wait_for(client.app.state.coordinator.task, 1)
@@ -347,7 +347,7 @@ def test_nonretryable_failure_enters_existing_failed_state(factory, monkeypatch,
     assert client.get("/health/live").status_code == 503
     ping.assert_called_once_with()
     recover.assert_not_called()
-    model.load.assert_not_called()
+    review_client.connect.assert_not_called()
     assert clock.waits == []
 
 

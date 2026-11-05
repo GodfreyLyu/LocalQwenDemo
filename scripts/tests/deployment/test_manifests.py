@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 from deployment.common import acceptance
-from validation.constants import MINIKUBE_VALUES
 from validation.helm import render
 
 from scripts.tests.support.deployment import permission_bits, resource
@@ -15,7 +14,7 @@ from scripts.tests.support.paths import ROOT
 
 @pytest.fixture(scope="module")
 def resources():
-    return render(ROOT, [ROOT / MINIKUBE_VALUES])
+    return render(ROOT)
 
 
 @pytest.mark.integration
@@ -40,8 +39,8 @@ def test_inference_configuration_stays_in_backend_config(resources):
         }.items()
     )
     assert backend["resources"] == {
-        "requests": {"cpu": "2", "memory": "4Gi", "ephemeral-storage": "256Mi"},
-        "limits": {"cpu": "2", "memory": "6Gi", "ephemeral-storage": "1Gi"},
+        "requests": {"cpu": "100m", "memory": "256Mi", "ephemeral-storage": "256Mi"},
+        "limits": {"cpu": "1", "memory": "768Mi", "ephemeral-storage": "1Gi"},
     }
     assert "OMP_NUM_THREADS" not in cfg
     for deployment in (r for r in rendered if r["kind"] == "Deployment"):
@@ -78,6 +77,8 @@ def test_chart_preserves_product_contract_and_has_no_cloud_resources(resources):
         "Service",
         "NetworkPolicy",
         "PersistentVolumeClaim",
+        "ServiceMonitor",
+        "PrometheusRule",
     }
     assert all(r["kind"] in allowed for r in resources)
     assert all(r["metadata"]["namespace"] == "review-validation" for r in resources)
@@ -114,7 +115,10 @@ def test_all_application_containers_remain_hardened_and_single_replica(resources
             )
     backend = resource(resources, "Deployment", "review-backend")["spec"]["template"]["spec"]
     assert backend["securityContext"]["runAsUser"] == 10001
-    assert backend["containers"][0]["resources"]["limits"]["memory"] == "6Gi"
+    assert backend["containers"][0]["resources"]["limits"]["memory"] == "768Mi"
+    container = backend["containers"][0]
+    assert container["startupProbe"]["httpGet"]["path"] == "/health/live"
+    assert container["readinessProbe"]["httpGet"]["path"] == "/health/ready"
     for init in backend["initContainers"]:
         if init["name"] != "volume-permissions":
             continue

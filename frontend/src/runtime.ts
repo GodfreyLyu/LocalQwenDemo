@@ -129,12 +129,15 @@ export function servicePresentation(runtime: RuntimeState): [string, string] {
       'The service can accept submissions. Queue capacity and account limits are checked when you submit.',
     ];
   switch (runtime.info.service_status) {
-    case 'model_loading':
+    case 'initializing':
       return [
-        'Model loading',
-        runtime.info.inference_mode === 'simulated'
-          ? 'The simulated model service is preparing. Submit when it is ready.'
-          : 'The local model service is preparing and loading. Submit when it is ready.',
+        'Starting service',
+        'The review service is initializing storage and recovering queued jobs.',
+      ];
+    case 'inference_connecting':
+      return [
+        'Connecting to inference service',
+        'The inference service is unavailable or preparing. Connection retries are automatic; queued reviews are preserved.',
       ];
     case 'inference_draining':
       return [
@@ -144,7 +147,7 @@ export function servicePresentation(runtime: RuntimeState): [string, string] {
     case 'inference_stuck':
       return [
         'Temporarily unavailable',
-        'Inference has not stopped. Check the backend logs before restarting the service.',
+        'The previous inference outcome could not be confirmed. New submissions are paused; check the backend logs before recovery.',
       ];
     case 'storage_unavailable':
       return [
