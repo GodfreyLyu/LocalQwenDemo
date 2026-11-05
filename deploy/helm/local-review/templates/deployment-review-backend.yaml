@@ -62,7 +62,7 @@ spec:
         startupProbe:
           failureThreshold: {{ div (add .Values.startupTimeoutSeconds 9) 10 }}
           httpGet:
-            path: /health/ready
+            path: /health/live
             port: http
           periodSeconds: 10
           timeoutSeconds: 3

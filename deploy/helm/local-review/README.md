@@ -10,9 +10,11 @@ for namespace/Secret preparation and the complete installation procedure.
 - An existing Kubernetes >=1.30 cluster and usable StorageClass; the local example
   uses Minikube's `standard` class. Start with 4 CPUs / 8 GiB for the cluster.
 - The [independent GPU Ollama release](../local-ollama/README.md), installed as
-  `review-ollama` in namespace `local-inference`, with the pinned model. Both default
-  values and `values-minikube.yaml` use its Service on Thrift port 9091. The optional
-  `values-minikube-ollama.yaml` overlay reduces backend resource requests.
+  `review-ollama` in namespace `local-inference`, with the pinned model. Default
+  values use its Service on Thrift port 9091 and lightweight backend resources.
+- The [monitoring platform](../../../infra/local-platform/README.md#monitoring)
+  and its Prometheus Operator CRDs. Application monitoring is enabled by default;
+  set `monitoring.enabled=false` for a deployment without monitoring.
 - An existing Secret in the release namespace, named by
   `signingSecret.existingSecret`, containing `SIGNING_SECRET` (at least 32 characters).
   Preserve it across upgrades and reinstallation.
@@ -30,19 +32,22 @@ See [migration](../../../docs/operations/inference-migration.md).
 From an approved `deployment-release` checkout, after preparing the prerequisites:
 
 ```bash
-helm upgrade --install local-review ./deploy/helm/local-review --kube-context minikube --namespace local-review-helm --create-namespace -f release-values.yaml -f deploy/helm/local-review/values-minikube.yaml --wait --timeout 65m
+helm upgrade --install local-review ./deploy/helm/local-review --kube-context minikube --namespace local-review-helm --create-namespace -f release-values.yaml --wait --timeout 65m
 ```
 
 Replace the context and namespace with your prepared target. Use a separate namespace
 for an independent test installation. These commands are for Helm-managed instances;
 use the [GitOps workflow](../../../docs/guides/gitops.md) for an Argo CD application.
-For custom environment settings, copy `values-minikube.yaml` outside the checkout
-and pass that path as the last `-f` argument. Keep using the same file on upgrades.
-Release values pin the published images; the environment file supplies local
-settings. Helm does not automatically load either file. Main's default image
-names require local image loading or explicit image overrides before installation.
+`values.yaml` contains all hand-maintained configuration. The generated
+`release-values.yaml` pins published images and the source SHA; pass it explicitly
+on every install and upgrade. Argo CD reads the identical Chart-local
+`values-release.yaml`. For custom settings, create a separate file containing only
+the keys you need to override and pass it as the last `-f` argument. Keep using the
+same file on upgrades; copying all defaults would also override release image
+settings. Main's default image names require local image loading or explicit image
+overrides before installation.
 
-The Minikube application profile disables its NetworkPolicy. With an enforcing CNI,
+The default configuration disables application NetworkPolicy. With an enforcing CNI,
 enable the policy and select the inference namespace/release. `inference.host` must
 match that Service's fully qualified name. Configure the inference chart's
 `networkPolicy.backendNamespace/backendRelease` to match the actual application
@@ -52,20 +57,21 @@ Only Thrift 9091 crosses Pods; native Ollama HTTP is loopback-only.
 Render and lint from main without credentials or cluster access:
 
 ```bash
-helm lint ./deploy/helm/local-review -f deploy/helm/local-review/values-minikube.yaml
+helm lint ./deploy/helm/local-review
 ```
 
 ```bash
-helm template local-review ./deploy/helm/local-review --namespace local-review-helm -f deploy/helm/local-review/values-minikube.yaml
+helm template local-review ./deploy/helm/local-review --namespace local-review-helm
 ```
 
-## Optional monitoring
+## Monitoring
 
 Install the [Terraform monitoring platform](../../../infra/local-platform/README.md)
-and its Prometheus Operator CRDs before enabling monitoring in this Chart. Append
-`-f deploy/helm/local-review/values-monitoring.yaml` after the release and environment
-values in the Helm command. This creates the backend ServiceMonitor, nine alert
-rules and two Grafana dashboards. Monitoring is disabled in the default values.
+and its Prometheus Operator CRDs before installing the default configuration.
+The Chart creates the backend ServiceMonitor, nine alert rules and two Grafana
+dashboards. For an installation without the monitoring platform, append
+`--set monitoring.enabled=false` to the Helm install/upgrade command, or set that
+key in your custom values file and keep using it on upgrades.
 
 The supplied platform discovers `local-review-demo` and `monitoring`. For another
 application namespace, update its Prometheus namespace selectors and Grafana
